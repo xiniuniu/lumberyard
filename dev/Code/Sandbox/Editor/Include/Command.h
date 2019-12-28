@@ -17,11 +17,10 @@
 #ifndef CRYINCLUDE_EDITOR_INCLUDE_COMMAND_H
 #define CRYINCLUDE_EDITOR_INCLUDE_COMMAND_H
 #pragma once
-#include "dll_string.h"
 
 inline string ToString(const QString& s)
 {
-    return s.toLatin1().data();
+    return s.toUtf8().data();
 }
 
 class CCommand
@@ -98,7 +97,7 @@ public:
     void SetAvailableInScripting() { m_bAlsoAvailableInScripting = true; };
     bool IsAvailableInScripting() const { return m_bAlsoAvailableInScripting; }
 
-    virtual dll_string Execute(const CArgs& args) = 0;
+    virtual QString Execute(const CArgs& args) = 0;
 
     // Only a command without any arguments and return value can be a UI command.
     virtual bool CanBeUICommand() const { return false; }
@@ -119,6 +118,19 @@ protected:
     static bool FromString_(T& t, const char* s) { return ::FromString(t, s); }
     static inline bool FromString_(const char*& val, const char* s)
     { return (val = s) != 0; }
+
+    void PrintHelp()
+    {
+        CryLogAlways("%s.%s:", m_module.c_str(), m_name.c_str());
+        if (m_description.length() > 0)
+        {
+            CryLogAlways("    %s", m_description.c_str());
+        }
+        if (m_example.length() > 0)
+        {
+            CryLogAlways("    Usage:  %s", m_example.c_str());
+        }
+    }
 };
 
 class CCommand0
@@ -146,7 +158,7 @@ public:
             , commandId(0) {}
     };
 
-    inline dll_string Execute(const CArgs& args)
+    inline QString Execute(const CArgs& args)
     {
         assert(args.GetArgCount() == 0);
 
@@ -171,7 +183,7 @@ public:
         const string& description, const string& example,
         const Functor0wRet<RT>& functor);
 
-    dll_string Execute(const CArgs& args);
+    QString Execute(const CArgs& args);
 
 protected:
     friend class CEditorCommandManager;
@@ -187,7 +199,7 @@ public:
         const string& description, const string& example,
         const Functor1<LIST(1, P)>& functor);
 
-    dll_string Execute(const CArgs& args);
+    QString Execute(const CArgs& args);
 
 protected:
     friend class CEditorCommandManager;
@@ -203,7 +215,7 @@ public:
         const string& description, const string& example,
         const Functor1wRet<LIST(1, P), RT>& functor);
 
-    dll_string Execute(const CArgs& args);
+    QString Execute(const CArgs& args);
 
 protected:
     friend class CEditorCommandManager;
@@ -219,7 +231,7 @@ public:
         const string& description, const string& example,
         const Functor2<LIST(2, P)>& functor);
 
-    dll_string Execute(const CArgs& args);
+    QString Execute(const CArgs& args);
 
 protected:
     friend class CEditorCommandManager;
@@ -235,7 +247,7 @@ public:
         const string& description, const string& example,
         const Functor2wRet<LIST(2, P), RT>& functor);
 
-    dll_string Execute(const CArgs& args);
+    QString Execute(const CArgs& args);
 
 protected:
     friend class CEditorCommandManager;
@@ -251,7 +263,7 @@ public:
         const string& description, const string& example,
         const Functor3<LIST(3, P)>& functor);
 
-    dll_string Execute(const CArgs& args);
+    QString Execute(const CArgs& args);
 
 protected:
     friend class CEditorCommandManager;
@@ -267,7 +279,7 @@ public:
         const string& description, const string& example,
         const Functor3wRet<LIST(3, P), RT>& functor);
 
-    dll_string Execute(const CArgs& args);
+    QString Execute(const CArgs& args);
 
 protected:
     friend class CEditorCommandManager;
@@ -283,7 +295,7 @@ public:
         const string& description, const string& example,
         const Functor4<LIST(4, P)>& functor);
 
-    dll_string Execute(const CArgs& args);
+    QString Execute(const CArgs& args);
 
 protected:
     friend class CEditorCommandManager;
@@ -299,7 +311,7 @@ public:
         const string& description, const string& example,
         const Functor4wRet<LIST(4, P), RT>& functor);
 
-    dll_string Execute(const CArgs& args);
+    QString Execute(const CArgs& args);
 
 protected:
     friend class CEditorCommandManager;
@@ -315,7 +327,7 @@ public:
         const string& description, const string& example,
         const Functor5<LIST(5, P)>& functor);
 
-    dll_string Execute(const CArgs& args);
+    QString Execute(const CArgs& args);
 
 protected:
     friend class CEditorCommandManager;
@@ -331,7 +343,7 @@ public:
         const string& description, const string& example,
         const Functor6<LIST(6, P)>& functor);
 
-    dll_string Execute(const CArgs& args);
+    QString Execute(const CArgs& args);
 
 protected:
     friend class CEditorCommandManager;
@@ -350,7 +362,7 @@ CCommand0wRet<RT>::CCommand0wRet(const string& module, const string& name,
 }
 
 template <typename RT>
-dll_string CCommand0wRet<RT>::Execute(const CCommand::CArgs& args)
+QString CCommand0wRet<RT>::Execute(const CCommand::CArgs& args)
 {
     assert(args.GetArgCount() == 0);
 
@@ -370,12 +382,13 @@ CCommand1<LIST(1, P)>::CCommand1(const string& module, const string& name,
 }
 
 template <LIST(1, typename P)>
-dll_string CCommand1<LIST(1, P)>::Execute(const CCommand::CArgs& args)
+QString CCommand1<LIST(1, P)>::Execute(const CCommand::CArgs& args)
 {
     assert(args.GetArgCount() == 1);
     if (args.GetArgCount() < 1)
     {
         CryLogAlways("Cannot execute the command %s.%s! One argument required.", m_module.c_str(), m_name.c_str());
+        PrintHelp();
         return "";
     }
 
@@ -389,6 +402,7 @@ dll_string CCommand1<LIST(1, P)>::Execute(const CCommand::CArgs& args)
     {
         CryLogAlways("Cannot execute the command %s.%s(%s)! Invalid argument type.",
             m_module, m_name, args.GetArg(0).c_str());
+        PrintHelp();
     }
     return "";
 }
@@ -405,12 +419,13 @@ CCommand1wRet<LIST(1, P), RT>::CCommand1wRet(const string& module, const string&
 }
 
 template <LIST(1, typename P), typename RT>
-dll_string CCommand1wRet<LIST(1, P), RT>::Execute(const CCommand::CArgs& args)
+QString CCommand1wRet<LIST(1, P), RT>::Execute(const CCommand::CArgs& args)
 {
     assert(args.GetArgCount() == 1);
     if (args.GetArgCount() < 1)
     {
         CryLogAlways("Cannot execute the command %s.%s! One argument required.", m_module.c_str(), m_name.c_str());
+        PrintHelp();
         return "";
     }
 
@@ -425,6 +440,7 @@ dll_string CCommand1wRet<LIST(1, P), RT>::Execute(const CCommand::CArgs& args)
     {
         CryLogAlways("Cannot execute the command %s.%s(%s)! Invalid argument type.",
             m_module, m_name, args.GetArg(0).c_str());
+        PrintHelp();
     }
     return "";
 }
@@ -441,12 +457,13 @@ CCommand2<LIST(2, P)>::CCommand2(const string& module, const string& name,
 }
 
 template <LIST(2, typename P)>
-dll_string CCommand2<LIST(2, P)>::Execute(const CCommand::CArgs& args)
+QString CCommand2<LIST(2, P)>::Execute(const CCommand::CArgs& args)
 {
     assert(args.GetArgCount() == 2);
     if (args.GetArgCount() < 2)
     {
         CryLogAlways("Cannot execute the command %s.%s! Two arguments required.", m_module.c_str(), m_name.c_str());
+        PrintHelp();
         return "";
     }
 
@@ -462,6 +479,7 @@ dll_string CCommand2<LIST(2, P)>::Execute(const CCommand::CArgs& args)
     {
         CryLogAlways("Cannot execute the command %s.%s(%s,%s)! Invalid argument type(s).",
             m_module, m_name, args.GetArg(0).c_str(), args.GetArg(1).c_str());
+        PrintHelp();
     }
     return "";
 }
@@ -478,12 +496,13 @@ CCommand2wRet<LIST(2, P), RT>::CCommand2wRet(const string& module, const string&
 }
 
 template <LIST(2, typename P), typename RT>
-dll_string CCommand2wRet<LIST(2, P), RT>::Execute(const CCommand::CArgs& args)
+QString CCommand2wRet<LIST(2, P), RT>::Execute(const CCommand::CArgs& args)
 {
     assert(args.GetArgCount() == 2);
     if (args.GetArgCount() < 2)
     {
         CryLogAlways("Cannot execute the command %s.%s! Two arguments required.", m_module.c_str(), m_name.c_str());
+        PrintHelp();
         return "";
     }
 
@@ -500,6 +519,7 @@ dll_string CCommand2wRet<LIST(2, P), RT>::Execute(const CCommand::CArgs& args)
     {
         CryLogAlways("Cannot execute the command %s.%s(%s,%s)! Invalid argument type(s).",
             m_module, m_name, args.GetArg(0).c_str(), args.GetArg(1).c_str());
+        PrintHelp();
     }
     return "";
 }
@@ -516,12 +536,13 @@ CCommand3<LIST(3, P)>::CCommand3(const string& module, const string& name,
 }
 
 template <LIST(3, typename P)>
-dll_string CCommand3<LIST(3, P)>::Execute(const CCommand::CArgs& args)
+QString CCommand3<LIST(3, P)>::Execute(const CCommand::CArgs& args)
 {
     assert(args.GetArgCount() == 3);
     if (args.GetArgCount() < 3)
     {
         CryLogAlways("Cannot execute the command %s.%s! Three arguments required.", m_module.c_str(), m_name.c_str());
+        PrintHelp();
         return "";
     }
 
@@ -539,6 +560,7 @@ dll_string CCommand3<LIST(3, P)>::Execute(const CCommand::CArgs& args)
     {
         CryLogAlways("Cannot execute the command %s.%s(%s,%s,%s)! Invalid argument type(s).",
             m_module, m_name, args.GetArg(0).c_str(), args.GetArg(1).c_str(), args.GetArg(2).c_str());
+        PrintHelp();
     }
     return "";
 }
@@ -555,12 +577,13 @@ CCommand3wRet<LIST(3, P), RT>::CCommand3wRet(const string& module, const string&
 }
 
 template <LIST(3, typename P), typename RT>
-dll_string CCommand3wRet<LIST(3, P), RT>::Execute(const CCommand::CArgs& args)
+QString CCommand3wRet<LIST(3, P), RT>::Execute(const CCommand::CArgs& args)
 {
     assert(args.GetArgCount() == 3);
     if (args.GetArgCount() < 3)
     {
         CryLogAlways("Cannot execute the command %s.%s! Three arguments required.", m_module.c_str(), m_name.c_str());
+        PrintHelp();
         return "";
     }
 
@@ -579,6 +602,7 @@ dll_string CCommand3wRet<LIST(3, P), RT>::Execute(const CCommand::CArgs& args)
     {
         CryLogAlways("Cannot execute the command %s.%s(%s,%s,%s)! Invalid argument type(s).",
             m_module, m_name, args.GetArg(0).c_str(), args.GetArg(1).c_str(), args.GetArg(2).c_str());
+        PrintHelp();
     }
     return "";
 }
@@ -595,12 +619,13 @@ CCommand4<LIST(4, P)>::CCommand4(const string& module, const string& name,
 }
 
 template <LIST(4, typename P)>
-dll_string CCommand4<LIST(4, P)>::Execute(const CCommand::CArgs& args)
+QString CCommand4<LIST(4, P)>::Execute(const CCommand::CArgs& args)
 {
     assert(args.GetArgCount() == 4);
     if (args.GetArgCount() < 4)
     {
         CryLogAlways("Cannot execute the command %s.%s! Four arguments required.", m_module.c_str(), m_name.c_str());
+        PrintHelp();
         return "";
     }
 
@@ -621,6 +646,7 @@ dll_string CCommand4<LIST(4, P)>::Execute(const CCommand::CArgs& args)
         CryLogAlways("Cannot execute the command %s.%s(%s,%s,%s,%s)! Invalid argument type(s).",
             m_module, m_name, args.GetArg(0).c_str(), args.GetArg(1).c_str(), args.GetArg(2).c_str(),
             args.GetArg(3).c_str());
+        PrintHelp();
     }
     return "";
 }
@@ -637,12 +663,13 @@ CCommand4wRet<LIST(4, P), RT>::CCommand4wRet(const string& module, const string&
 }
 
 template <LIST(4, typename P), typename RT>
-dll_string CCommand4wRet<LIST(4, P), RT>::Execute(const CCommand::CArgs& args)
+QString CCommand4wRet<LIST(4, P), RT>::Execute(const CCommand::CArgs& args)
 {
     assert(args.GetArgCount() == 4);
     if (args.GetArgCount() < 4)
     {
         CryLogAlways("Cannot execute the command %s.%s! Four arguments required.", m_module.c_str(), m_name.c_str());
+        PrintHelp();
         return "";
     }
 
@@ -664,6 +691,7 @@ dll_string CCommand4wRet<LIST(4, P), RT>::Execute(const CCommand::CArgs& args)
         CryLogAlways("Cannot execute the command %s.%s(%s,%s,%s,%s)! Invalid argument type(s).",
             m_module, m_name, args.GetArg(0).c_str(), args.GetArg(1).c_str(), args.GetArg(2).c_str(),
             args.GetArg(3).c_str());
+        PrintHelp();
     }
     return "";
 }
@@ -680,12 +708,13 @@ CCommand5<LIST(5, P)>::CCommand5(const string& module, const string& name,
 }
 
 template <LIST(5, typename P)>
-dll_string CCommand5<LIST(5, P)>::Execute(const CCommand::CArgs& args)
+QString CCommand5<LIST(5, P)>::Execute(const CCommand::CArgs& args)
 {
     assert(args.GetArgCount() == 5);
     if (args.GetArgCount() < 5)
     {
         CryLogAlways("Cannot execute the command %s.%s! Five arguments required.", m_module.c_str(), m_name.c_str());
+        PrintHelp();
         return "";
     }
 
@@ -708,6 +737,7 @@ dll_string CCommand5<LIST(5, P)>::Execute(const CCommand::CArgs& args)
         CryLogAlways("Cannot execute the command %s.%s(%s,%s,%s,%s,%s)! Invalid argument type(s).",
             m_module, m_name, args.GetArg(0).c_str(), args.GetArg(1).c_str(), args.GetArg(2).c_str(),
             args.GetArg(3).c_str(), args.GetArg(4).c_str());
+        PrintHelp();
     }
     return "";
 }
@@ -724,12 +754,13 @@ CCommand6<LIST(6, P)>::CCommand6(const string& module, const string& name,
 }
 
 template <LIST(6, typename P)>
-dll_string CCommand6<LIST(6, P)>::Execute(const CCommand::CArgs& args)
+QString CCommand6<LIST(6, P)>::Execute(const CCommand::CArgs& args)
 {
     assert(args.GetArgCount() == 6);
     if (args.GetArgCount() < 6)
     {
         CryLogAlways("Cannot execute the command %s.%s! Six arguments required.", m_module.c_str(), m_name.c_str());
+        PrintHelp();
         return "";
     }
 
@@ -754,6 +785,7 @@ dll_string CCommand6<LIST(6, P)>::Execute(const CCommand::CArgs& args)
         CryLogAlways("Cannot execute the command %s.%s(%s,%s,%s,%s,%s,%s)! Invalid argument type(s).",
             m_module, m_name, args.GetArg(0).c_str(), args.GetArg(1).c_str(), args.GetArg(2).c_str(),
             args.GetArg(3).c_str(), args.GetArg(4).c_str(), args.GetArg(5).c_str());
+        PrintHelp();
     }
     return "";
 }

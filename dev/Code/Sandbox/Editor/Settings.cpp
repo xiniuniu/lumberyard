@@ -70,6 +70,28 @@ private:
     const QString m_group;
 };
 
+namespace
+{
+
+    class QtApplicationListener
+        : public AzToolsFramework::EditorEvents::Bus::Handler
+    {
+    public:
+        QtApplicationListener()
+        {
+            AzToolsFramework::EditorEvents::Bus::Handler::BusConnect();
+        }
+
+        void NotifyQtApplicationAvailable(QApplication* application) override
+        {
+            gSettings.viewports.nDragSquareSize = application->startDragDistance();
+            AzToolsFramework::EditorEvents::Bus::Handler::BusDisconnect();
+            delete this;
+        }
+    };
+
+}
+
 //////////////////////////////////////////////////////////////////////////
 SGizmoSettings::SGizmoSettings()
 {
@@ -87,7 +109,9 @@ SEditorSettings::SEditorSettings()
     bSettingsManagerMode = false;
 
     undoLevels = 50;
+    m_undoSliceOverrideSaveValue = false;
     bShowDashboardAtStartup = true;
+    m_showCircularDependencyError = true;
     bAutoloadLastLevelAtStartup = false;
     bMuteAudio = false;
     bEnableGameModeVR = false;
@@ -103,7 +127,7 @@ SEditorSettings::SEditorSettings()
 
     bAutoSaveTagPoints = false;
 
-    bNavigationContinuousUpdate = true;
+    bNavigationContinuousUpdate = false;
     bNavigationShowAreas = true;
     bNavigationDebugDisplay = false;
     bVisualizeNavigationAccessibility = false;
@@ -133,7 +157,7 @@ SEditorSettings::SEditorSettings()
     viewports.bTopMapSwapXY = false;
     viewports.bShowGridGuide = true;
     viewports.bHideMouseCursorWhenCaptured = true;
-    viewports.nDragSquareSize = qApp->startDragDistance();
+    viewports.nDragSquareSize = 0; // We must initialize this after the Qt application object is available; see QtApplicationListener
     viewports.bEnableContextMenu = true;
     viewports.fWarningIconsDrawDistance = 50.0f;
     viewports.bShowScaleWarnings = false;
@@ -143,6 +167,7 @@ SEditorSettings::SEditorSettings()
     cameraRotateSpeed = 1;
     cameraFastMoveSpeed = 2;
     stylusMode = false;
+    restoreViewportCamera = true;
     wheelZoomSpeed = 1;
     invertYRotation = false;
     invertPan = false;
@@ -165,6 +190,7 @@ SEditorSettings::SEditorSettings()
     bLayerDoubleClicking = false;
 
     enableSceneInspector = false;
+    enableLegacyUI = false;
 
     strStandardTempDirectory = "Temp";
     strEditorEnv = "Editor/Editor.env";
@@ -176,10 +202,22 @@ SEditorSettings::SEditorSettings()
     freezeReadOnly = true;
     frozenSelectable = false;
 
+#if AZ_TRAIT_OS_PLATFORM_APPLE
+    textEditorForScript = "TextEdit";
+    textEditorForShaders = "TextEdit";
+    textEditorForBspaces = "TextEdit";
+    textureEditor = "Photoshop";
+#elif defined(AZ_PLATFORM_WINDOWS)
     textEditorForScript = "notepad++.exe";
     textEditorForShaders = "notepad++.exe";
     textEditorForBspaces = "notepad++.exe";
     textureEditor = "Photoshop.exe";
+#else
+    textEditorForScript = "";
+    textEditorForShaders = "";
+    textEditorForBspaces = "";
+    textureEditor = "";
+#endif
     animEditor = "";
 
     terrainTextureExport = "";
@@ -236,6 +274,12 @@ SEditorSettings::SEditorSettings()
     g_TemporaryLevelName = nullptr;
 
     sMetricsSettings.bEnableMetricsTracking = true;
+
+    sliceSettings.dynamicByDefault = false;
+
+    bEnableUI2 = false;
+
+    new QtApplicationListener(); // Deletes itself when it's done.
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -293,7 +337,7 @@ void SEditorSettings::SaveValue(const char* sSection, const char* sKey, const QS
     {
         if (GetIEditor()->GetSettingsManager())
         {
-            GetIEditor()->GetSettingsManager()->SaveSetting(sSection, sKey, value.toLatin1().data());
+            GetIEditor()->GetSettingsManager()->SaveSetting(sSection, sKey, value);
         }
     }
 }
@@ -462,7 +506,9 @@ void SEditorSettings::Save()
 
     // Save settings to registry.
     SaveValue("Settings", "UndoLevels", undoLevels);
+    SaveValue("Settings", "UndoSliceOverrideSaveValue", m_undoSliceOverrideSaveValue);
     SaveValue("Settings", "ShowDashboardAtStartup", bShowDashboardAtStartup);
+    SaveValue("Settings", "ShowCircularDependencyError", m_showCircularDependencyError);
     SaveValue("Settings", "AutoloadLastLevelAtStartup", bAutoloadLastLevelAtStartup);
     SaveValue("Settings", "MuteAudio", bMuteAudio);
     SaveValue("Settings", "AutoBackup", autoBackupEnabled);
@@ -472,6 +518,7 @@ void SEditorSettings::Save()
     SaveValue("Settings", "CameraMoveSpeed", cameraMoveSpeed);
     SaveValue("Settings", "CameraRotateSpeed", cameraRotateSpeed);
     SaveValue("Settings", "StylusMode", stylusMode);
+    SaveValue("Settings", "RestoreViewportCamera", restoreViewportCamera);
     SaveValue("Settings", "WheelZoomSpeed", wheelZoomSpeed);
     SaveValue("Settings", "InvertYRotation", invertYRotation);
     SaveValue("Settings", "InvertPan", invertPan);
@@ -502,6 +549,8 @@ void SEditorSettings::Save()
     SaveValue("Settings", "LayerDoubleClicking", bLayerDoubleClicking);
 
     SaveValue("Settings", "EnableSceneInspector", enableSceneInspector);
+    SaveValue("Settings", "EnableLegacyUI", enableLegacyUI);
+    SaveValue("Settings", "ViewportInteractionModel", newViewportInteractionModel);
     
     //////////////////////////////////////////////////////////////////////////
     // Viewport settings.
@@ -658,6 +707,7 @@ void SEditorSettings::Save()
     // Deep Selection Settings
     //////////////////////////////////////////////////////////////////////////
     SaveValue("Settings", "DeepSelectionNearness", deepSelectionSettings.fRange);
+    SaveValue("Settings", "StickDuplicate", deepSelectionSettings.bStickDuplicate);
 
 
     //////////////////////////////////////////////////////////////////////////
@@ -701,6 +751,16 @@ void SEditorSettings::Save()
     //////////////////////////////////////////////////////////////////////////
     SaveValue("Settings\\Metrics", "EnableMetricsTracking",    sMetricsSettings.bEnableMetricsTracking);
 
+    //////////////////////////////////////////////////////////////////////////
+    // Slice settings
+    //////////////////////////////////////////////////////////////////////////
+    SaveValue("Settings\\Slices", "DynamicByDefault", sliceSettings.dynamicByDefault);
+
+    //////////////////////////////////////////////////////////////////////////
+    // UI 2.0 Settings
+    //////////////////////////////////////////////////////////////////////////
+    SaveValue("Settings", "EnableUI20", bEnableUI2);
+
     /*
     //////////////////////////////////////////////////////////////////////////
     // Save paths.
@@ -735,7 +795,9 @@ void SEditorSettings::Load()
     QString     strPlaceholderString;
     // Load settings from registry.
     LoadValue("Settings", "UndoLevels", undoLevels);
+    LoadValue("Settings", "UndoSliceOverrideSaveValue", m_undoSliceOverrideSaveValue);  
     LoadValue("Settings", "ShowDashboardAtStartup", bShowDashboardAtStartup);
+    LoadValue("Settings", "ShowCircularDependencyError", m_showCircularDependencyError);
     LoadValue("Settings", "AutoloadLastLevelAtStartup", bAutoloadLastLevelAtStartup);
     LoadValue("Settings", "MuteAudio", bMuteAudio);
     LoadValue("Settings", "AutoBackup", autoBackupEnabled);
@@ -745,6 +807,7 @@ void SEditorSettings::Load()
     LoadValue("Settings", "CameraMoveSpeed", cameraMoveSpeed);
     LoadValue("Settings", "CameraRotateSpeed", cameraRotateSpeed);
     LoadValue("Settings", "StylusMode", stylusMode);
+    LoadValue("Settings", "RestoreViewportCamera", restoreViewportCamera);
     LoadValue("Settings", "WheelZoomSpeed", wheelZoomSpeed);
     LoadValue("Settings", "InvertYRotation", invertYRotation);
     LoadValue("Settings", "InvertPan", invertPan);
@@ -769,7 +832,7 @@ void SEditorSettings::Load()
     LoadValue("Settings", "TemporaryDirectory", strStandardTempDirectory);
     LoadValue("Settings", "EditorEnv", strEditorEnv);
 
-    int consoleBackgroundColorThemeInt;
+    int consoleBackgroundColorThemeInt = (int)consoleBackgroundColorTheme;
     LoadValue("Settings", "ConsoleBackgroundColorTheme", consoleBackgroundColorThemeInt);
     consoleBackgroundColorTheme = (ConsoleColorTheme)consoleBackgroundColorThemeInt;
     if (consoleBackgroundColorTheme != ConsoleColorTheme::Dark && consoleBackgroundColorTheme != ConsoleColorTheme::Light)
@@ -781,6 +844,8 @@ void SEditorSettings::Load()
     LoadValue("Settings", "LayerDoubleClicking", bLayerDoubleClicking);
 
     LoadValue("Settings", "EnableSceneInspector", enableSceneInspector);
+    LoadValue("Settings", "EnableLegacyUI", enableLegacyUI);
+    LoadValue("Settings", "ViewportInteractionModel", newViewportInteractionModel);
     
     //////////////////////////////////////////////////////////////////////////
     // Viewport Settings.
@@ -945,6 +1010,7 @@ void SEditorSettings::Load()
     // Deep Selection Settings
     //////////////////////////////////////////////////////////////////////////
     LoadValue("Settings", "DeepSelectionNearness", deepSelectionSettings.fRange);
+    LoadValue("Settings", "StickDuplicate", deepSelectionSettings.bStickDuplicate);
 
     //////////////////////////////////////////////////////////////////////////
     // Object Highlight Colors
@@ -1005,6 +1071,16 @@ void SEditorSettings::Load()
     LoadValue("Settings\\Metrics", "EnableMetricsTracking",    sMetricsSettings.bEnableMetricsTracking);
 
     //////////////////////////////////////////////////////////////////////////
+    // Slice settings
+    //////////////////////////////////////////////////////////////////////////
+    LoadValue("Settings\\Slices", "DynamicByDefault", sliceSettings.dynamicByDefault);
+
+    //////////////////////////////////////////////////////////////////////////
+    // UI 2.0 Settings
+    //////////////////////////////////////////////////////////////////////////
+    LoadValue("Settings", "EnableUI20", bEnableUI2);
+
+    //////////////////////////////////////////////////////////////////////////
     // Load paths.
     //////////////////////////////////////////////////////////////////////////
     for (int id = 0; id < EDITOR_PATH_LAST; id++)
@@ -1019,7 +1095,7 @@ void SEditorSettings::Load()
         {
             const QString key = QStringLiteral("Path_%1_%2").arg(id, 2, 10, QLatin1Char('.')).arg(i, 2, 10, QLatin1Char('.'));
             QString path;
-            LoadValue("Paths", key.toLatin1().data(), path);
+            LoadValue("Paths", key.toUtf8().data(), path);
             if (path.isEmpty())
             {
                 break;
@@ -1086,33 +1162,25 @@ void SEditorSettings::LoadDefaultGamePaths()
 //////////////////////////////////////////////////////////////////////////
 bool SEditorSettings::BrowseTerrainTexture(bool bIsSave)
 {
-    char path[MAX_PATH] = "";
-    QString fileName;
+    QString path;
+
     if (!terrainTextureExport.isEmpty())
     {
-        fileName = terrainTextureExport;
+        path = Path::GetPath(terrainTextureExport);
     }
     else
     {
-        fileName = "terraintex.bmp";
-        strcpy(path, Path::GamePathToFullPath("").toLatin1().data());
+        path = Path::GetEditingGameDataFolder().c_str();
     }
 
     if (bIsSave)
     {
-        if (CFileUtil::SelectSaveFile("Bitmap Image File (*.bmp)", "bmp", path, fileName))
-        {
-            terrainTextureExport = fileName;
-            return true;
-        }
+        return CFileUtil::SelectSaveFile("Bitmap Image File (*.bmp)", "bmp", path, terrainTextureExport);
     }
     else
-    if (CFileUtil::SelectFile("Bitmap Image File (*.bmp)", path, fileName))
     {
-        terrainTextureExport = fileName;
-        return true;
+        return CFileUtil::SelectFile("Bitmap Image File (*.bmp)", path, terrainTextureExport);
     }
-    return false;
 }
 
 void EnableSourceControl(bool enable)

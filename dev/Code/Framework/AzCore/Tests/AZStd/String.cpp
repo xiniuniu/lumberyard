@@ -105,7 +105,7 @@ namespace UnitTest
     TEST(StringC, AZSWNPrintf)
     {
         wchar_t wbuffer32[32];
-        azswnprintf(wbuffer32, AZ_ARRAY_SIZE(wbuffer32), L"This is a buffer test %ls", L"Bla1");
+        azsnwprintf(wbuffer32, AZ_ARRAY_SIZE(wbuffer32), L"This is a buffer test %ls", L"Bla1");
         EXPECT_EQ(0, wcscmp(wbuffer32, L"This is a buffer test Bla1"));
     }
 
@@ -136,6 +136,7 @@ namespace UnitTest
     {
         char buffer32[32];
         azstrncpy(buffer32, AZ_ARRAY_SIZE(buffer32), "Gla Gla 1", 7);
+        // azstrncpy note: if count is reached before the entire array src was copied, the resulting character array is not null-terminated.
         buffer32[7] = '\0';
         EXPECT_EQ(0, strcmp(buffer32, "Gla Gla"));
     }
@@ -144,6 +145,8 @@ namespace UnitTest
     {
         char buffer32[32];
         azstrncpy(buffer32, AZ_ARRAY_SIZE(buffer32), "Gla Gla 1", 7);
+        // azstrncpy note: if count is reached before the entire array src was copied, the resulting character array is not null-terminated.
+        buffer32[7] = '\0';
         EXPECT_EQ(0, azstricmp(buffer32, "gla gla"));
     }
 
@@ -219,7 +222,6 @@ namespace UnitTest
         string str11(str2, 4, 3);
         AZ_TEST_VALIDATE_STRING(str11, 3);
 
-#if defined(AZ_HAS_RVALUE_REFS)
         string str12(sChar);
         string large = sCharLong;
 
@@ -264,7 +266,6 @@ namespace UnitTest
         AZ_TEST_VALIDATE_EMPTY_STRING(strSm);
         strLg.clear();
         AZ_TEST_VALIDATE_EMPTY_STRING(strLg);
-#endif // AZ_HAS_RVALUE_REFS
 
         str2.append(str3);
         AZ_TEST_VALIDATE_STRING(str2, 15);
@@ -434,6 +435,13 @@ namespace UnitTest
         str2[0] = 'G';
         AZ_TEST_ASSERT(str2.at(0) == 'G');
 
+        AZ_TEST_ASSERT(str2.front() == 'G');
+        str2.front() = 'X';
+        AZ_TEST_ASSERT(str2.front() == 'X');
+        AZ_TEST_ASSERT(str2.back() == 'c'); // From the insert of 2 'c's at the end() further up.
+        str2.back() = 'p';
+        AZ_TEST_ASSERT(str2.back() == 'p');
+
         AZ_TEST_ASSERT(str2.c_str() != 0);
         AZ_TEST_ASSERT(::strlen(str2.c_str()) == str2.length());
 
@@ -581,6 +589,24 @@ namespace UnitTest
         AZ_TEST_ASSERT(cmpRes == 0);
         cmpRes = str1.compare(11, 3, sChar, 3);
         AZ_TEST_ASSERT(cmpRes < 0);
+
+        using iteratorType = char;
+        auto testValue = str4;
+        reverse_iterator<iteratorType*> rend = testValue.rend();
+        reverse_iterator<const iteratorType*> crend1 = testValue.rend();
+        reverse_iterator<const iteratorType*> crend2 = testValue.crend();
+
+        reverse_iterator<iteratorType*> rbegin = testValue.rbegin();
+        reverse_iterator<const iteratorType*> crbegin1 = testValue.rbegin();
+        reverse_iterator<const iteratorType*> crbegin2 = testValue.crbegin();
+
+        AZ_TEST_ASSERT(rend == crend1);
+        AZ_TEST_ASSERT(crend1 == crend2);
+
+        AZ_TEST_ASSERT(rbegin == crbegin1);
+        AZ_TEST_ASSERT(crbegin1 == crbegin2);
+        
+        AZ_TEST_ASSERT(rbegin != rend);
 
         str1.set_capacity(3);
         AZ_TEST_VALIDATE_STRING(str1, 3);
@@ -1112,11 +1138,11 @@ namespace UnitTest
         AZ_TEST_ASSERT(cstr2 != "test");
         AZ_TEST_ASSERT(cstr2[2] == 's');
         AZ_TEST_ASSERT(cstr2.at(2) == 's');
-        AZ_TEST_START_ASSERTTEST;
+        AZ_TEST_START_TRACE_SUPPRESSION;
         AZ_TEST_ASSERT(cstr2.at(7) == 0);
-        AZ_TEST_STOP_ASSERTTEST(1);
+        AZ_TEST_STOP_TRACE_SUPPRESSION(1);
         AZ_TEST_ASSERT(!cstr2.empty());
-        AZ_TEST_ASSERT(cstr2.to_string() == string("Test"));
+        AZ_TEST_ASSERT(cstr2.data() == string("Test"));
         AZ_TEST_ASSERT((string)cstr2 == string("Test"));
 
         string_view cstr3 = cstr2;
@@ -1140,6 +1166,16 @@ namespace UnitTest
         AZStd::hash<string_view> h;
         AZStd::size_t value = h(cstr1);
         AZ_TEST_ASSERT(value != 0);
+
+        // testing empty string
+        AZStd::string emptyString;
+        string_view cstr4;
+        cstr4 = emptyString;
+        AZ_TEST_ASSERT(cstr4.data() != nullptr);
+        AZ_TEST_ASSERT(cstr4.size() == 0);
+        AZ_TEST_ASSERT(cstr4.length() == 0);
+        AZ_TEST_ASSERT(cstr4.begin() == cstr4.end());
+        AZ_TEST_ASSERT(cstr4.empty());
     }
 
     TEST_F(String, StringViewModifierTest)
@@ -1165,16 +1201,16 @@ namespace UnitTest
         EXPECT_EQ(view2.size() - 1, copyResult);
 
         char assertDest[destBufferSize] = { 0 };
-        AZ_TEST_START_ASSERTTEST;
+        AZ_TEST_START_TRACE_SUPPRESSION;
         view2.copy(assertDest, destBufferSize, view2.size() + 1);
-        AZ_TEST_STOP_ASSERTTEST(1);
+        AZ_TEST_STOP_TRACE_SUPPRESSION(1);
 
         // substr
         string_view subView2 = view2.substr(10);
         EXPECT_EQ("Haystack", subView2);
-        AZ_TEST_START_ASSERTTEST;
+        AZ_TEST_START_TRACE_SUPPRESSION;
         string_view assertSubView = view2.substr(view2.size() + 1);
-        AZ_TEST_STOP_ASSERTTEST(1);
+        AZ_TEST_STOP_TRACE_SUPPRESSION(1);
 
         // compare
         AZStd::size_t compareResult = view2.compare(1, view2.size() - 1, dest, copyResult);
@@ -1293,6 +1329,24 @@ namespace UnitTest
         string_view suffixRemovalView = view2;
         suffixRemovalView.remove_suffix(8);
         EXPECT_EQ("Needle in ", suffixRemovalView);
+
+        // starts_with
+        EXPECT_TRUE(view2.starts_with("Needle"));
+        EXPECT_TRUE(view2.starts_with('N'));
+        EXPECT_TRUE(view2.starts_with(AZStd::string_view("Needle")));
+
+        EXPECT_FALSE(view2.starts_with("Needle not"));
+        EXPECT_FALSE(view2.starts_with('n'));
+        EXPECT_FALSE(view2.starts_with(AZStd::string_view("Needle not")));
+
+        // ends_with
+        EXPECT_TRUE(view2.ends_with("Haystack"));
+        EXPECT_TRUE(view2.ends_with('k'));
+        EXPECT_TRUE(view2.ends_with(AZStd::string_view("Haystack")));
+
+        EXPECT_FALSE(view2.ends_with("Hayqueue"));
+        EXPECT_FALSE(view2.ends_with('e'));
+        EXPECT_FALSE(view2.ends_with(AZStd::string_view("Hayqueue")));
     }
 
     TEST_F(String, StringViewCmpOperatorTest)
@@ -1363,5 +1417,33 @@ namespace UnitTest
         EXPECT_GE(beaverView, bigBeaver);
         EXPECT_GE(compareStr, beaverView);
         EXPECT_GE(microBeaverStr, beaverView);
+    }
+
+    template<typename T>
+    const T* GetFormatString()
+    {
+        return "%s";
+    }
+
+    template <>
+    const wchar_t* GetFormatString<wchar_t>()
+    {
+        return L"%s";
+    }
+
+    template<typename T>
+    class StringFormatFixture
+        : public UnitTest::AllocatorsTestFixture
+    {
+    };
+
+    using StringFormatTypesToTest = ::testing::Types<AZStd::string>; //, AZStd::wstring>;
+    TYPED_TEST_CASE(StringFormatFixture, StringFormatTypesToTest);
+
+    TYPED_TEST(StringFormatFixture, CanFormatStringLongerThan2048Chars)
+    {
+        TypeParam str(4096, 'x');
+        TypeParam formatted = TypeParam::format(GetFormatString<typename TypeParam::value_type>(), str.c_str());
+        EXPECT_EQ(str, formatted);
     }
 }

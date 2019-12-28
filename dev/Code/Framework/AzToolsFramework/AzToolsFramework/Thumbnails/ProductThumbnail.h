@@ -28,6 +28,8 @@ namespace AzToolsFramework
         {
             Q_OBJECT
         public:
+            AZ_RTTI(ProductThumbnailKey, "{00FED34F-3D86-41B0-802F-9BD218DA1F0D}", ThumbnailKey);
+
             explicit ProductThumbnailKey(const AZ::Data::AssetId& assetId);
             const AZ::Data::AssetId& GetAssetId() const;
             const AZ::Data::AssetType& GetAssetType() const;
@@ -40,7 +42,7 @@ namespace AzToolsFramework
         //! A thumbnail type for processed assets
         class ProductThumbnail
             : public Thumbnail
-            , public ThumbnailerRendererNotificationsBus::Handler
+            , public ThumbnailerRendererNotificationBus::Handler
         {
             Q_OBJECT
         public:
@@ -70,7 +72,7 @@ namespace AzToolsFramework
             public:
                 size_t operator() (const SharedThumbnailKey& val) const
                 {
-                    auto key = qobject_cast<const ProductThumbnailKey*>(val.data());
+                    auto key = azrtti_cast<const ProductThumbnailKey*>(val.data());
                     if (!key)
                     {
                         return 0;
@@ -84,8 +86,8 @@ namespace AzToolsFramework
             public:
                 bool operator()(const SharedThumbnailKey& val1, const SharedThumbnailKey& val2) const
                 {
-                    auto key1 = qobject_cast<const ProductThumbnailKey*>(val1.data());
-                    auto key2 = qobject_cast<const ProductThumbnailKey*>(val2.data());
+                    auto key1 = azrtti_cast<const ProductThumbnailKey*>(val1.data());
+                    auto key2 = azrtti_cast<const ProductThumbnailKey*>(val2.data());
                     if (!key1 || !key2)
                     {
                         return false;

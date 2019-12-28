@@ -10,7 +10,7 @@
 *
 */
 
-#include "FbxAnimCurveWrapper.h"
+#include <SceneAPI/FbxSDKWrapper/FbxAnimCurveWrapper.h>
 
 namespace AZ
 {
@@ -21,9 +21,14 @@ namespace AZ
         {
         }
 
-        float FbxAnimCurveWrapper::Evaluate(FbxTimeWrapper& time)
+        const char* FbxAnimCurveWrapper::GetName() const
+        {
+            return m_fbxAnimCurve->GetName();
+        }
+
+        float FbxAnimCurveWrapper::Evaluate(FbxTimeWrapper& time) const
         {
             return m_fbxAnimCurve->Evaluate(time.m_fbxTime);
         }
-    }
-}
+    } // namespace FbxSDKWrapper
+} // namespace AZ

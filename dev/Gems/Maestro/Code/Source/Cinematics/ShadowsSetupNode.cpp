@@ -13,7 +13,7 @@
 
 // Description : CryMovie animation node for shadow settings
 
-#include "StdAfx.h"
+#include "Maestro_precompiled.h"
 #include <AzCore/Serialization/SerializeContext.h>
 
 #include "ShadowsSetupNode.h"
@@ -25,7 +25,7 @@
 namespace ShadowSetupNode
 {
     bool s_shadowSetupParamsInit = false;
-    std::vector<CAnimNode::SParamInfo> s_shadowSetupParams;
+    StaticInstance<std::vector<CAnimNode::SParamInfo>> s_shadowSetupParams;
 
     void AddSupportedParam(const char* sName, AnimParamType paramId, AnimValueType valueType)
     {

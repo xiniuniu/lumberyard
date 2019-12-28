@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 
 #include <AzCore/Serialization/SerializeContext.h>
 #include <AzCore/Serialization/EditContext.h>
@@ -68,7 +68,7 @@ namespace LmbrCentral
                     "Motion Parameter Smoothing", "The Motion Parameter Smoothing component allows configuration of the animation blend parameter behavior (for blend spaces) for a specified character instance")
                     ->ClassElement(AZ::Edit::ClassElements::EditorData, "")
                         ->Attribute(AZ::Edit::Attributes::Category, "Animation (Legacy)")
-                        ->Attribute(AZ::Edit::Attributes::Icon, "Editor/Icons/Components/MotionParameterSmoothing.png")
+                        ->Attribute(AZ::Edit::Attributes::Icon, "Editor/Icons/Components/MotionParameterSmoothing.svg")
                         ->Attribute(AZ::Edit::Attributes::ViewportIcon, "Editor/Icons/Components/Viewport/MotionParameterSmoothing.png")
                         ->Attribute(AZ::Edit::Attributes::AppearsInAddComponentMenu, AZ_CRC("Game", 0x232b318c))
                         ->Attribute(AZ::Edit::Attributes::AutoExpand, true)

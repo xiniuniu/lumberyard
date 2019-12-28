@@ -43,8 +43,6 @@ namespace UnitTest
 
         int IntResultIntParameter(int) { return m_data; }
 
-        // VS2013 does not support ref-qualifiers on member functions
-#if !defined(AZ_COMPILER_MSVC) || AZ_COMPILER_MSVC >= 1900
         int& operator()(InvokeNonCopyable&&) & { return m_data; }
         const int& operator()(InvokeNonCopyable&&) const & { return m_data; }
         volatile int& operator()(InvokeNonCopyable&&) volatile & { return m_data; }
@@ -54,12 +52,6 @@ namespace UnitTest
         const int&& operator()(InvokeNonCopyable&&) const && { return AZStd::move(m_data); }
         volatile int&& operator()(InvokeNonCopyable&&) volatile && { return AZStd::move(m_data); }
         const volatile int&& operator()(InvokeNonCopyable&&) const volatile && { return AZStd::move(m_data); }
-#else
-        int& operator()(InvokeNonCopyable&&) { return m_data; }
-        const int& operator()(InvokeNonCopyable&&) const { return m_data; }
-        volatile int& operator()(InvokeNonCopyable&&) volatile { return m_data; }
-        const volatile int& operator()(InvokeNonCopyable&&) const volatile { return m_data; }
-#endif
 
         int m_data;
     };
@@ -114,8 +106,6 @@ namespace UnitTest
 
     TEST_F(InvocableTest, MemberFunctionTest)
     {
-        // VS2013 does not support ref-qualifiers on member functions
-#if !defined(AZ_COMPILER_MSVC) || AZ_COMPILER_MSVC >= 1900
         using Func = int(InvokeTestStruct::*)(int);
         using CLFunc = int(InvokeTestStruct::*)(int) const &;
         using RFunc = int(InvokeTestStruct::*)(int) &&;
@@ -125,12 +115,6 @@ namespace UnitTest
         AZ_TEST_STATIC_ASSERT((!AZStd::is_invocable<AZStd::decay_t<CLFunc>>::value));
         AZ_TEST_STATIC_ASSERT((!AZStd::is_invocable<AZStd::decay_t<RFunc>>::value));
         AZ_TEST_STATIC_ASSERT((!AZStd::is_invocable<AZStd::decay_t<CRFunc>>::value));
-#else
-        using Func = int(InvokeTestStruct::*)(int);
-        using CLFunc = int(InvokeTestStruct::*)(int) const;
-        AZ_TEST_STATIC_ASSERT((!AZStd::is_invocable<AZStd::decay_t<Func>>::value));
-        AZ_TEST_STATIC_ASSERT((!AZStd::is_invocable<AZStd::decay_t<CLFunc>>::value));
-#endif
         // Bullet 1
         AZ_TEST_STATIC_ASSERT((AZStd::is_invocable<Func, InvokeTestStruct, int>::value));
         AZ_TEST_STATIC_ASSERT((AZStd::is_invocable<Func, InvokeTestStruct&, int>::value));
@@ -143,11 +127,7 @@ namespace UnitTest
 
         AZ_TEST_STATIC_ASSERT((AZStd::is_invocable<CLFunc, const InvokeTestStruct&, int>::value));
         AZ_TEST_STATIC_ASSERT((AZStd::is_invocable<CLFunc, const InvokeTestDerivedStruct&, int>::value));
-        AZ_TEST_STATIC_ASSERT((AZStd::is_invocable<CLFunc, InvokeTestStruct, int>::value));
-        AZ_TEST_STATIC_ASSERT((AZStd::is_invocable<CLFunc, InvokeTestStruct&&, int>::value));
-        AZ_TEST_STATIC_ASSERT((AZStd::is_invocable<CLFunc, const InvokeTestStruct&&, int>::value));
 
-#if !defined(AZ_COMPILER_MSVC) || AZ_COMPILER_MSVC >= 1900
         AZ_TEST_STATIC_ASSERT((AZStd::is_invocable<RFunc, InvokeTestStruct, int>::value));
         AZ_TEST_STATIC_ASSERT((AZStd::is_invocable<RFunc, InvokeTestStruct&&, int>::value));
         AZ_TEST_STATIC_ASSERT((!AZStd::is_invocable<RFunc, const InvokeTestStruct&&, int>::value));
@@ -159,7 +139,6 @@ namespace UnitTest
         AZ_TEST_STATIC_ASSERT((AZStd::is_invocable<CRFunc, const InvokeTestStruct&&, int>::value));
         AZ_TEST_STATIC_ASSERT((!AZStd::is_invocable<CRFunc, const InvokeTestStruct&, int>::value));
         AZ_TEST_STATIC_ASSERT((!AZStd::is_invocable<CRFunc, InvokeTestStruct&, int>::value));
-#endif
 
         // Bullet 2
         using RefTest = AZStd::reference_wrapper<InvokeTestStruct>;
@@ -188,8 +167,6 @@ namespace UnitTest
         AZ_TEST_STATIC_ASSERT((AZStd::is_invocable<CLFunc, RefConstTest&&, int>::value));
         AZ_TEST_STATIC_ASSERT((AZStd::is_invocable<CLFunc, const RefConstTest&&, int>::value));
 
-        // VS2013 does not support ref-qualifiers on member functions
-#if !defined(AZ_COMPILER_MSVC) || AZ_COMPILER_MSVC >= 1900
         AZ_TEST_STATIC_ASSERT((!AZStd::is_invocable<RFunc, RefTest, int>::value));
         AZ_TEST_STATIC_ASSERT((!AZStd::is_invocable<RFunc, RefDerivedTest, int>::value));
         AZ_TEST_STATIC_ASSERT((!AZStd::is_invocable<RFunc, RefConstTest, int>::value));
@@ -197,11 +174,10 @@ namespace UnitTest
         AZ_TEST_STATIC_ASSERT((!AZStd::is_invocable<CRFunc, RefTest, int>::value));
         AZ_TEST_STATIC_ASSERT((!AZStd::is_invocable<CRFunc, RefDerivedTest, int>::value));
         AZ_TEST_STATIC_ASSERT((!AZStd::is_invocable<CRFunc, RefConstTest, int>::value));
-#endif
 
         // Bullet 3
         using TestPtrType = InvokeTestStruct*;
-        using DerivedTestPtrType = InvokeTestDerivedStruct;
+        using DerivedTestPtrType = InvokeTestDerivedStruct*;
         using ConstTestPtrType = const InvokeTestStruct*;
         using UniqueTestPtrType = AZStd::unique_ptr<InvokeTestStruct>;
         using SharedTestPtrType = AZStd::shared_ptr<InvokeTestStruct>;
@@ -222,8 +198,6 @@ namespace UnitTest
         AZ_TEST_STATIC_ASSERT((AZStd::is_invocable<CLFunc, ConstTestPtrType&, int>::value));
         AZ_TEST_STATIC_ASSERT((AZStd::is_invocable<CLFunc, ConstTestPtrType&&, int>::value));
 
-        // VS2013 does not support ref-qualifiers on member functions
-#if !defined(AZ_COMPILER_MSVC) || AZ_COMPILER_MSVC >= 1900
         AZ_TEST_STATIC_ASSERT((!AZStd::is_invocable<RFunc, TestPtrType&, int>::value));
         AZ_TEST_STATIC_ASSERT((!AZStd::is_invocable<RFunc, const TestPtrType&, int>::value));
         AZ_TEST_STATIC_ASSERT((!AZStd::is_invocable<RFunc, DerivedTestPtrType, int>::value));
@@ -239,7 +213,6 @@ namespace UnitTest
         AZ_TEST_STATIC_ASSERT((!AZStd::is_invocable<CRFunc, SharedTestPtrType, int>::value));
         AZ_TEST_STATIC_ASSERT((!AZStd::is_invocable<CRFunc, ConstTestPtrType&, int>::value));
         AZ_TEST_STATIC_ASSERT((!AZStd::is_invocable<CRFunc, ConstTestPtrType&&, int>::value));
-#endif
     }
 
     TEST_F(InvocableTest, MemberObjectTest)
@@ -340,9 +313,16 @@ namespace UnitTest
             return num;
         }
 
+        static int DoubleRValueIntValue(int&& num)
+        {
+            return num * 2;
+        }
+
     public:
-        static const int s_rawFuncResult = 24;
+        static const int s_rawFuncResult;
     };
+
+    const int InvokeTest::s_rawFuncResult = 24;
 
     template<typename FuncSig, typename ExpectResultType, typename Functor>
     void InvokeMemberFunctionTester(Functor&& functor, int expectResult)
@@ -352,7 +332,8 @@ namespace UnitTest
 
         InvokeNonCopyable nonCopyableArg;
 
-        AZ_TEST_STATIC_ASSERT((AZStd::is_invocable_r<ExpectResultType, MemberFunc, Functor, InvokeNonCopyable&&>::value));
+        using DeducedResultType = decltype(AZStd::invoke(memberFunc, AZStd::forward<Functor>(functor), AZStd::move(nonCopyableArg)));
+        AZ_TEST_STATIC_ASSERT((AZStd::is_same<ExpectResultType, DeducedResultType>::value));
         AZ_TEST_STATIC_ASSERT((AZStd::is_same<ExpectResultType, AZStd::invoke_result_t<MemberFunc, Functor, InvokeNonCopyable&&>>::value));
         
         auto result = AZStd::invoke(memberFunc, AZStd::forward<Functor>(functor), AZStd::move(nonCopyableArg));
@@ -364,7 +345,8 @@ namespace UnitTest
     {
         auto memberObjPtr = &InvokeTestStruct::m_data;
 
-        AZ_TEST_STATIC_ASSERT((AZStd::is_invocable_r<ExpectResultType, decltype(memberObjPtr), Functor>::value));
+        using DeducedResultType = decltype(AZStd::invoke(memberObjPtr, AZStd::forward<Functor>(functor)));
+        AZ_TEST_STATIC_ASSERT((AZStd::is_same<ExpectResultType, DeducedResultType>::value));
         AZ_TEST_STATIC_ASSERT((AZStd::is_same<ExpectResultType, AZStd::invoke_result_t<decltype(memberObjPtr), Functor>>::value));
 
         auto result = AZStd::invoke(memberObjPtr, AZStd::forward<Functor>(functor));
@@ -376,7 +358,8 @@ namespace UnitTest
     {
         InvokeNonCopyable nonCopyableArg;
 
-        AZ_TEST_STATIC_ASSERT((AZStd::is_invocable_r<ExpectResultType, Functor, InvokeNonCopyable&&>::value));
+        using DeducedResultType = decltype(AZStd::invoke(AZStd::forward<Functor>(functor), AZStd::move(nonCopyableArg)));
+        AZ_TEST_STATIC_ASSERT((AZStd::is_same<ExpectResultType, DeducedResultType>::value));
         AZ_TEST_STATIC_ASSERT((AZStd::is_same<ExpectResultType, AZStd::invoke_result_t<Functor, InvokeNonCopyable&&>>::value));
 
         auto result = AZStd::invoke(AZStd::forward<Functor>(functor), AZStd::move(nonCopyableArg));
@@ -394,8 +377,6 @@ namespace UnitTest
             // Bullet 1
             {
                 InvokeTestStruct test(1);
-                // VS2013 does not support ref-qualifiers on member functions
-#if !defined(AZ_COMPILER_MSVC) || AZ_COMPILER_MSVC >= 1900
                 InvokeMemberFunctionTester<int& (InvokeTestStruct::*)(InvokeNonCopyable&&) &, int&>(test, test.m_data);
                 InvokeMemberFunctionTester<const int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const &, const int&>(test, test.m_data);
                 InvokeMemberFunctionTester<volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) volatile &, volatile int&>(test, test.m_data);
@@ -405,26 +386,15 @@ namespace UnitTest
                 InvokeMemberFunctionTester<const int&& (InvokeTestStruct::*)(InvokeNonCopyable&&) const &&, const int&&>(AZStd::move(test), test.m_data);
                 InvokeMemberFunctionTester<volatile int&& (InvokeTestStruct::*)(InvokeNonCopyable&&) volatile &&, volatile int&&>(AZStd::move(test), test.m_data);
                 InvokeMemberFunctionTester<const volatile int&& (InvokeTestStruct::*)(InvokeNonCopyable&&) const volatile &&, const volatile int&&>(AZStd::move(test), test.m_data);
-#else
-                InvokeMemberFunctionTester<int& (InvokeTestStruct::*)(InvokeNonCopyable&&), int&>(test, test.m_data);
-                InvokeMemberFunctionTester<const int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const, const int&>(test, test.m_data);
-                InvokeMemberFunctionTester<volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) volatile, volatile int&>(test, test.m_data);
-                InvokeMemberFunctionTester<const volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const volatile, const volatile int&>(test, test.m_data);
-#endif
             }
             {
 
                 InvokeTestDerivedStruct derivedTest(2);
-                // VS2013 does not support ref-qualifiers on member functions
-#if !defined(AZ_COMPILER_MSVC) || AZ_COMPILER_MSVC >= 1900
                 InvokeMemberFunctionTester<int& (InvokeTestStruct::*)(InvokeNonCopyable&&) &, int&>(derivedTest, derivedTest.m_data);
                 InvokeMemberFunctionTester<const int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const &, const int&>(derivedTest, derivedTest.m_data);
                 InvokeMemberFunctionTester<volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) volatile &, volatile int&>(derivedTest, derivedTest.m_data);
                 InvokeMemberFunctionTester<const volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const volatile &, const volatile int&>(derivedTest, derivedTest.m_data);
 
-                /* VS2015 has a compiler bug where attempting to invoke an member function with rvalue ref-qualifiers on a derived instance fails to compile
-                so a static cast is needed
-                */
                 using MemberDerivedRFunc = int&& (InvokeTestDerivedStruct::*)(InvokeNonCopyable&&) &&;
                 using MemberDerivedCRFunc = const int&& (InvokeTestDerivedStruct::*)(InvokeNonCopyable&&) const &&;
                 using MemberDerivedVRFunc = volatile int&& (InvokeTestDerivedStruct::*)(InvokeNonCopyable&&) volatile&&;
@@ -433,12 +403,6 @@ namespace UnitTest
                 InvokeMemberFunctionTester<MemberDerivedCRFunc, const int&&>(AZStd::move(derivedTest), derivedTest.m_data);
                 InvokeMemberFunctionTester<MemberDerivedVRFunc, volatile int&&>(AZStd::move(derivedTest), derivedTest.m_data);
                 InvokeMemberFunctionTester<MemberDerivedCVRFunc, const volatile int&&>(AZStd::move(derivedTest), derivedTest.m_data);
-#else
-                InvokeMemberFunctionTester<int& (InvokeTestStruct::*)(InvokeNonCopyable&&), int&>(derivedTest, derivedTest.m_data);
-                InvokeMemberFunctionTester<const int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const, const int&>(derivedTest, derivedTest.m_data);
-                InvokeMemberFunctionTester<volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) volatile, volatile int&>(derivedTest, derivedTest.m_data);
-                InvokeMemberFunctionTester<const volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const volatile, const volatile int&>(derivedTest, derivedTest.m_data);
-#endif
             }
         }
 
@@ -447,8 +411,6 @@ namespace UnitTest
             {
                 InvokeTestStruct testObj(3);
                 AZStd::reference_wrapper<InvokeTestStruct> test(testObj);
-                // VS2013 does not support ref-qualifiers on member functions
-#if !defined(AZ_COMPILER_MSVC) || AZ_COMPILER_MSVC >= 1900
                 InvokeMemberFunctionTester<int& (InvokeTestStruct::*)(InvokeNonCopyable&&) &, int&>(test, test.get().m_data);
                 InvokeMemberFunctionTester<const int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const &, const int&>(test, test.get().m_data);
                 InvokeMemberFunctionTester<volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) volatile &, volatile int&>(test, test.get().m_data);
@@ -458,18 +420,10 @@ namespace UnitTest
                 InvokeMemberFunctionTester<const int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const &, const int&>(AZStd::move(test), test.get().m_data);
                 InvokeMemberFunctionTester<volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) volatile &, volatile int&>(AZStd::move(test), test.get().m_data);
                 InvokeMemberFunctionTester<const volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const volatile &, const volatile int&>(AZStd::move(test), test.get().m_data);
-#else
-                InvokeMemberFunctionTester<int& (InvokeTestStruct::*)(InvokeNonCopyable&&), int&>(test, test.get().m_data);
-                InvokeMemberFunctionTester<const int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const, const int&>(test, test.get().m_data);
-                InvokeMemberFunctionTester<volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) volatile, volatile int&>(test, test.get().m_data);
-                InvokeMemberFunctionTester<const volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const volatile, const volatile int&>(test, test.get().m_data);
-#endif
             }
             {
                 InvokeTestDerivedStruct derivedTestObj(4);
                 AZStd::reference_wrapper<InvokeTestDerivedStruct> derivedTest(derivedTestObj);
-                // VS2013 does not support ref-qualifiers on member functions
-#if !defined(AZ_COMPILER_MSVC) || AZ_COMPILER_MSVC >= 1900
                 InvokeMemberFunctionTester<int& (InvokeTestStruct::*)(InvokeNonCopyable&&) &, int&>(derivedTest, derivedTest.get().m_data);
                 InvokeMemberFunctionTester<const int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const &, const int&>(derivedTest, derivedTest.get().m_data);
                 InvokeMemberFunctionTester<volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) volatile &, volatile int&>(derivedTest, derivedTest.get().m_data);
@@ -479,12 +433,6 @@ namespace UnitTest
                 InvokeMemberFunctionTester<const int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const &, const int&>(AZStd::move(derivedTest), derivedTest.get().m_data);
                 InvokeMemberFunctionTester<volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) volatile &, volatile int&>(AZStd::move(derivedTest), derivedTest.get().m_data);
                 InvokeMemberFunctionTester<const volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const volatile &, const volatile int&>(AZStd::move(derivedTest), derivedTest.get().m_data);
-#else
-                InvokeMemberFunctionTester<int& (InvokeTestStruct::*)(InvokeNonCopyable&&), int&>(derivedTest, derivedTest.get().m_data);
-                InvokeMemberFunctionTester<const int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const, const int&>(derivedTest, derivedTest.get().m_data);
-                InvokeMemberFunctionTester<volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) volatile, volatile int&>(derivedTest, derivedTest.get().m_data);
-                InvokeMemberFunctionTester<const volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const volatile, const volatile int&>(derivedTest, derivedTest.get().m_data);
-#endif
             }
         }
 
@@ -493,8 +441,6 @@ namespace UnitTest
             {
                 InvokeTestStruct testObj(5);
                 InvokeTestStruct* test(&testObj);
-                // VS2013 does not support ref-qualifiers on member functions
-#if !defined(AZ_COMPILER_MSVC) || AZ_COMPILER_MSVC >= 1900
                 InvokeMemberFunctionTester<int& (InvokeTestStruct::*)(InvokeNonCopyable&&) &, int&>(test, test->m_data);
                 InvokeMemberFunctionTester<const int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const &, const int&>(test, test->m_data);
                 InvokeMemberFunctionTester<volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) volatile &, volatile int&>(test, test->m_data);
@@ -511,18 +457,10 @@ namespace UnitTest
                 InvokeMemberFunctionTester<volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) volatile &, volatile int&>(test, test->m_data);
                 InvokeMemberFunctionTester<const volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const volatile &, const volatile int&>(test, test->m_data);
                 testUniquePtr.release();
-#else
-                InvokeMemberFunctionTester<int& (InvokeTestStruct::*)(InvokeNonCopyable&&), int&>(test, test->m_data);
-                InvokeMemberFunctionTester<const int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const, const int&>(test, test->m_data);
-                InvokeMemberFunctionTester<volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) volatile, volatile int&>(test, test->m_data);
-                InvokeMemberFunctionTester<const volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const volatile, const volatile int&>(test, test->m_data);
-#endif
             }
             {
                 InvokeTestDerivedStruct derivedTestObj(6);
                 InvokeTestDerivedStruct* derivedTest(&derivedTestObj);
-                // VS2013 does not support ref-qualifiers on member functions
-#if !defined(AZ_COMPILER_MSVC) || AZ_COMPILER_MSVC >= 1900
                 InvokeMemberFunctionTester<int& (InvokeTestStruct::*)(InvokeNonCopyable&&) &, int&>(derivedTest, derivedTest->m_data);
                 InvokeMemberFunctionTester<const int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const &, const int&>(derivedTest, derivedTest->m_data);
                 InvokeMemberFunctionTester<volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) volatile &, volatile int&>(derivedTest, derivedTest->m_data);
@@ -532,12 +470,6 @@ namespace UnitTest
                 InvokeMemberFunctionTester<const int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const &, const int&>(AZStd::move(derivedTest), derivedTest->m_data);
                 InvokeMemberFunctionTester<volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) volatile &, volatile int&>(AZStd::move(derivedTest), derivedTest->m_data);
                 InvokeMemberFunctionTester<const volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const volatile &, const volatile int&>(AZStd::move(derivedTest), derivedTest->m_data);
-#else
-                InvokeMemberFunctionTester<int& (InvokeTestStruct::*)(InvokeNonCopyable&&), int&>(derivedTest, derivedTest->m_data);
-                InvokeMemberFunctionTester<const int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const, const int&>(derivedTest, derivedTest->m_data);
-                InvokeMemberFunctionTester<volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) volatile, volatile int&>(derivedTest, derivedTest->m_data);
-                InvokeMemberFunctionTester<const volatile int& (InvokeTestStruct::*)(InvokeNonCopyable&&) const volatile, const volatile int&>(derivedTest, derivedTest->m_data);
-#endif
             }
         }
     }
@@ -554,19 +486,14 @@ namespace UnitTest
                 InvokeMemberObjectTester<volatile int&>(static_cast<volatile TestStruct&>(test), test.m_data);
                 InvokeMemberObjectTester<const volatile int&>(static_cast<const volatile TestStruct&>(test), test.m_data);
 
-                // VS2013 does not support ref-qualifiers on member functions
-#if !defined(AZ_COMPILER_MSVC) || AZ_COMPILER_MSVC >= 1900
                 InvokeMemberObjectTester<int&&>(static_cast<TestStruct&&>(test), test.m_data);
                 InvokeMemberObjectTester<const int&&>(static_cast<const TestStruct&&>(test), test.m_data);
                 InvokeMemberObjectTester<volatile int&&>(static_cast<volatile TestStruct&&>(test), test.m_data);
                 InvokeMemberObjectTester<const volatile int&&>(static_cast<const volatile TestStruct&&>(test), test.m_data);
-#endif
             }
             {
                 using TestStruct = InvokeTestDerivedStruct;
                 TestStruct test(8);
-                // VS2013 does not support ref-qualifiers on member functions
-#if !defined(AZ_COMPILER_MSVC) || AZ_COMPILER_MSVC >= 1900
                 InvokeMemberObjectTester<int&>(test, test.m_data);
                 InvokeMemberObjectTester<const int&>(static_cast<const TestStruct&>(test), test.m_data);
                 InvokeMemberObjectTester<volatile int&>(static_cast<volatile TestStruct&>(test), test.m_data);
@@ -576,14 +503,6 @@ namespace UnitTest
                 InvokeMemberObjectTester<const int&&>(static_cast<const TestStruct&&>(test), test.m_data);
                 InvokeMemberObjectTester<volatile int&&>(static_cast<volatile TestStruct&&>(test), test.m_data);
                 InvokeMemberObjectTester<const volatile int&&>(static_cast<const volatile TestStruct&&>(test), test.m_data);
-#else
-                // VS2013 invoking a member object pointer on the exact instance returns a reference while invoking it on 
-                // derived instance returns a non-reference
-                InvokeMemberObjectTester<int>(static_cast<TestStruct&>(test), test.m_data);
-                InvokeMemberObjectTester<int>(static_cast<const TestStruct&>(test), test.m_data);
-                InvokeMemberObjectTester<int>(static_cast<volatile TestStruct&>(test), test.m_data);
-                InvokeMemberObjectTester<int>(static_cast<const volatile TestStruct&>(test), test.m_data);
-#endif
             }
         }
 
@@ -600,19 +519,10 @@ namespace UnitTest
             {
                 using TestStruct = InvokeTestDerivedStruct;
                 TestStruct testObj(10);
-#if !defined(AZ_COMPILER_MSVC) || AZ_COMPILER_MSVC >= 1900
                 InvokeMemberObjectTester<int&>(AZStd::reference_wrapper<TestStruct>(testObj), testObj.m_data);
                 InvokeMemberObjectTester<const int&>(AZStd::reference_wrapper<const TestStruct>(testObj), testObj.m_data);
                 InvokeMemberObjectTester<volatile int&>(AZStd::reference_wrapper<volatile TestStruct>(testObj), testObj.m_data);
                 InvokeMemberObjectTester<const volatile int&>(AZStd::reference_wrapper<const volatile TestStruct>(testObj), testObj.m_data);
-#else
-                // VS2013 invoking a member object pointer on the exact instance returns a reference while invoking it on 
-                // derived instance returns a non-reference
-                InvokeMemberObjectTester<int>(AZStd::reference_wrapper<TestStruct>(testObj), testObj.m_data);
-                InvokeMemberObjectTester<int>(AZStd::reference_wrapper<const TestStruct>(testObj), testObj.m_data);
-                InvokeMemberObjectTester<int>(AZStd::reference_wrapper<volatile TestStruct>(testObj), testObj.m_data);
-                InvokeMemberObjectTester<int>(AZStd::reference_wrapper<const volatile TestStruct>(testObj), testObj.m_data);
-#endif
             }
         }
 
@@ -634,19 +544,10 @@ namespace UnitTest
                 using TestStruct = InvokeTestDerivedStruct;
                 TestStruct testObj(12);
                 TestStruct* test(&testObj);
-#if !defined(AZ_COMPILER_MSVC) || AZ_COMPILER_MSVC >= 1900
                 InvokeMemberObjectTester<int&>(test, test->m_data);
                 InvokeMemberObjectTester<const int&>(static_cast<const TestStruct*>(test), test->m_data);
                 InvokeMemberObjectTester<volatile int&>(static_cast<volatile TestStruct*>(test), test->m_data);
                 InvokeMemberObjectTester<const volatile int&>(static_cast<const volatile TestStruct*>(test), test->m_data);
-#else
-                // VS2013 invoking a member object pointer on the exact instance returns a reference while invoking it on 
-                // derived instance returns a non-reference
-                InvokeMemberObjectTester<int>(test, test->m_data);
-                InvokeMemberObjectTester<int>(static_cast<const TestStruct*>(test), test->m_data);
-                InvokeMemberObjectTester<int>(static_cast<volatile TestStruct*>(test), test->m_data);
-                InvokeMemberObjectTester<int>(static_cast<const volatile TestStruct*>(test), test->m_data);
-#endif
             }
         }
     }
@@ -661,23 +562,22 @@ namespace UnitTest
         InvokeFunctionObjectTester<int>(testRawFuncPtr, InvokeTest::s_rawFuncResult);
         InvokeFunctionObjectTester<int>(testRawFuncRef, InvokeTest::s_rawFuncResult);
         
-        // function_template.h needs to forward the function parameters so that rvalue parameters can be bound to AZStd::functions
         AZStd::function<int(int)> testStdFunc = &RawIntFunc;
         int numResult = AZStd::invoke(testStdFunc, InvokeTest::s_rawFuncResult);
         EXPECT_EQ(InvokeTest::s_rawFuncResult, numResult);
+
+        AZStd::function<int(int&&)> testStdFuncWithRValueParam = &DoubleRValueIntValue;
+        numResult = AZStd::invoke(testStdFuncWithRValueParam, 520);
+        EXPECT_EQ(1040, numResult);
         
         InvokeTestStruct testFunctor(13);
         InvokeFunctionObjectTester<int&>(testFunctor, testFunctor.m_data);
         InvokeFunctionObjectTester<const int&>(static_cast<const InvokeTestStruct&>(testFunctor), testFunctor.m_data);
         InvokeFunctionObjectTester<volatile int&>(static_cast<volatile InvokeTestStruct&>(testFunctor), testFunctor.m_data);
         InvokeFunctionObjectTester<const volatile int&>(static_cast<const volatile InvokeTestStruct&>(testFunctor), testFunctor.m_data);
-
-        // VS2013 does not support ref-qualifiers on member functions
-#if !defined(AZ_COMPILER_MSVC) || AZ_COMPILER_MSVC >= 1900
         InvokeFunctionObjectTester<int&&>(static_cast<InvokeTestStruct&&>(testFunctor), testFunctor.m_data);
         InvokeFunctionObjectTester<const int&&>(static_cast<const InvokeTestStruct&&>(testFunctor), testFunctor.m_data);
         InvokeFunctionObjectTester<volatile int&&>(static_cast<volatile InvokeTestStruct&&>(testFunctor), testFunctor.m_data);
         InvokeFunctionObjectTester<const volatile int&&>(static_cast<const volatile InvokeTestStruct&&>(testFunctor), testFunctor.m_data);
-#endif
     }
 }

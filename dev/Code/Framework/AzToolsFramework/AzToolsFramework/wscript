@@ -11,7 +11,26 @@
 ########################################################################################
 
 def build(bld):
-
+    
+    bld.CryEngineStaticLibrary(
+        # Settings
+        target              = 'AzToolsFrameworkTestCommon',
+        vs_filter           = 'AZ Framework',
+        file_list           = ['aztoolsframework_tests.waf_files'],
+        platforms           = ['win', 'darwin'],
+        disable_pch         = True,
+        test_only           = True,
+        includes            = ['..'],
+        export_includes     = ['..'],
+        use                 = ['AzFramework',
+                               'AzQtComponents',
+                               'GMOCK'],
+        test_use            = ['AzTest'],
+        uselib              = ['QT5CORE',
+                               'QT5GUI',
+                               'QT5WIDGETS'],
+    )
+    
     bld.CryEngineStaticLibrary(
 
         # Settings
@@ -23,11 +42,15 @@ def build(bld):
         disable_pch         = True,
         features            = ['qt5'],
         use                 = ['AzFramework',
+                               'AzQtComponents',
+                               'AzToolsFrameworkTestCommon',
+                               'AzTestShared',
                                'SQLITE'],
         uselib              = ['QT5CORE',
                                'QT5GUI',
                                'QT5WIDGETS'],
-        includes            = ['..'],
+        includes            = ['..',
+                                bld.Path('Code/Tools/GemRegistry/include'),],
         export_includes     = ['..'],
 
         defines             = ['QT_QML_DEBUG'],
@@ -35,20 +58,36 @@ def build(bld):
         debug_defines       = ['ENABLE_UNDOCACHE_CONSISTENCY_CHECKS'], # we want this on ONLY in debug, not when AZ_DEBUG_BUILD is enabled.
 
         # Compiler specific
-        msvc_cxxflags       = [
-                               '/W4', # warning level
-                              ],
+        msvc_cxxflags       = ['/W4'],
 
-        clang_cxxflags      = [
-                               '-Werror',  # warnings as errors
-                               '-Wall',    # warning level
-                              ],
+        # Platform Roots
+        platform_roots  = [bld.PlatformRoot('../Platform', export_includes=True)],
 
         # Platform specific
         win_file_list       = ['aztoolsframework_win.waf_files'],
         win_features        = ['crcfix'],
 
         darwin_file_list    = ['aztoolsframework_osx.waf_files'],
-        darwin_cxxflags     = ['-Wno-non-pod-varargs'], # ToDo: fixme (moved from the global clang settings)
         darwin_enable_rtti  = True,
+    
+        # Tests
+        create_test_driver  = True,
+        test_vs_filter      = 'AZ Framework/TestSuites',
+        test_file_list      = ['../Tests/aztoolsframeworktests.waf_files'],
+        test_use            = ['AzTest',
+                               'AzToolsFrameworkTestCommon',
+                               'AzTestShared'],
+        test_uselib         = ['QT5CORE',
+                               'QT5GUI',
+                               'QT5NETWORK',
+                               'QT5QML',
+                               'QT5WEBKITWIDGETS',
+                               'QT5WEBKIT',
+                               'QT5WIDGETS',
+                               'QT5WINEXTRAS',
+                               'QT5CONCURRENT',
+                               'QT5XML',
+                               'QT5TEST'],
+        test_includes       = ['../Tests']
+
     )

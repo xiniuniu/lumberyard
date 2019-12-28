@@ -25,7 +25,6 @@
 #include <QAbstractNativeEventFilter>
 
 #include "Include/SandboxAPI.h"
-#include "ActionManager.h"
 #include <AzQtComponents/Components/ToolButtonComboBox.h>
 #include <AzToolsFramework/SourceControl/SourceControlAPI.h>
 #include <QAbstractNativeEventFilter>
@@ -50,6 +49,8 @@ class QRollupCtrl;
 class ToolbarManager;
 class ToolbarCustomizationDialog;
 class QWidgetAction;
+class ActionManager;
+class ShortcutDispatcher;
 
 namespace AzToolsFramework
 {
@@ -119,7 +120,7 @@ public:
 #endif // #ifdef Q_OS_WIN
 
     ActionManager* GetActionManager() const;
-    
+
     void Initialize();
 
     // Returns the old and original main frame which we're porting away from.
@@ -178,7 +179,9 @@ public:
 #ifdef Q_OS_WIN
     bool nativeEventFilter(const QByteArray& eventType, void* message, long* result) override;
 #endif
+    bool event(QEvent* event) override;
 
+    void OnGotoSliceRoot();
 Q_SIGNALS:
     void ToggleRefCoordSys();
     void UpdateRefCoordSys();
@@ -197,9 +200,11 @@ protected:
     bool focusNextPrevChild(bool next) override;
 
 private:
+    void OnGameModeChanged(bool inGameMode);
     QWidget* CreateToolbarWidget(int id);
     void ShowCustomizeToolbarDialog();
     void OnGotoSelected();
+
     void ToggleConsole();
     void ToggleRollupBar();
     void RegisterOpenWndCommands();
@@ -210,20 +215,26 @@ private:
     void InitStatusBar();
     void OnUpdateSnapToGrid(QAction* action);
     void OnViewPaneCreated(const QtViewPane* pane);
+    void LoadConfig();
+
+    template <class TValue>
+    void ReadConfigValue(const QString& key, TValue& value)
+    {
+        value = m_settings.value(key, value).template value<TValue>();
+    }
 
     // AzToolsFramework::SourceControlNotificationBus::Handler:
     void ConnectivityStateChanged(const AzToolsFramework::SourceControlState state) override;
 
     QToolButton* CreateLayerSelectButton();
-    QToolButton* CreateSnapToGridButton();
-    QToolButton* CreateSnapToAngleButton();
+    QWidget* CreateSnapToGridWidget();
+    QWidget* CreateSnapToAngleWidget();
 
     QComboBox* CreateSelectionMaskComboBox();
     QComboBox* CreateRefCoordComboBox();
     QWidget* CreateSelectObjectComboBox();
 
     QToolButton* CreateUndoRedoButton(int command);
-
 private Q_SLOTS:
     void ShowKeyboardCustomization();
     void ExportKeyboardShortcuts();
@@ -238,7 +249,7 @@ private Q_SLOTS:
     void OnConnectionStatusClicked();
     void OnUpdateConnectionStatus();
     void ShowConnectionDisconnectedDialog();
-	void CGPMenuClicked();
+    void CGPMenuClicked();
     void OnEscapeAction();
 
     // When signal is sent from ActionManager and MainWindow receives it, call this function as slot to send metrics event
@@ -256,7 +267,8 @@ private:
     void RegisterStdViewClasses();
     CMainFrame* m_oldMainFrame;
     QtViewPaneManager* m_viewPaneManager;
-    ActionManager* m_actionManager;
+    ShortcutDispatcher* m_shortcutDispatcher = nullptr;
+    ActionManager* m_actionManager = nullptr;
     UndoStackStateAdapter* m_undoStateAdapter;
 
     KeyboardCustomizationSettings* m_keyboardCustomization;
@@ -291,9 +303,27 @@ private:
     bool m_connectedToAssetProcessor = false;
     bool m_showAPDisconnectDialog = false;
     bool m_projectExternal = false;
+    bool m_selectedEntityHasRoot = false;
 
     friend class ToolbarManager;
     friend class WidgetAction;
     friend class LevelEditorMenuHandler;
 };
 
+namespace AzToolsFramework
+{
+    //! A component to reflect scriptable commands for MainWindow
+    class MainWindowEditorFuncsHandler
+        : public AZ::Component
+    {
+    public:
+        AZ_COMPONENT(MainWindowEditorFuncsHandler, "{C879102B-C767-4349-8F06-B69119CAC462}")
+
+        static void Reflect(AZ::ReflectContext* context);
+
+        // AZ::Component ...
+        void Activate() override {}
+        void Deactivate() override {}
+    };
+
+} // namespace AZ

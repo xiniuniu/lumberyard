@@ -12,7 +12,7 @@
 #pragma once
 
 #include <QGraphicsLinearLayout>
-#include <qtimer.h>
+#include <QTimer>
 
 #include <Components/Slots/SlotLayoutComponent.h>
 #include <GraphCanvas/Components/SceneBus.h>
@@ -20,7 +20,7 @@
 #include <GraphCanvas/Components/Slots/Data/DataSlotBus.h>
 #include <GraphCanvas/Components/StyleBus.h>
 #include <GraphCanvas/Components/VisualBus.h>
-#include <Styling/StyleHelper.h>
+#include <GraphCanvas/Styling/StyleHelper.h>
 #include <Widgets/GraphCanvasLabel.h>
 #include <Widgets/NodePropertyDisplayWidget.h>
 
@@ -59,9 +59,6 @@ namespace GraphCanvas
 
         void OnNameChanged(const TranslationKeyedString&) override;
         void OnTooltipChanged(const TranslationKeyedString&) override;
-
-        void OnConnectedTo(const AZ::EntityId& connectionId, const Endpoint& endpoint) override;
-        void OnDisconnectedFrom(const AZ::EntityId& connectionId, const Endpoint& endpoint) override;
         ////
 
         // StyleNotificationBus
@@ -76,6 +73,7 @@ namespace GraphCanvas
 
         // DataSlotNotificationBus
         void OnDataSlotTypeChanged(const DataSlotType& dataSlotType) override;
+        void OnDisplayTypeChanged(const AZ::Uuid& dataType, const AZStd::vector<AZ::Uuid>& typeIds) override;
         ////
 
         // NodeDataSlotRequestBus
@@ -102,7 +100,15 @@ namespace GraphCanvas
         DataSlotConnectionPin*                          m_slotConnectionPin;
         GraphCanvasLabel*                               m_slotText;
 
-        QGraphicsLayoutItem*                            m_layoutItem;
+        // track the last seen values of some members to prevent UpdateLayout doing unnecessary work
+        struct
+        {
+            ConnectionType connectionType = CT_Invalid;
+            DataSlotConnectionPin* slotConnectionPin = nullptr;
+            GraphCanvasLabel* slotText = nullptr;
+            NodePropertyDisplayWidget* nodePropertyDisplay = nullptr;
+            QGraphicsWidget* spacer = nullptr;
+        } m_atLastUpdate;
     };
 
     //! Lays out the parts of the Data Slot

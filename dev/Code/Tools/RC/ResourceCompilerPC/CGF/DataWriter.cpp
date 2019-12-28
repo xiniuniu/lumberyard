@@ -11,8 +11,8 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "StdAfx.h"
-#include "dataWriter.h"
+#include "stdafx.h"
+#include "DataWriter.h"
 #include "CryEndian.h"
 
 DataWriter::DataWriter()

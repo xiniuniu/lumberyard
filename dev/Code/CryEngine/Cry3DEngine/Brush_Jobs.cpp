@@ -24,12 +24,8 @@
 #include "terrain.h"
 #include "Environment/OceanEnvironmentBus.h"
 
-#include <IJobManager_JobDelegator.h>
-
-DECLARE_JOB("CBrush_Render", TCBrush_Render, CBrush::Render_JobEntry);
-
 ///////////////////////////////////////////////////////////////////////////////
-void CBrush::Render(const CLodValue& lodValue, const SRenderingPassInfo& passInfo, const SSectorTextureSet* pTerrainTexInfo, JobManager::SJobState* pJobState, const SRendItemSorter& rendItemSorter)
+void CBrush::Render(const CLodValue& lodValue, const SRenderingPassInfo& passInfo, const SSectorTextureSet* pTerrainTexInfo, AZ::LegacyJobExecutor* pJobExecutor, const SRendItemSorter& rendItemSorter)
 {
     FUNCTION_PROFILER_3DENGINE;
     CVars* pCVars = GetCVars();
@@ -76,6 +72,7 @@ void CBrush::Render(const CLodValue& lodValue, const SRenderingPassInfo& passInf
     if (m_dwRndFlags & ERF_NO_DECALNODE_DECALS)
     {
         pObj->m_ObjFlags |= FOB_DYNAMIC_OBJECT;
+        pObj->m_NoDecalReceiver = true;
     }
     else
     {
@@ -171,7 +168,7 @@ void CBrush::Render(const CLodValue& lodValue, const SRenderingPassInfo& passInf
 
         if (lodValue.LodA() <= 0 && Cry3DEngineBase::GetCVars()->e_MergedMeshes != 0 && m_pDeform && m_pDeform->HasDeformableData())
         {
-            if (GetCVars()->e_StatObjBufferRenderTasks == 1 && passInfo.IsGeneralPass() && JobManager::InvokeAsJob("CheckOcclusion"))
+            if (GetCVars()->e_StatObjBufferRenderTasks == 1 && passInfo.IsGeneralPass())
             {
                 GetObjManager()->PushIntoCullOutputQueue(SCheckOcclusionOutput::CreateDeformableBrushOutput(this, gEnv->pRenderer->EF_DuplicateRO(pObj, passInfo), lodValue.LodA(), rendItemSorter));
             }
@@ -181,7 +178,7 @@ void CBrush::Render(const CLodValue& lodValue, const SRenderingPassInfo& passInf
             }
         }
 
-        if (GetCVars()->e_StatObjBufferRenderTasks == 1 && passInfo.IsGeneralPass() && JobManager::InvokeAsJob("CheckOcclusion") && GetCVars()->e_DebugDraw)
+        if (GetCVars()->e_StatObjBufferRenderTasks == 1 && passInfo.IsGeneralPass() && GetCVars()->e_DebugDraw)
         {
             // execute on MainThread for debug drawing, as else we run into threading issues with the AuxRenderer
             GetObjManager()->PushIntoCullOutputQueue(SCheckOcclusionOutput::CreateBrushOutput(this, pObj, lodValue, rendItemSorter));
@@ -192,16 +189,18 @@ void CBrush::Render(const CLodValue& lodValue, const SRenderingPassInfo& passInf
             // these lists are handled earlier than GENERAL lists, thus they need to use another sync variable
             if (!passInfo.IsShadowPass() && !passInfo.IsRecursivePass() && m_bExecuteAsPreprocessJob)
             {
-                pJobState = gEnv->pRenderer->GetGenerateRendItemJobStatePreProcess(passInfo.ThreadID());
+                pJobExecutor = gEnv->pRenderer->GetGenerateRendItemJobExecutorPreProcess();
             }
 
-            if (pJobState && GetCVars()->e_DebugDraw == 0)
+            if (pJobExecutor && GetCVars()->e_DebugDraw == 0)
             {
-                TCBrush_Render job(pObj, lodValue, passInfo, rendItemSorter);
-                job.SetClassInstance(this);
-                job.RegisterJobState(pJobState);
-                job.SetPriorityLevel(passInfo.IsGeneralPass() ? JobManager::eRegularPriority : JobManager::eLowPriority);
-                job.Run();
+                // legacy job priority: "passInfo.IsGeneralPass() ? JobManager::eRegularPriority : JobManager::eLowPriority"
+                pJobExecutor->StartJob(
+                    [this, pObj, lodValue, passInfo, rendItemSorter]
+                    {
+                        this->Render_JobEntry(pObj, lodValue, passInfo, rendItemSorter);
+                    }
+                );
             }
             else
             {
@@ -212,8 +211,10 @@ void CBrush::Render(const CLodValue& lodValue, const SRenderingPassInfo& passInf
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-void CBrush::Render_JobEntry(CRenderObject* pObj, const CLodValue lodValue, SRenderingPassInfo passInfo, SRendItemSorter rendItemSorter)
+void CBrush::Render_JobEntry(CRenderObject* pObj, const CLodValue lodValue, const SRenderingPassInfo& passInfo, SRendItemSorter rendItemSorter)
 {
+    AZ_PROFILE_FUNCTION(AZ::Debug::ProfileCategory::ThreeDEngine);
+
     CStatObj* pStatObj = (CStatObj*)CBrush::GetEntityStatObj();
     pStatObj->RenderInternal(pObj, 0, lodValue, passInfo, rendItemSorter, false);
 }

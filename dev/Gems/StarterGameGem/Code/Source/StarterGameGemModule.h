@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "StarterGameGem_precompiled.h"
 #include <platform_impl.h>
 
 #include <IGem.h>
@@ -25,15 +25,14 @@ namespace StarterGameGem
 
         StarterGameGemModule();
 
-		void OnSystemEvent(ESystemEvent e, UINT_PTR wparam, UINT_PTR lparam) override;
-		void PostSystemInit();
-		void Shutdown();
+        void OnSystemEvent(ESystemEvent e, UINT_PTR wparam, UINT_PTR lparam) override;
+        void PostSystemInit();
+        void Shutdown();
 
         /**
          * Add required SystemComponents to the SystemEntity.
          */
         AZ::ComponentTypeList GetRequiredSystemComponents() const override;
-
     };
 }
 

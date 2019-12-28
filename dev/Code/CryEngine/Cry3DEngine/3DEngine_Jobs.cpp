@@ -20,10 +20,14 @@
 #include <IGameFramework.h>
 
 #include "3dEngine.h"
+
+#ifdef LY_TERRAIN_LEGACY_RUNTIME
 #include "terrain.h"
+#endif
+
 #include "VisAreas.h"
 #include "ObjMan.h"
-#include "terrain_water.h"
+#include "Ocean.h"
 
 #include "DecalManager.h"
 #include "Vegetation.h"
@@ -71,10 +75,6 @@
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-CryCriticalSection g_cCheckCreateRNTmpData;
-
-///////////////////////////////////////////////////////////////////////////////
 void C3DEngine::CheckAddLight(CDLight* pLight, const SRenderingPassInfo& passInfo)
 {
     if (pLight->m_Id < 0)
@@ -109,7 +109,7 @@ float C3DEngine::GetWaterLevel()
     {
         return OceanRequest::GetOceanLevel();
     }
-    return m_pTerrain ? m_pTerrain->CTerrain::GetWaterLevel() : WATER_LEVEL_UNKNOWN;
+    return m_pOcean ? m_pOcean->GetWaterLevel() : WATER_LEVEL_UNKNOWN;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -156,9 +156,9 @@ bool C3DEngine::IsTessellationAllowed(const CRenderObject* pObj, const SRenderin
 ///////////////////////////////////////////////////////////////////////////////
 void C3DEngine::CreateRNTmpData(CRNTmpData** ppInfo, IRenderNode* pRNode, const SRenderingPassInfo& passInfo)
 {
-    // g_cCheckCreateRNTmpData lock scope
+    // m_checkCreateRNTmpData lock scope
     {
-        AUTO_LOCK(g_cCheckCreateRNTmpData);
+        AUTO_LOCK(m_checkCreateRNTmpData);
         FUNCTION_PROFILER_3DENGINE;
 
         if (*ppInfo)
@@ -209,7 +209,7 @@ void C3DEngine::CreateRNTmpData(CRNTmpData** ppInfo, IRenderNode* pRNode, const 
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-void C3DEngine::RenderRenderNode_ShadowPass(IShadowCaster* pShadowCaster, const SRenderingPassInfo& passInfo, JobManager::SJobState* pJobState)
+void C3DEngine::RenderRenderNode_ShadowPass(IShadowCaster* pShadowCaster, const SRenderingPassInfo& passInfo, AZ::LegacyJobExecutor* pJobExecutor)
 {
     assert(passInfo.IsShadowPass());
 
@@ -248,6 +248,15 @@ void C3DEngine::RenderRenderNode_ShadowPass(IShadowCaster* pShadowCaster, const 
     Get3DEngine()->CheckCreateRNTmpData(&pRenderNode->m_pRNTmpData, pRenderNode, passInfo);
 
     int wantedLod = pRenderNode->m_pRNTmpData->userData.nWantedLod;
+
+    if (GetCVars()->e_LodForceUpdate && m_pObjManager)
+    {
+        const Vec3 vCamPos = passInfo.GetCamera().GetPosition();
+        const AABB objBox = pRenderNode->GetBBoxVirtual();
+        float fDistance = sqrt_tpl(Distance::Point_AABBSq(vCamPos, objBox)) * passInfo.GetZoomFactor();
+        wantedLod = m_pObjManager->GetObjectLOD(pRenderNode, fDistance);
+    }
+
     if (pRenderNode->GetShadowLodBias() != IRenderNode::SHADOW_LODBIAS_DISABLE)
     {
         if (passInfo.IsShadowPass() && (pRenderNode->GetDrawFrame(0) < (passInfo.GetFrameID() - 10)))
@@ -278,9 +287,19 @@ void C3DEngine::RenderRenderNode_ShadowPass(IShadowCaster* pShadowCaster, const 
         CBrush* pBrush = static_cast<CBrush*>(pRenderNode);
         pBrush->SetDrawFrame(passInfo.GetFrameID(), passInfo.GetRecursiveLevel());
         const CLodValue lodValue = pBrush->ComputeLod(wantedLod, passInfo);
-        pBrush->Render(lodValue, passInfo, NULL, pJobState, rendItemSorter);
+        pBrush->Render(lodValue, passInfo, NULL, pJobExecutor, rendItemSorter);
     }
     break;
+#ifdef LY_TERRAIN_RUNTIME
+    case eERType_TerrainSystem:
+    {
+        SRendParams rParams;
+        rParams.rendItemSorter = rendItemSorter.GetValue();
+        pRenderNode->SetDrawFrame(passInfo.GetFrameID(), passInfo.GetRecursiveLevel());
+        pRenderNode->Render(rParams, passInfo);
+    }
+    break;
+#endif
     default:
     {
         const Vec3 vCamPos = passInfo.GetCamera().GetPosition();
@@ -311,15 +330,19 @@ ITimeOfDay* C3DEngine::GetTimeOfDay()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-void C3DEngine::TraceFogVolumes(const Vec3& worldPos, ColorF& fogVolumeContrib, const SRenderingPassInfo& passInfo)
+void C3DEngine::TraceFogVolumes(const Vec3& vPos, const AABB& objBBox, SFogVolumeData& fogVolData, const SRenderingPassInfo& passInfo, bool fogVolumeShadingQuality)
 {
-    CFogVolumeRenderNode::TraceFogVolumes(worldPos, fogVolumeContrib, passInfo);
+    CFogVolumeRenderNode::TraceFogVolumes(vPos, objBBox, fogVolData, passInfo, fogVolumeShadingQuality);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 int C3DEngine::GetTerrainSize()
 {
+#ifdef LY_TERRAIN_LEGACY_RUNTIME
     return CTerrain::GetTerrainSize();
+#else
+    return 0;
+#endif
 }
 #include "ParticleEmitter.h"
 
@@ -413,6 +436,8 @@ void C3DEngine::AsyncOctreeUpdate(IRenderNode* pEnt, int nSID, int nSIDConsidere
 
     pEnt->m_fWSMaxViewDist = pEnt->GetMaxViewDist();
 
+    bool useVisAreas = true;
+
     if (eERType != eERType_Light)
     {
         if (fObjRadiusSqr > sqr(MAX_VALID_OBJECT_VOLUME) || !_finite(fObjRadiusSqr))
@@ -434,6 +459,11 @@ void C3DEngine::AsyncOctreeUpdate(IRenderNode* pEnt, int nSID, int nSIDConsidere
                 return;
             }
         }
+
+        if (pEnt->m_dwRndFlags & ERF_OUTDOORONLY)
+        {
+            useVisAreas = false;
+        }
     }
     else
     {
@@ -447,6 +477,11 @@ void C3DEngine::AsyncOctreeUpdate(IRenderNode* pEnt, int nSID, int nSIDConsidere
             {
                 m_lstAlwaysVisible.Add(pEnt);
             }
+        }
+
+        if (lightFlag & DLF_IGNORES_VISAREAS)
+        {
+            useVisAreas = false;
         }
     }
 
@@ -464,7 +499,7 @@ void C3DEngine::AsyncOctreeUpdate(IRenderNode* pEnt, int nSID, int nSIDConsidere
         }
     }
     //////////////////////////////////////////////////////////////////////////
-    if (pEnt->m_dwRndFlags & ERF_OUTDOORONLY || !(m_pVisAreaManager && m_pVisAreaManager->SetEntityArea(pEnt, aabb, fObjRadiusSqr)))
+    if (!useVisAreas || !(m_pVisAreaManager && m_pVisAreaManager->SetEntityArea(pEnt, aabb, fObjRadiusSqr)))
     {
         if (m_pObjectsTree == nullptr)
         {
@@ -563,7 +598,6 @@ Vec3 C3DEngine::GetEntityRegisterPoint(IRenderNode* pEnt)
     if (pEnt->m_dwRndFlags & ERF_REGISTER_BY_POSITION)
     {
         vPoint = pEnt->GetPos();
-        vPoint.z += 0.25f;
 
         if (pEnt->GetRenderNodeType() != eERType_Light)
         {
@@ -615,7 +649,11 @@ void CVegetation::UpdateRndFlags()
 void CVegetation::UpdateSunDotTerrain()
 {
     float fRadius = CVegetation::GetBBox().GetRadius();
+#ifdef LY_TERRAIN_LEGACY_RUNTIME
     Vec3 vTerrainNormal = GetTerrain()->GetTerrainSurfaceNormal(m_vPos, fRadius);
+#else
+    Vec3 vTerrainNormal(0.0f, 0.0f, 1.0f);
+#endif
     m_ucSunDotTerrain    = (uint8)(CLAMP((vTerrainNormal.Dot(Get3DEngine()->GetSunDirNormalized())) * 255.f, 0, 255));
 }
 
@@ -628,6 +666,7 @@ const AABB CVegetation::GetBBox() const
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+#ifdef LY_TERRAIN_LEGACY_RUNTIME
 Vec3 CTerrain::GetTerrainSurfaceNormal(Vec3 vPos, float fRange)
 {
     fRange += 0.05f;
@@ -637,5 +676,5 @@ Vec3 CTerrain::GetTerrainSurfaceNormal(Vec3 vPos, float fRange)
     Vec3 v4 = Vec3(vPos.x + fRange, vPos.y + fRange,  GetBilinearZ(vPos.x + fRange, vPos.y + fRange));
     return (v3 - v2).Cross(v4 - v1).GetNormalized();
 }
-
+#endif //#ifdef LY_TERRAIN_LEGACY_RUNTIME
 ///////////////////////////////////////////////////////////////////////////////

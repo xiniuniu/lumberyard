@@ -16,6 +16,7 @@
 //////////////////////////////////////////////////////////////////////////
 //currently only needed for GETFAKEASSETYPE
 #include <AzFramework/StringFunc/StringFunc.h>
+#include <AzCore/std/string/wildcard.h>
 #include <AzCore/IO/SystemFile.h>
 #include <AzCore/XML/rapidxml.h>
 #include <AzCore/XML/rapidxml_print.h>
@@ -88,14 +89,23 @@ namespace AssetBuilderSDK
         {
             return AssetBuilderSDK::Platform_OSX;
         }
-        if (azstricmp(newPlatformName, "xboxone") == 0)
+        if (azstricmp(newPlatformName, "xenia") == 0)
         {
-            return AssetBuilderSDK::Platform_XBOXONE;  // ACCEPTED_USE
+            return AssetBuilderSDK::Platform_XENIA;
         }
-        if (azstricmp(newPlatformName, "ps4") == 0)
+        if (azstricmp(newPlatformName, "provo") == 0)
         {
-            return AssetBuilderSDK::Platform_PS4;  // ACCEPTED_USE
+            return AssetBuilderSDK::Platform_PROVO;
         }
+#if defined(AZ_PLATFORM_XENIA) || defined(TOOLS_SUPPORT_XENIA)
+#include "Xenia/AssetBuilderSDK_cpp_xenia.inl"
+#endif
+#if defined(AZ_PLATFORM_PROVO) || defined(TOOLS_SUPPORT_PROVO)
+#include "Provo/AssetBuilderSDK_cpp_provo.inl"
+#endif
+#if defined(AZ_PLATFORM_SALEM) || defined(TOOLS_SUPPORT_SALEM)
+#include "Salem/AssetBuilderSDK_cpp_salem.inl"
+#endif
 
         return AssetBuilderSDK::Platform_NONE;
     }
@@ -114,10 +124,12 @@ namespace AssetBuilderSDK
             return "ios";
         case AssetBuilderSDK::Platform_OSX:
             return "osx_gl";
-        case AssetBuilderSDK::Platform_XBOXONE:     // ACCEPTED_USE
-            return "xboxone";
-        case AssetBuilderSDK::Platform_PS4:     // ACCEPTED_USE
-            return "ps4";
+        case AssetBuilderSDK::Platform_XENIA:
+            return "xenia";
+        case AssetBuilderSDK::Platform_PROVO:
+            return "provo";
+        case AssetBuilderSDK::Platform_SALEM:
+            return "salem";
         }
         return "unknown platform";
     }
@@ -138,6 +150,11 @@ namespace AssetBuilderSDK
     {
     }
 
+    AZStd::string AssetBuilderPattern::ToString() const
+    {
+        return AZStd::string::format("{%s:%s}", m_type == Wildcard ? "WildCard" : "Regex", m_pattern.c_str());
+    }
+
     void AssetBuilderPattern::Reflect(AZ::ReflectContext* context)
     {
         if (AZ::SerializeContext* serializeContext = azrtti_cast<AZ::SerializeContext*>(context))
@@ -147,6 +164,93 @@ namespace AssetBuilderSDK
                 ->Field("Pattern", &AssetBuilderPattern::m_pattern)
                 ->Field("Type", &AssetBuilderPattern::m_type);
         }
+    }
+
+    FilePatternMatcher::FilePatternMatcher(const AssetBuilderSDK::AssetBuilderPattern& pattern)
+        : m_pattern(pattern)
+    {
+        if (pattern.m_type == AssetBuilderSDK::AssetBuilderPattern::Regex)
+        {
+            m_isRegex = true;
+            m_isValid = FilePatternMatcher::ValidatePatternRegex(pattern.m_pattern);
+            if (m_isValid)
+            {
+                this->m_regex = RegexType(pattern.m_pattern.c_str(), RegexType::flag_type::icase | RegexType::flag_type::ECMAScript);
+            }
+        }
+        else
+        {
+            m_isValid = true;
+            m_isRegex = false;
+        }
+    }
+
+    FilePatternMatcher::FilePatternMatcher(const AZStd::string& pattern, AssetBuilderSDK::AssetBuilderPattern::PatternType type)
+        : FilePatternMatcher(AssetBuilderSDK::AssetBuilderPattern(pattern, type))
+    {
+    }
+
+    FilePatternMatcher::FilePatternMatcher(const FilePatternMatcher& copy)
+        : m_pattern(copy.m_pattern)
+        , m_regex(copy.m_regex)
+        , m_isRegex(copy.m_isRegex)
+        , m_isValid(copy.m_isValid)
+        , m_errorString(copy.m_errorString)
+    {
+    }
+
+    FilePatternMatcher& FilePatternMatcher::operator=(const FilePatternMatcher& copy)
+    {
+        this->m_pattern = copy.m_pattern;
+        this->m_regex = copy.m_regex;
+        this->m_isRegex = copy.m_isRegex;
+        this->m_isValid = copy.m_isValid;
+        this->m_errorString = copy.m_errorString;
+        return *this;
+    }
+
+    bool FilePatternMatcher::MatchesPath(const AZStd::string& assetPath) const
+    {
+        bool matches = false;
+        if (this->m_isRegex)
+        {
+            matches = AZStd::regex_match(assetPath.c_str(), this->m_regex);
+        }
+        else
+        {
+            matches = AZStd::wildcard_match(this->m_pattern.m_pattern, assetPath);
+        }
+        return matches;
+    }
+
+    bool FilePatternMatcher::IsValid() const
+    {
+        return this->m_isValid;
+    }
+
+    AZStd::string FilePatternMatcher::GetErrorString() const
+    {
+        return m_errorString;
+    }
+
+    const AssetBuilderSDK::AssetBuilderPattern& FilePatternMatcher::GetBuilderPattern() const
+    {
+        return this->m_pattern;
+    }
+
+    bool FilePatternMatcher::ValidatePatternRegex(const AZStd::string& pattern)
+    {
+        AssertAbsorber absorber;
+        AZStd::regex validate_regex(pattern.c_str(),
+            AZStd::regex::flag_type::icase |
+            AZStd::regex::flag_type::ECMAScript);
+
+        return absorber.m_assertMessage.empty();
+    }
+
+    bool AssetBuilderDesc::IsExternalBuilder() const
+    {
+        return m_builderType == AssetBuilderType::External;
     }
 
     /**
@@ -180,7 +284,7 @@ namespace AssetBuilderSDK
         }
 #if defined(ENABLE_LEGACY_PLATFORMFLAGS_SUPPORT)
         m_platform = LEGACY_ConvertNewPlatformIdentifierToOldPlatform(platformIdentifier);
-#endif
+#endif // defined(ENABLE_LEGACY_PLATFORMFLAGS_SUPPORT)
     }
 
     const AZStd::string& JobDescriptor::GetPlatformIdentifier() const
@@ -235,7 +339,7 @@ namespace AssetBuilderSDK
         if (AZ::SerializeContext* serializeContext = azrtti_cast<AZ::SerializeContext*>(context))
         {
             serializeContext->Class<JobDescriptor>()->
-                Version(2)->
+                Version(4)->
                 Field("Additional Fingerprint Info", &JobDescriptor::m_additionalFingerprintInfo)->
 #if defined(ENABLE_LEGACY_PLATFORMFLAGS_SUPPORT)
             EventHandler(&Internal::s_jobDescriptorSerializeEventHandlerInstance)->
@@ -246,7 +350,10 @@ namespace AssetBuilderSDK
                 Field("Critical", &JobDescriptor::m_critical)->
                 Field("Priority", &JobDescriptor::m_priority)->
                 Field("Job Parameters", &JobDescriptor::m_jobParameters)->
-                Field("Check Exclusive Lock", &JobDescriptor::m_checkExclusiveLock);
+                Field("Check Exclusive Lock", &JobDescriptor::m_checkExclusiveLock)->
+                Field("Fail On Error", &JobDescriptor::m_failOnError)->
+                Field("Job Dependency List", &JobDescriptor::m_jobDependencyList)->
+                Field("Check Server", &JobDescriptor::m_checkServer);
         }
     }
 
@@ -349,6 +456,11 @@ namespace AssetBuilderSDK
         return m_tags.find(tag) != m_tags.end();
     }
 
+    bool PlatformInfo::operator==(const PlatformInfo& other)
+    {
+        return (this->m_identifier == other.m_identifier);
+    }
+
     void PlatformInfo::Reflect(AZ::ReflectContext* context)
     {
         if (AZ::SerializeContext* serializeContext = azrtti_cast<AZ::SerializeContext*>(context))
@@ -360,6 +472,20 @@ namespace AssetBuilderSDK
         }
     }
 
+    AZStd::string PlatformInfo::PlatformVectorAsString(const AZStd::vector<PlatformInfo>& platforms)
+    {
+        AZStd::string platformString;
+        for (const auto& platformInfo : platforms)
+        {
+            if (!platformString.empty())
+            {
+                platformString.append(", ");
+            }
+            platformString.append(platformInfo.m_identifier.c_str());
+        }
+
+        return platformString;
+    }
 
     void CreateJobsRequest::Reflect(AZ::ReflectContext* context)
     {
@@ -393,14 +519,37 @@ namespace AssetBuilderSDK
         }
     }
 
+    ProductPathDependency::ProductPathDependency(AZStd::string_view dependencyPath, ProductPathDependencyType dependencyType)
+        : m_dependencyPath(dependencyPath),
+        m_dependencyType(dependencyType)
+    {
+    }
+
+    bool ProductPathDependency::operator==(const ProductPathDependency& rhs) const
+    {
+        return m_dependencyPath == rhs.m_dependencyPath
+            && m_dependencyType == rhs.m_dependencyType;
+    }
+
+    void ProductPathDependency::Reflect(AZ::ReflectContext* context)
+    {
+        if (AZ::SerializeContext* serializeContext = azrtti_cast<AZ::SerializeContext*>(context))
+        {
+            serializeContext->Class<ProductPathDependency>()->
+                Version(1)->
+                Field("Dependency Path", &ProductPathDependency::m_dependencyPath)->
+                Field("Dependency Type", &ProductPathDependency::m_dependencyType);
+        }
+    }
+
     JobProduct::JobProduct(const AZStd::string& productName, AZ::Data::AssetType productAssetType /*= AZ::Data::AssetType::CreateNull() */, AZ::u32 productSubID /*= 0*/)
         : m_productFileName(productName)
         , m_productAssetType(productAssetType)
         , m_productSubID(productSubID)
     {
         //////////////////////////////////////////////////////////////////////////
-        //REMOVE THIS
-        //when builders output asset type, guess by file extension
+        // Builders should output product asset types directly.  
+        // This should only be used for exceptions, mostly legacy and generic data.
         if (m_productAssetType.IsNull())
         {
             m_productAssetType = InferAssetTypeByProductFileName(m_productFileName.c_str());
@@ -418,8 +567,8 @@ namespace AssetBuilderSDK
         , m_productSubID(productSubID)
     {
         //////////////////////////////////////////////////////////////////////////
-        //REMOVE THIS
-        //when builders output asset type, guess by file extension
+        // Builders should output product asset types directly.  
+        // This should only be used for exceptions, mostly legacy.
         if (m_productAssetType.IsNull())
         {
             m_productAssetType = InferAssetTypeByProductFileName(m_productFileName.c_str());
@@ -429,11 +578,6 @@ namespace AssetBuilderSDK
             m_productSubID = InferSubIDFromProductFileName(m_productAssetType, m_productFileName.c_str());
         }
         //////////////////////////////////////////////////////////////////////////
-    }
-
-    JobProduct::JobProduct(JobProduct&& other)
-    {
-        *this = AZStd::move(other);
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -446,8 +590,12 @@ namespace AssetBuilderSDK
     static const char* staticMeshExtensions = ".cgf";
     static const char* skinnedMeshExtensions = ".skin";
     static const char* materialExtensions = ".mtl";
+
+    // MIPS
+    static const int c_MaxMipsCount = 11; // 11 is for 8k textures non-compressed. When not compressed it is using one file per mip.
     // splitted lods have the following extensions:
-    static const char* mipsAndLodsExtensions = ".1 .2 .3 .4 .5 .6 .7 .8 .9 .a .1a .2a .3a .4a .5a .6a .7a .8a .9a";
+    static const char* mipsAndLodsExtensions = ".1 .2 .3 .4 .5 .6 .7 .8 .9 .10 .11 .a .1a .2a .3a .4a .5a .6a .7a .8a .9a .10a .11a";
+
     // XML files may contain generic data (avoid this in new builders - use a custom extension!)
     static const char* xmlExtensions = ".xml";
     static const char* geomCacheExtensions = ".cax";
@@ -813,7 +961,7 @@ namespace AssetBuilderSDK
                 extension.resize(extension.size() - 1);
             }
 
-            for (int idx = 1; idx <= 9; ++idx)
+            for (int idx = 1; idx <= c_MaxMipsCount; ++idx)
             {
                 AZStd::string check = AZStd::string::format(".%i", idx);
                 if (check == extension)
@@ -836,31 +984,19 @@ namespace AssetBuilderSDK
         if (AZ::SerializeContext* serializeContext = azrtti_cast<AZ::SerializeContext*>(context))
         {
             serializeContext->Class<JobProduct>()->
-                Version(3)->
+                Version(5)->
                 Field("Product File Name", &JobProduct::m_productFileName)->
                 Field("Product Asset Type", &JobProduct::m_productAssetType)->
                 Field("Product Sub Id", &JobProduct::m_productSubID)->
                 Field("Legacy Sub Ids", &JobProduct::m_legacySubIDs)->
-                Field("Dependencies", &JobProduct::m_dependencies);
+                Field("Dependencies", &JobProduct::m_dependencies)->
+                Field("Relative Path Dependencies", &JobProduct::m_pathDependencies);
         }
     }
 
     //////////////////////////////////////////////////////////////////////////
     //////////////////////////////////////////////////////////////////////////
     //////////////////////////////////////////////////////////////////////////
-
-    AssetBuilderSDK::JobProduct& JobProduct::operator=(JobProduct&& other)
-    {
-        if (this != &other)
-        {
-            m_productFileName = AZStd::move(other.m_productFileName);
-            m_productAssetType = AZStd::move(other.m_productAssetType);
-            m_productSubID = other.m_productSubID;
-            m_legacySubIDs = AZStd::move(other.m_legacySubIDs);
-            m_dependencies = AZStd::move(other.m_dependencies);
-        }
-        return *this;
-    }
 
     void ProcessJobRequest::Reflect(AZ::ReflectContext* context)
     {
@@ -888,7 +1024,8 @@ namespace AssetBuilderSDK
                 Version(2)->
                 Field("Output Products", &ProcessJobResponse::m_outputProducts)->
                 Field("Result Code", &ProcessJobResponse::m_resultCode)->
-                Field("Requires SubId Generation", &ProcessJobResponse::m_requiresSubIdGeneration);
+                Field("Requires SubId Generation", &ProcessJobResponse::m_requiresSubIdGeneration)->
+                Field("Source To Reprocess", &ProcessJobResponse::m_sourcesToReprocess);
         }
     }
 
@@ -904,12 +1041,14 @@ namespace AssetBuilderSDK
         EBUS_EVENT_RESULT(serializeContext, AZ::ComponentApplicationBus, GetSerializeContext);
         AZ_Assert(serializeContext, "Unable to retrieve serialize context.");
 
+        ProductPathDependency::Reflect(serializeContext);
         SourceFileDependency::Reflect(serializeContext);
+        JobDependency::Reflect(serializeContext);
         JobDescriptor::Reflect(serializeContext);
         AssetBuilderPattern::Reflect(serializeContext);
         ProductDependency::Reflect(serializeContext);
         JobProduct::Reflect(serializeContext);
-        AssetBuilderRegistrationDesc::Reflect(serializeContext);
+        AssetBuilderDesc::Reflect(serializeContext);
 
         RegisterBuilderRequest::Reflect(serializeContext);
         RegisterBuilderResponse::Reflect(serializeContext);
@@ -947,21 +1086,9 @@ namespace AssetBuilderSDK
         return m_cancelled;
     }
 
-    AssetBuilderSDK::SourceFileDependency& SourceFileDependency::operator=(const SourceFileDependency& other)
+    AZStd::string SourceFileDependency::ToString() const
     {
-        m_sourceFileDependencyPath = other.m_sourceFileDependencyPath;
-        m_sourceFileDependencyUUID = other.m_sourceFileDependencyUUID;
-        return *this;
-    }
-
-    AssetBuilderSDK::SourceFileDependency& SourceFileDependency::operator=(SourceFileDependency&& other)
-    {
-        if (this != &other)
-        {
-            m_sourceFileDependencyPath = AZStd::move(other.m_sourceFileDependencyPath);
-            m_sourceFileDependencyUUID = other.m_sourceFileDependencyUUID;
-        }
-        return *this;
+        return AZStd::string::format("SourceFileDependency UUID: %s NAME: %s", m_sourceFileDependencyUUID.ToString<AZStd::string>().c_str(), m_sourceFileDependencyPath.c_str());
     }
 
     void SourceFileDependency::Reflect(AZ::ReflectContext* context)
@@ -969,9 +1096,10 @@ namespace AssetBuilderSDK
         if (AZ::SerializeContext* serializeContext = azrtti_cast<AZ::SerializeContext*>(context))
         {
             serializeContext->Class<SourceFileDependency>()->
-                Version(1)->
+                Version(2)->
                 Field("Source File Dependency Path", &SourceFileDependency::m_sourceFileDependencyPath)->
-                Field("Source File Dependency UUID", &SourceFileDependency::m_sourceFileDependencyUUID);
+                Field("Source File Dependency UUID", &SourceFileDependency::m_sourceFileDependencyUUID)->
+                Field("Source Dependency Type", &SourceFileDependency::m_sourceDependencyType);
         }
     }
 
@@ -985,16 +1113,18 @@ namespace AssetBuilderSDK
         }
     }
 
-    void AssetBuilderRegistrationDesc::Reflect(AZ::ReflectContext* context)
+    void AssetBuilderDesc::Reflect(AZ::ReflectContext* context)
     {
         if (AZ::SerializeContext* serializeContext = azrtti_cast<AZ::SerializeContext*>(context))
         {
-            serializeContext->Class<AssetBuilderRegistrationDesc>()
-                ->Version(1)
-                ->Field("Name", &AssetBuilderRegistrationDesc::m_name)
-                ->Field("Patterns", &AssetBuilderRegistrationDesc::m_patterns)
-                ->Field("BusId", &AssetBuilderRegistrationDesc::m_busId)
-                ->Field("Version", &AssetBuilderRegistrationDesc::m_version);
+            serializeContext->Class<AssetBuilderDesc>()
+                ->Version(2)
+                ->Field("Flags", &AssetBuilderDesc::m_flags)
+                ->Field("Name", &AssetBuilderDesc::m_name)
+                ->Field("Patterns", &AssetBuilderDesc::m_patterns)
+                ->Field("BusId", &AssetBuilderDesc::m_busId)
+                ->Field("Version", &AssetBuilderDesc::m_version)
+                ->Field("AnalysisFingerprint", &AssetBuilderDesc::m_analysisFingerprint);
         }
     }
 
@@ -1145,5 +1275,107 @@ namespace AssetBuilderSDK
     unsigned int ProcessJobNetResponse::GetMessageType() const
     {
         return ProcessJobNetRequest::MessageType();
+    }
+
+    JobDependency::JobDependency(const AZStd::string& jobKey, const AZStd::string& platformIdentifier, const JobDependencyType& type, const SourceFileDependency& sourceFile)
+        : m_jobKey(jobKey)
+        , m_platformIdentifier(platformIdentifier)
+        , m_type(type)
+        , m_sourceFile(sourceFile)
+    {
+    }
+
+    void JobDependency::Reflect(AZ::ReflectContext* context)
+    {
+        if (AZ::SerializeContext* serializeContext = azrtti_cast<AZ::SerializeContext*>(context))
+        {
+            serializeContext->Class<JobDependency>()->
+                Version(1)->
+                Field("Source File", &JobDependency::m_sourceFile)->
+                Field("Job Key", &JobDependency::m_jobKey)->
+                Field("Platform Identifier", &JobDependency::m_platformIdentifier)->
+                Field("Job Dependency Type", &JobDependency::m_type);
+        }
+    }
+
+    AssertAbsorber::AssertAbsorber()
+    {
+        // only absorb asserts when this object is on scope in the thread that this object is on scope in.
+        s_onAbsorbThread = true;
+        BusConnect();
+    }
+
+    AssertAbsorber::~AssertAbsorber()
+    {
+        s_onAbsorbThread = false;
+        BusDisconnect();
+    }
+
+    bool AssertAbsorber::OnAssert(const char* message)
+    {
+        if (s_onAbsorbThread)
+        {
+            m_assertMessage = message;
+            return true; // I handled this, do not forward it
+        }
+        return false;
+    }
+
+    AZ_THREAD_LOCAL bool AssertAbsorber::s_onAbsorbThread = false;
+
+
+    AssertAndErrorAbsorber::AssertAndErrorAbsorber(bool errorsWillFailJob)
+        : m_errorsWillFailJob(errorsWillFailJob)
+        , m_jobThreadId(AZStd::this_thread::get_id())
+    {
+        BusConnect();
+    }
+
+    AssertAndErrorAbsorber::~AssertAndErrorAbsorber()
+    {
+        BusDisconnect();
+    }
+
+    bool AssertAndErrorAbsorber::OnError(const char*, const char* message)
+    {
+        if (AZStd::this_thread::get_id() != m_jobThreadId)
+        {
+            return false;
+        }
+
+        if (m_errorsWillFailJob)
+        {
+            ++m_errorsOccurred;
+            return false;
+        }
+        else
+        {
+            AZ_Warning("AssetBuilder", false, "Error: %s", message);
+            return true;
+        }
+    }
+
+    bool AssertAndErrorAbsorber::OnAssert(const char* message)
+    {
+        if (AZStd::this_thread::get_id() != m_jobThreadId)
+        {
+            return false;
+        }
+
+        if (m_errorsWillFailJob)
+        {
+            ++m_errorsOccurred;
+            return false;
+        }
+        else
+        {
+            AZ_Warning("", false, "Assert failed: %s", message);
+            return true;
+        }
+    }
+
+    size_t AssertAndErrorAbsorber::GetErrorCount() const
+    {
+        return m_errorsOccurred;
     }
 }

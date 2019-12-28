@@ -13,18 +13,21 @@
 
 #include <AzCore/std/string/conversions.h>
 #include <AzCore/std/containers/array.h>
+#include <AzCore/std/containers/fixed_vector.h>
 #include <AzCore/Memory/Memory.h>
 #include <AzCore/Memory/OSAllocator.h>
 #include <AzCore/Memory/SystemAllocator.h>
 #include <AzCore/IO/SystemFile.h> // AZ_MAX_PATH_LEN
 #include "StringFunc.h"
+#include <AzCore/AzCore_Traits_Platform.h>
+#include <AzFramework/AzFramework_Traits_Platform.h>
 
-#if !defined(AZ_PLATFORM_WINDOWS)
+#if !AZ_TRAIT_USE_WINDOWS_FILE_API
 
 //Have to declare this typedef for Android & Linux to minimise changes elsewhere in this file
-#if defined(AZ_PLATFORM_ANDROID) || defined(AZ_PLATFORM_LINUX)
+#if AZ_TRAIT_AZFRAMEWORK_USE_ERRNO_T_TYPEDEF
 typedef int errno_t;
-#endif //AZ_PLATFORM_ANDROID
+#endif
 
 void ClearToEmptyStr(char* buffer)
 {
@@ -150,6 +153,9 @@ errno_t _splitpath_s (const char* path,
 }
 #endif
 
+// Some platforms define NAME_MAX but Windows doesn't and the AZ headers provide no equivalent
+#define MAX_NAME_LEN 255
+
 namespace AzFramework
 {
     namespace StringFunc
@@ -188,6 +194,18 @@ namespace AzFramework
                     return !azstricmp(inA, inB);
                 }
             }
+        }
+
+        bool StartsWith(AZStd::string_view sourceValue, AZStd::string_view prefixValue, bool bCaseSensitive)
+        {
+            return sourceValue.size() >= prefixValue.size()
+                && Equal(sourceValue.data(), prefixValue.data(), bCaseSensitive, prefixValue.size());
+        }
+
+        bool EndsWith(AZStd::string_view sourceValue, AZStd::string_view suffixValue, bool bCaseSensitive)
+        {
+            return sourceValue.size() >= suffixValue.size()
+                && Equal(sourceValue.substr(sourceValue.size() - suffixValue.size(), AZStd::string_view::npos).data(), suffixValue.data(), bCaseSensitive, suffixValue.size());
         }
 
         size_t Find(const char* in, char c, size_t pos /*= 0*/, bool bReverse /*= false*/, bool bCaseSensitive /*= false*/)
@@ -249,28 +267,19 @@ namespace AzFramework
             return AZStd::string::npos;
         }
 
-        size_t Find(const char* in, const char* s, size_t offset /*= 0*/, bool bReverse /*= false*/, bool bCaseSensitive /*= false*/)
+        size_t Find(AZStd::string_view in, AZStd::string_view s, size_t offset /*= 0*/, bool bReverse /*= false*/, bool bCaseSensitive /*= false*/)
         {
-            if (!in || !s)
+            if (in.empty() || s.empty())
             {
                 return AZStd::string::npos;
             }
 
-            size_t inlen = strlen(in);
-            if (!inlen)
-            {
-                return AZStd::string::npos;
-            }
+            const size_t inlen = in.size();
+            const size_t slen = s.size();
 
             if (offset == AZStd::string::npos)
             {
                 offset = 0;
-            }
-
-            size_t slen = strlen(s);
-            if (slen == 0)
-            {
-                return AZStd::string::npos;
             }
 
             if (offset + slen > inlen)
@@ -283,28 +292,28 @@ namespace AzFramework
             if (bReverse)
             {
                 // Start at the end (- pos)
-                pCur = in + inlen - slen - offset;
+                pCur = in.data() + inlen - slen - offset;
             }
             else
             {
                 // Start at the beginning (+ pos)
-                pCur = in + offset;
+                pCur = in.data() + offset;
             }
 
             do
             {
                 if (bCaseSensitive)
                 {
-                    if (!strncmp(pCur, s, slen))
+                    if (!strncmp(pCur, s.data(), slen))
                     {
-                        return static_cast<size_t>(pCur - in);
+                        return static_cast<size_t>(pCur - in.data());
                     }
                 }
                 else
                 {
-                    if (!azstrnicmp(pCur, s, slen))
+                    if (!azstrnicmp(pCur, s.data(), slen))
                     {
-                        return static_cast<size_t>(pCur - in);
+                        return static_cast<size_t>(pCur - in.data());
                     }
                 }
 
@@ -316,7 +325,7 @@ namespace AzFramework
                 {
                     pCur++;
                 }
-            } while (bReverse ? pCur >= in : pCur - in <= static_cast<ptrdiff_t>(inlen));
+            } while (bReverse ? pCur >= in.data() : pCur - in.data() <= static_cast<ptrdiff_t>(inlen));
 
             return AZStd::string::npos;
         }
@@ -576,6 +585,11 @@ namespace AzFramework
                                 RKeep(inout, pos, true);
                             }
                         }
+                        else
+                        {
+                            // strip first
+                            inout.erase(0, 1);
+                        }
                     }
 
                     if (bStripEnding)
@@ -587,6 +601,15 @@ namespace AzFramework
                             {
                                 bSomethingWasStripped = true;
                                 LKeep(inout, pos, true);
+                            }
+                        }
+                        else
+                        {
+                            // strip last
+                            const size_t length = inout.length();
+                            if (length > 0)
+                            {
+                                inout.erase(length - 1, 1);
                             }
                         }
                     }
@@ -608,6 +631,11 @@ namespace AzFramework
                                 RKeep(inout, pos, true);
                             }
                         }
+                        else
+                        {
+                            // strip first
+                            inout.erase(0, 1);
+                        }
                     }
 
                     if (bStripEnding)
@@ -619,6 +647,15 @@ namespace AzFramework
                             {
                                 bSomethingWasStripped = true;
                                 LKeep(inout, pos, true);
+                            }
+                        }
+                        else
+                        {
+                            // strip last
+                            const size_t length = inout.length();
+                            if (length > 0)
+                            {
+                                inout.erase(length - 1, 1);
                             }
                         }
                     }
@@ -1110,6 +1147,132 @@ namespace AzFramework
             return true;
         }
 
+        namespace NumberFormatting
+        {
+            int GroupDigits(char* buffer, size_t bufferSize, size_t decimalPosHint, char digitSeparator, char decimalSeparator, int groupingSize, int firstGroupingSize)
+            {
+                static const int MAX_SEPARATORS = 16;
+
+                AZ_Assert(buffer, "Null string buffer");
+                AZ_Assert(bufferSize > decimalPosHint, "Decimal position %lu cannot be located beyond bufferSize %lu", decimalPosHint, bufferSize);
+                AZ_Assert(groupingSize > 0, "Grouping size must be a positive integer");
+
+                int numberEndPos = 0;
+                int stringEndPos = 0;
+                
+                if (decimalPosHint > 0 && decimalPosHint < (bufferSize - 1) && buffer[decimalPosHint] == decimalSeparator)
+                {
+                    // Assume the number ends at the supplied location
+                    numberEndPos = (int)decimalPosHint;
+                    stringEndPos = numberEndPos + (int)strnlen(buffer + numberEndPos, bufferSize - numberEndPos);
+                }
+                else
+                {
+                    // Search for the final digit or separator while obtaining the string length
+                    int lastDigitSeenPos = 0;
+
+                    while (stringEndPos < bufferSize)
+                    {
+                        char c = buffer[stringEndPos];
+
+                        if (!c)
+                        {
+                            break;
+                        }
+                        else if (c == decimalSeparator)
+                        {
+                            // End the number if there's a decimal
+                            numberEndPos = stringEndPos;
+                        }
+                        else if (numberEndPos <= 0 && c >= '0' && c <= '9')
+                        {
+                            // Otherwise keep track of where the last digit we've seen is
+                            lastDigitSeenPos = stringEndPos;
+                        }
+
+                        stringEndPos++;
+                    }
+
+                    if (numberEndPos <= 0)
+                    {
+                        if (lastDigitSeenPos > 0)
+                        {
+                            // No decimal, so use the last seen digit as the end of the number
+                            numberEndPos = lastDigitSeenPos + 1;
+                        }
+                        else
+                        {
+                            // No digits, no decimals, therefore no change in the string
+                            return stringEndPos;
+                        }
+                    }
+                }
+
+                if (firstGroupingSize <= 0)
+                {
+                    firstGroupingSize = groupingSize;
+                }
+
+                // Determine where to place the separators
+                int groupingSizes[] = { firstGroupingSize + 1, groupingSize };  // First group gets +1 since we begin all subsequent groups at the second digit
+                int groupingOffsetsToNext[] = { 1, 0 };  // We will offset from the first entry to the second, then stay at the second for remaining iterations
+                const int* currentGroupingSize = groupingSizes;
+                const int* currentGroupingOffsetToNext = groupingOffsetsToNext;
+                AZStd::fixed_vector<char*, MAX_SEPARATORS> separatorLocations;
+                int groupCounter = 0;
+                int digitPosition = numberEndPos - 1;
+
+                while (digitPosition >= 0)
+                {
+                    // Walk backwards in the string from the least significant digit to the most significant, demarcating consecutive groups of digits
+                    char c = buffer[digitPosition];
+
+                    if (c >= '0' && c <= '9')
+                    {
+                        if (++groupCounter == *currentGroupingSize)
+                        {
+                            // Demarcate a new group of digits at this location
+                            separatorLocations.push_back(buffer + digitPosition);
+                            currentGroupingSize += *currentGroupingOffsetToNext;
+                            currentGroupingOffsetToNext += *currentGroupingOffsetToNext;
+                            groupCounter = 0;
+                        }
+
+                        digitPosition--;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                if (stringEndPos + separatorLocations.size() >= bufferSize)
+                {
+                    // Won't fit into buffer, so return unchanged
+                    return stringEndPos;
+                }
+
+                // Insert the separators by shifting characters forward in the string, starting at the end and working backwards
+                const char* src = buffer + stringEndPos;
+                char* dest = buffer + stringEndPos + separatorLocations.size();
+                auto separatorItr = separatorLocations.begin();
+
+                while (separatorItr != separatorLocations.end())
+                {
+                    while (src > *separatorItr)
+                    {
+                        *dest-- = *src--;
+                    }
+
+                    // Insert the separator and reduce the distance between our destination and source by one
+                    *dest-- = digitSeparator;
+                    ++separatorItr;
+                }
+
+                return (int)(stringEndPos + separatorLocations.size());
+            }
+        }
+
         namespace AssetPath
         {
             void CalculateBranchToken(const AZStd::string& appRootPath, AZStd::string& token)
@@ -1159,7 +1322,7 @@ namespace AzFramework
                 }
 
                 AZStd::replace(inout.begin(), inout.end(), AZ_WRONG_DATABASE_SEPARATOR, AZ_CORRECT_DATABASE_SEPARATOR);
-                Replace(inout, AZ_DOUBLE_CORRECT_DATABASE_SEPARTOR, AZ_CORRECT_DATABASE_SEPARATOR_STRING);
+                Replace(inout, AZ_DOUBLE_CORRECT_DATABASE_SEPARATOR, AZ_CORRECT_DATABASE_SEPARATOR_STRING);
 
                 return IsValid(inout.c_str());
             }
@@ -2336,6 +2499,69 @@ namespace AzFramework
                     Replace(inout, AZ_DOUBLE_CORRECT_FILESYSTEM_SEPARATOR, AZ_CORRECT_FILESYSTEM_SEPARATOR_STRING);
                 }
 
+                const char* const curDirToken = AZ_CORRECT_FILESYSTEM_SEPARATOR_STRING "." AZ_CORRECT_FILESYSTEM_SEPARATOR_STRING;
+                const char* const parentDirToken = AZ_CORRECT_FILESYSTEM_SEPARATOR_STRING ".." AZ_CORRECT_FILESYSTEM_SEPARATOR_STRING;
+
+                // Clear out any '/./' references as '.' represents the current directory
+                size_t curPos = 0;
+                while ((pos = inout.find(curDirToken, curPos)) != AZStd::string::npos)
+                {
+                    inout.replace(pos, 3, AZ_CORRECT_FILESYSTEM_SEPARATOR_STRING);
+                    curPos = pos;
+                }
+
+                // If there are any '/../'  patterns, they need to be collapsed against any previous directory that precedes it.
+                // If the '..' attempts to collapse beyond the root, then just absorb it. We are following how python handles its
+                // normalize operation (os.path.normalize)
+                // 
+                // e.g.
+                //
+                // C:\\One\\Two\\..\\Three\\  -> C:\\One\\Three\\
+                // C:\\One\\..\\..\\Two\\     -> C:\\Two\\
+                // C:\\One\\Two\\Three\\..\\  -> C:\\One\\Two\\
+                // 
+                if ((pos = inout.find(parentDirToken)) != AZStd::string::npos)
+                {
+#if AZ_TRAIT_OS_USE_WINDOWS_FILE_PATHS
+                    // Attempt to get a drive letter from the path. If this is the root on a win based file system, then 
+                    // a drive letter will be returned, and we wont collapse beyond this point. Otherwise, we wont collapse beyond
+                    // the beginning of the path.
+                    AZStd::string driveLetter;
+                    GetDrive(inout.c_str(), driveLetter);
+                    size_t startingPos = driveLetter.length();
+#else
+                    // For posix-based systems, starting with a '/' will represent an absolute path. Also, 
+                    size_t startingPos = inout.find_first_not_of(AZ_CORRECT_FILESYSTEM_SEPARATOR);
+                    startingPos = (startingPos != AZStd::string::npos && startingPos != 0) ? startingPos - 1 : 0;
+#endif // AZ_TRAIT_OS_USE_WINDOWS_FILE_PATHS
+
+                    while ((pos != AZStd::string::npos) && (pos >= startingPos))
+                    {
+                        // If we found a '/../' pattern, look for the previous '/' before it to start a nullifying replacement
+                        size_t startingCollapseIndex = inout.rfind(AZ_CORRECT_FILESYSTEM_SEPARATOR_STRING, pos - 1);
+                        size_t collapseSubstrSize;
+
+                        if ((startingCollapseIndex == AZStd::string::npos) || (startingCollapseIndex < startingPos))
+                        {
+                            // There are no matching parent folder to collapse or we've reached the start of the path, so just eat up the current
+                            // '../'
+                            startingCollapseIndex = startingPos;
+                            collapseSubstrSize = 3; // Length of '../'
+                        }
+                        else
+                        {
+                            // Based on the previous path separator, we will calculate the size of the path + '../' (ie /a/path/../b -> a/b)
+                            // and attempt to replace it with an empty string (ie remove the chunk)
+                            collapseSubstrSize = pos - startingCollapseIndex + 3;
+                            AZ_Assert(startingCollapseIndex + collapseSubstrSize < inout.length(), "Nullifying substring length greater than length of the original string.");
+                        }
+                        // Replace the substring (nullifier) with a blank string
+                        inout.replace(startingCollapseIndex, collapseSubstrSize, "");
+                        pos = inout.find(parentDirToken);
+                    }
+                }
+
+
                 return IsValid(inout.c_str());
             }
 
@@ -2437,7 +2663,7 @@ namespace AzFramework
                     {
                         elementStart = walk;
                     }
-    #if defined(AZ_PLATFORM_WINDOWS) || defined (AZ_PLATFORM_X360) || defined (AZ_PLATFORM_XBONE) // ACCEPTED_USE
+    #if AZ_TRAIT_OS_USE_WINDOWS_FILE_PATHS
 
                     else if (*walk == AZ_FILESYSTEM_DRIVE_SEPARATOR) //is this the drive separator
                     {
@@ -2487,7 +2713,7 @@ namespace AzFramework
                             }
                             *errors += "] has hit the MAX_PATH_COMPONENT_LEN = ";
 
-    #if !defined(AZ_PLATFORM_PS4) && !defined(AZ_PLATFORM_APPLE) && !defined(AZ_PLATFORM_ANDROID) && !defined(AZ_PLATFORM_LINUX) // ACCEPTED_USE
+    #if !AZ_TRAIT_OS_ALLOW_UNLIMITED_PATH_COMPONENT_LENGTH
                             char buf[64];
                             _itoa_s(MAX_PATH_COMPONENT_LEN, buf, 10);
                             *errors += buf;
@@ -2511,7 +2737,7 @@ namespace AzFramework
                         *errors += in;
                         *errors += "] is over the AZ_MAX_PATH_LEN = ";
 
-    #if !defined(AZ_PLATFORM_PS4) && !defined(AZ_PLATFORM_APPLE) && !defined(AZ_PLATFORM_ANDROID) && !defined(AZ_PLATFORM_LINUX) // ACCEPTED_USE
+    #if !AZ_TRAIT_OS_ALLOW_UNLIMITED_PATH_COMPONENT_LENGTH
                         char buf[64];
                         _itoa_s(AZ_MAX_PATH_LEN, buf, 10);
                         *errors += buf;
@@ -3108,7 +3334,7 @@ namespace AzFramework
                 return true;
             }
 
-            bool HasDrive(const char* in)
+            bool HasDrive(const char* in, bool bCheckAllFileSystemFormats /*= false*/)
             {
                 //no drive if empty
                 if (!in)
@@ -3121,61 +3347,66 @@ namespace AzFramework
                     return false;
                 }
 
-    #if defined (AZ_PLATFORM_X360) || defined (AZ_PLATFORM_WINDOWS) || defined (AZ_PLATFORM_XBONE) // ACCEPTED_USE
+                bool useWinFilePaths = AZ_TRAIT_OS_USE_WINDOWS_FILE_PATHS;
 
-                //find the first AZ_FILESYSTEM_DRIVE_SEPARATOR
-                if (const char* pFirstDriveSep = strchr(in, AZ_FILESYSTEM_DRIVE_SEPARATOR))
+                if (useWinFilePaths || bCheckAllFileSystemFormats)
                 {
-                    //fail if the drive separator is not the second character
-                    if (pFirstDriveSep != in + 1)
+                    //find the first AZ_FILESYSTEM_DRIVE_SEPARATOR
+                    if (const char* pFirstDriveSep = strchr(in, AZ_FILESYSTEM_DRIVE_SEPARATOR))
                     {
-                        return false;
-                    }
-
-                    //fail if the first character, the drive letter, is not a letter
-                    if (!isalpha(in[0]))
-                    {
-                        return false;
-                    }
-
-                    //find the first AZ_CORRECT_FILESYSTEM_SEPARATOR
-                    if (const char* pFirstSep = strchr(in, AZ_CORRECT_FILESYSTEM_SEPARATOR))
-                    {
-                        //fail if the first AZ_FILESYSTEM_DRIVE_SEPARATOR occurs after the first AZ_CORRECT_FILESYSTEM_SEPARATOR
-                        if (pFirstDriveSep > pFirstSep)
-                        {
-                            return false;
-                        }
-                    }
-                    return true;
-                }
-                else if (!strncmp(in, AZ_NETWORK_PATH_START, AZ_NETWORK_PATH_START_SIZE))//see if it has a network start
-                {
-                    //find the first AZ_CORRECT_FILESYSTEM_SEPARATOR
-                    if (const char* pFirstSep = strchr(in + AZ_NETWORK_PATH_START_SIZE, AZ_CORRECT_FILESYSTEM_SEPARATOR))
-                    {
-                        //fail if the first AZ_CORRECT_FILESYSTEM_SEPARATOR is first character
-                        if (pFirstSep == in + AZ_NETWORK_PATH_START_SIZE)
+                        //fail if the drive separator is not the second character
+                        if (pFirstDriveSep != in + 1)
                         {
                             return false;
                         }
 
-                        //fail if the first character after the NETWORK_START isn't alphanumeric
-                        if (!isalnum(*(in + AZ_NETWORK_PATH_START_SIZE + 1)))
+                        //fail if the first character, the drive letter, is not a letter
+                        if (!isalpha(in[0]))
                         {
                             return false;
                         }
+
+                        //find the first Win filesystem separator
+                        if (const char* pFirstSep = strchr(in, '\\'))
+                        {
+                            //fail if the first AZ_FILESYSTEM_DRIVE_SEPARATOR occurs after the first Win filesystem separator
+                            if (pFirstDriveSep > pFirstSep)
+                            {
+                                return false;
+                            }
+                        }
+                        return true;
                     }
-                    return true;
+                    else if (!strncmp(in, AZ_NETWORK_PATH_START, AZ_NETWORK_PATH_START_SIZE))//see if it has a network start
+                    {
+                        //find the first Win filesystem separator
+                        if (const char* pFirstSep = strchr(in + AZ_NETWORK_PATH_START_SIZE, '\\'))
+                        {
+                            //fail if the first Win filesystem separator is first character
+                            if (pFirstSep == in + AZ_NETWORK_PATH_START_SIZE)
+                            {
+                                return false;
+                            }
+
+                            //fail if the first character after the NETWORK_START isn't alphanumeric
+                            if (!isalnum(*(in + AZ_NETWORK_PATH_START_SIZE + 1)))
+                            {
+                                return false;
+                            }
+                        }
+                        return true;
+                    }
                 }
 
-    #else
-                // on other platforms, its got a root if it starts with '/'
-                if (in[0] == '/')
+                if (!useWinFilePaths || bCheckAllFileSystemFormats)
                 {
-                    return true;
+                    // on other platforms, its got a root if it starts with '/'
+                    if (in[0] == '/')
+                    {
+                        return true;
+                    }
                 }
-    #endif
+
                 return false;
             }
 
@@ -3833,7 +4064,7 @@ namespace AzFramework
                     return false;
                 }
 
-    #if defined (AZ_PLATFORM_X360) || defined (AZ_PLATFORM_WINDOWS) || defined (AZ_PLATFORM_XBONE) // ACCEPTED_USE
+    #if AZ_TRAIT_OS_USE_WINDOWS_FILE_PATHS
 
                 //find the first AZ_FILESYSTEM_DRIVE_SEPARATOR
                 size_t pos = inout.find_first_of(AZ_FILESYSTEM_DRIVE_SEPARATOR);
@@ -3862,22 +4093,22 @@ namespace AzFramework
 
             void StripPath(AZStd::string& inout)
             {
-                char b1[256], b2[256];
-                _splitpath_s(inout.c_str(), nullptr, 0, nullptr, 0, b1, 256, b2, 256);
+                char b1[MAX_NAME_LEN], b2[MAX_NAME_LEN];
+                _splitpath_s(inout.c_str(), nullptr, 0, nullptr, 0, b1, MAX_NAME_LEN, b2, MAX_NAME_LEN);
                 inout = AZStd::string::format("%s%s", b1, b2);
             }
 
             void StripFullName(AZStd::string& inout)
             {
-                char b1[256], b2[256];
-                _splitpath_s(inout.c_str(), b1, 256, b2, 256, nullptr, 0, nullptr, 0);
+                char b1[MAX_NAME_LEN], b2[AZ_MAX_PATH_LEN];
+                _splitpath_s(inout.c_str(), b1, MAX_NAME_LEN, b2, AZ_MAX_PATH_LEN, nullptr, 0, nullptr, 0);
                 inout = AZStd::string::format("%s%s", b1, b2);
             }
 
             void StripExtension(AZStd::string& inout)
             {
-                char b1[256], b2[256], b3[256];
-                _splitpath_s(inout.c_str(), b1, 256, b2, 256, b3, 256, nullptr, 0);
+                char b1[MAX_NAME_LEN], b2[AZ_MAX_PATH_LEN], b3[MAX_NAME_LEN];
+                _splitpath_s(inout.c_str(), b1, MAX_NAME_LEN, b2, AZ_MAX_PATH_LEN, b3, MAX_NAME_LEN, nullptr, 0);
                 inout = AZStd::string::format("%s%s%s", b1, b2, b3);
             }
 
@@ -3954,25 +4185,29 @@ namespace AzFramework
 
             bool GetDrive(const char* in, AZStd::string& out)
             {
-                out.clear();
                 if (!in)
                 {
+                    out.clear();
                     return false;
                 }
 
                 if (!strlen(in))
                 {
+                    out.clear();
                     return false;
                 }
 
+                // If caller used the same AZStd:string for in and out parameters
+                // copy it to another variable and use its memory for in.
                 AZStd::string tempIn;
                 if (in == out.c_str())
                 {
                     tempIn = in;
                     in = tempIn.c_str();
                 }
+                out.clear();
 
-    #if defined (AZ_PLATFORM_X360) || defined (AZ_PLATFORM_WINDOWS) || defined (AZ_PLATFORM_XBONE) // ACCEPTED_USE
+    #if AZ_TRAIT_OS_USE_WINDOWS_FILE_PATHS
 
                 //find the first AZ_FILESYSTEM_DRIVE_SEPARATOR
                 if (const char* pFirstDriveSep = strchr(in, AZ_FILESYSTEM_DRIVE_SEPARATOR))
@@ -4016,7 +4251,11 @@ namespace AzFramework
                     return true;
                 }
     #else
-                AZ_Assert(false, "Not implemented on this platform!");
+                // on other platforms, its got a root if it starts with '/'
+                if (in[0] == '/')
+                {
+                    return true;
+                }
     #endif
                 return false;
             }

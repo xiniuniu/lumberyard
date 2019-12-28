@@ -10,9 +10,9 @@
 *
 */
 
-#include "StdAfx.h"
+#include "stdafx.h"
 
-#include "qpainter.h"
+#include <QPainter>
 
 #include "LibraryTreeView.h"
 #include "LibraryTreeViewItem.h"
@@ -24,17 +24,15 @@
 #include <QIcon>
 #include <QEvent>
 #include <Include/ILogFile.h>
-#include "qevent.h"
 #include "EditorCoreAPI.h"
 #include "IEditor.h"
 #include "Utils.h"
-#include <qmessagebox.h>
-#include <qheaderview.h>
+#include <QMessageBox>
+#include <QHeaderView>
 #include <QScrollBar>
 #include <QDrag>
 #include <QDebug>
-#include <QtGui/qicon.h>
-#include <qsize.h>
+#include <QSize>
 #include <QApplication>
 #include "ContextMenu.h"
 //Editor
@@ -127,7 +125,6 @@ CLibraryTreeView::CLibraryTreeView(QWidget* parent, IDataBaseLibrary* library)
     connect(this, &QTreeWidget::itemExpanded, this, &CLibraryTreeView::refreshActiveState);
     connect(this, &QTreeWidget::itemCollapsed, this, &CLibraryTreeView::refreshActiveState);
     connect(itemDelegate(), &QAbstractItemDelegate::closeEditor, this, &CLibraryTreeView::EndRename);
-    connect(this, &QTreeWidget::customContextMenuRequested, this, &CLibraryTreeView::OnMenuRequested);
     connect(this, &QTreeWidget::itemChanged, this, &CLibraryTreeView::OnItemChanged);
     setStyle(new dropIndicatorStyle(style()));
     m_iconFolderClosed = new QIcon(":/particleQT/icons/folderclosed.png");
@@ -199,7 +196,7 @@ void CLibraryTreeView::fillFromLibrary(bool alphaSort /*= false*/)
                     CRY_ASSERT(m_nameToNode[parent]);
 
                     //if the item does not exist add it
-                    CBaseLibraryItem* item = static_cast<CBaseLibraryItem*>(mngr->FindItemByName(QString(libraryName + "." + accumulatedGroup).toUtf8().data()));
+                    CBaseLibraryItem* item = static_cast<CBaseLibraryItem*>(mngr->FindItemByName(QString(libraryName + "." + accumulatedGroup)));
                     if (!item)
                     {
                         item = static_cast<CBaseLibraryItem*>(mngr->CreateItem(m_baseLibrary));
@@ -552,7 +549,9 @@ void CLibraryTreeView::startDrag(Qt::DropActions supportedActions)
     emit SignalItemAboutToBeDragged(GetFirstSelectedItem());
 
     QDrag* drag = new QDrag(this);
-    drag->setMimeData(new QMimeData);
+    QMimeData* mimeData = new QMimeData;
+    mimeData->setData(MIMEType, "");
+    drag->setMimeData(mimeData);
     emit SignalStartDrag(drag, supportedActions);
 
     //inform any dependent systems that the drag has ended
@@ -926,7 +925,7 @@ bool CLibraryTreeView::ValidateItemName(const QString& itemName, const QString& 
         return false;
     }
     QString fullname = m_baseLibrary->GetName() + "." + itemPath;
-    IDataBaseItem* foundItem = mngr->FindItemByName(fullname.toUtf8().data());
+    IDataBaseItem* foundItem = mngr->FindItemByName(fullname);
     if (foundItem && foundItem != item) // "foundItem != item" allows for case-only renames
     {
         QString warning = "Invalid item name. Item \"" + itemPath + "\" already exists in the library.";
@@ -1233,10 +1232,6 @@ QStringList CLibraryTreeView::mimeTypes() const
 void CLibraryTreeView::DropMetaData(QDropEvent* event, bool dropToLocation /*= true*/)
 {
     QModelIndex droppedIndex = indexAt(event->pos());
-    if (!droppedIndex.isValid())
-    {
-        return;
-    }
     QString previousParent = QTUI_INVALIAD_ITEMNAME;
     CBaseLibraryManager* mngr = static_cast<CBaseLibraryManager*>(m_baseLibrary->GetManager());
     if (!mngr)
@@ -1259,7 +1254,7 @@ void CLibraryTreeView::DropMetaData(QDropEvent* event, bool dropToLocation /*= t
 
     for (unsigned int i = 0; i < perItemData.count(); i++)
     {
-        _items.append(static_cast<CBaseLibraryItem*>(mngr->FindItemByName(perItemData[i].toUtf8().data())));
+        _items.append(static_cast<CBaseLibraryItem*>(mngr->FindItemByName(perItemData[i])));
         if (perItemData[i].contains(lastParent + ".") == 0)
         {
             lastParent = perItemData[i];
@@ -1410,7 +1405,7 @@ void CLibraryTreeView::DropMetaData(QDropEvent* event, bool dropToLocation /*= t
         }
         QString finalItemNameWithLib = QString("%1.%2").arg(QString(m_baseLibrary->GetName()), finalItemName);
 
-        if (mngr->FindItemByName(finalItemNameWithLib.toUtf8().data()))
+        if (mngr->FindItemByName(finalItemNameWithLib))
         {
             errorMsg.push_back(QString("Item \'%1\' already exists.\n").arg(finalItemNameWithLib));
         }
@@ -1668,10 +1663,13 @@ void CLibraryTreeView::GetFinalItemName(QString& finalItemName, CBaseLibraryItem
 
 void CLibraryTreeView::dragEnterEvent(QDragEnterEvent* e)
 {
-    // if item does not contain a valid item, return.. (group, or something else)
-    CLibraryTreeViewItem* libraryItem = GetFirstSelectedItem();
-    SignalItemAboutToBeDragged(libraryItem);
-    return QTreeWidget::dragEnterEvent(e);
+    if (e->mimeData()->hasFormat(MIMEType))
+    {
+        // if item does not contain a valid item, return.. (group, or something else)
+        CLibraryTreeViewItem* libraryItem = GetFirstSelectedItem();
+        SignalItemAboutToBeDragged(libraryItem);
+        QTreeWidget::dragEnterEvent(e);
+    }
 }
 
 #include <LibraryTreeView.moc>

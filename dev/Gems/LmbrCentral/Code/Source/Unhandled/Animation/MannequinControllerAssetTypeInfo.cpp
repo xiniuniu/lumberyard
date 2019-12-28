@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 #include "MannequinControllerAssetTypeInfo.h"
 
 #include <LmbrCentral/Animation/MannequinAsset.h>
@@ -48,6 +48,6 @@ namespace LmbrCentral
     }
     const char* MannequinControllerAssetTypeInfo::GetBrowserIcon() const
     {
-        return "Editor/Icons/Components/Mannequin.png";
+        return "Editor/Icons/Components/Mannequin.svg";
     }
 } // namespace LmbrCentral

@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 #include "MannequinPreviewAssetTypeInfo.h"
 
 #include <LmbrCentral/Rendering/MaterialAsset.h>
@@ -50,6 +50,6 @@ namespace LmbrCentral
     }
     const char* MannequinPreviewAssetTypeInfo::GetBrowserIcon() const
     {
-        return "Editor/Icons/Components/Mannequin.png";
+        return "Editor/Icons/Components/Mannequin.svg";
     }
 } // namespace LmbrCentral

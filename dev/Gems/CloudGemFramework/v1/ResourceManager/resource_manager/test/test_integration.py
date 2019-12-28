@@ -8,23 +8,29 @@
 # remove or modify any license notices. This file is distributed on an 'AS IS' BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #
-# $Revision: #1 $
+# $Revision$
 
 import os
 import json
 import shutil
 import unittest
+import urllib2
 
 from copy import deepcopy
+from StringIO import StringIO
 from time import sleep
+from zipfile import ZipFile
 
 from botocore.exceptions import ClientError
 
 import resource_manager.util
-import resource_manager.constant
+import resource_manager_common.constant
 
 import lmbr_aws_test_support
 import mock_specification
+import time
+from resource_manager.view import ViewContext
+import mock
 
 class IntegrationTest_CloudGemFramework_ResourceManager_StackOperations(lmbr_aws_test_support.lmbr_aws_TestCase):
 
@@ -33,11 +39,14 @@ class IntegrationTest_CloudGemFramework_ResourceManager_StackOperations(lmbr_aws
 
 
     def setUp(self):        
-        self.prepare_test_envionment(type(self).__name__)
+        self.prepare_test_environment(type(self).__name__)
         
 
     def test_stack_operations_end_to_end(self):
-        self.run_all_tests()
+        with mock.patch.object(ViewContext, 'confirm_stack_resource_deletion', return_value=True), \
+             mock.patch.object(ViewContext, 'confirm_stack_security_change', return_value=True),\
+             mock.patch.object(ViewContext, 'confirm_aws_usage', return_value=True):
+            self.run_all_tests()
 
 
     def __100_no_error_when_listing_resource_groups_when_no_resource_groups(self):
@@ -97,7 +106,8 @@ class IntegrationTest_CloudGemFramework_ResourceManager_StackOperations(lmbr_aws
             'deployment', 'create', 
             '--deployment', self.TEST_DEPLOYMENT_NAME, 
             '--confirm-aws-usage', 
-            '--confirm-security-change'
+            '--confirm-security-change',
+            '--parallel'
         )            
 
 
@@ -130,12 +140,13 @@ class IntegrationTest_CloudGemFramework_ResourceManager_StackOperations(lmbr_aws
             'cloud-gem', 'create',
             '--gem', self.TEST_RESOURCE_GROUP_NAME, 
             '--initial-content', 'api-lambda-dynamodb',
-            '--enable'
+            '--enable', '--no-sln-change',
+            ignore_failure=True
         )
         self.add_bucket_to_resource_group(self.TEST_RESOURCE_GROUP_NAME, 'TestBucket1')
         self.add_bucket_to_resource_group(self.TEST_RESOURCE_GROUP_NAME, 'TestBucket2')
         resource_group_path = self.get_gem_aws_path(self.TEST_RESOURCE_GROUP_NAME)
-        self.assertTrue(os.path.isfile(os.path.join(resource_group_path, resource_manager.constant.RESOURCE_GROUP_TEMPLATE_FILENAME)))
+        self.assertTrue(os.path.isfile(os.path.join(resource_group_path, resource_manager_common.constant.RESOURCE_GROUP_TEMPLATE_FILENAME)))
         self.assertTrue(os.path.isdir(os.path.join(resource_group_path, 'lambda-code', 'ServiceLambda')))
 
 
@@ -172,12 +183,11 @@ class IntegrationTest_CloudGemFramework_ResourceManager_StackOperations(lmbr_aws
 
     def __270_update_deployment_stack_to_create_resource_group(self):
         self.lmbr_aws(
-            'deployment', 'upload', 
+            'deployment', 'update', 
             '--deployment', self.TEST_DEPLOYMENT_NAME, 
             '--confirm-aws-usage', 
             '--confirm-security-change'
         )
-
 
     def __280_verify_resource_group_created_by_updating_deployment_stack(self):
         self.verify_stack("deployment stack", self.get_deployment_stack_arn(self.TEST_DEPLOYMENT_NAME),
@@ -192,7 +202,7 @@ class IntegrationTest_CloudGemFramework_ResourceManager_StackOperations(lmbr_aws
                         'StackStatus': 'CREATE_COMPLETE',
                         'StackResources': {
                             'Table': {
-                                'ResourceType': 'AWS::DynamoDB::Table'
+                                'ResourceType': 'Custom::DynamoDBTable'
                             },
                             'ServiceLambdaConfiguration': {
                                 'ResourceType': 'Custom::LambdaConfiguration'
@@ -227,6 +237,8 @@ class IntegrationTest_CloudGemFramework_ResourceManager_StackOperations(lmbr_aws
                 }
             })
 
+        #give the mappings file time to propogate        
+        self.lmbr_aws('mappings', 'update', '-d', self.TEST_DEPLOYMENT_NAME)
         expected_logical_ids = [ self.TEST_RESOURCE_GROUP_NAME + '.ServiceApi' ]
         self.verify_user_mappings(self.TEST_DEPLOYMENT_NAME, expected_logical_ids)
         self.verify_release_mappings(self.TEST_DEPLOYMENT_NAME, expected_logical_ids, 'Player')
@@ -257,7 +269,9 @@ class IntegrationTest_CloudGemFramework_ResourceManager_StackOperations(lmbr_aws
     def __330_update_deployment_stack_when_no_changes(self):
         self.lmbr_aws(
             'deployment', 'upload-resources', 
-            '--deployment', self.TEST_DEPLOYMENT_NAME
+            '--deployment', self.TEST_DEPLOYMENT_NAME,
+            '--confirm-aws-usage', 
+            '--confirm-security-change'
         )
 
 
@@ -266,7 +280,8 @@ class IntegrationTest_CloudGemFramework_ResourceManager_StackOperations(lmbr_aws
             'cloud-gem', 'create',
             '--gem', self.TEST_RESOURCE_GROUP_2_NAME,
             '--initial-content', 'no-resources',
-            '--enable'
+            '--enable', '--no-sln-change',
+            ignore_failure=True
         )
 
 
@@ -282,7 +297,7 @@ class IntegrationTest_CloudGemFramework_ResourceManager_StackOperations(lmbr_aws
     def __430_verify_create_deployment_stack_with_resource_groups(self):
         self.verify_stack("deployment stack", self.get_deployment_stack_arn(self.TEST_DEPLOYMENT_2_NAME),
             {
-                'StackStatus': 'CREATE_COMPLETE',
+                'StackStatus': 'UPDATE_COMPLETE',
                 'StackResources': {
                     self.TEST_RESOURCE_GROUP_NAME+'Configuration': {
                         'ResourceType': 'Custom::ResourceGroupConfiguration'
@@ -292,7 +307,7 @@ class IntegrationTest_CloudGemFramework_ResourceManager_StackOperations(lmbr_aws
                         'StackStatus': 'CREATE_COMPLETE',
                         'StackResources': {
                             'Table': {
-                                'ResourceType': 'AWS::DynamoDB::Table'
+                                'ResourceType': 'Custom::DynamoDBTable'
                             },
                             'ServiceLambdaConfiguration': {
                                 'ResourceType': 'Custom::LambdaConfiguration'
@@ -398,14 +413,35 @@ class IntegrationTest_CloudGemFramework_ResourceManager_StackOperations(lmbr_aws
 
 
     def __515_upload_lambda_code(self):
+        # Upload new lambda code.  This should preserve the settings file that was put into the zip during the cloud formation stack update.
         self.lmbr_aws(
             'function', 'upload-code',
-            '--resource-group', self.TEST_RESOURCE_GROUP_NAME
+            '--resource-group', self.TEST_RESOURCE_GROUP_NAME,
+            '-d', self.TEST_DEPLOYMENT_NAME
         )
+
+        stack_arn = self.get_resource_group_stack_arn(self.TEST_DEPLOYMENT_NAME, self.TEST_RESOURCE_GROUP_NAME)
+        res = self.aws_cloudformation.describe_stack_resources(StackName = stack_arn)
+        physical_ids = { resource['LogicalResourceId']: resource['PhysicalResourceId'] for resource in res['StackResources'] }
+
+        # Download the lambda function and find the settings file.
+        lambda_function = self.aws_lambda.get_function(FunctionName=physical_ids['ServiceLambda'])
+        zip_content = urllib2.urlopen(lambda_function['Code']['Location'])
+        
+        zip_file = ZipFile(StringIO(zip_content.read()), 'r')
+
+        settings_name = 'CloudCanvas/test/test_settings.py'
+        settings_content = None
+        for name in zip_file.namelist():
+            if name == settings_name:
+                settings_content = zip_file.open(settings_name, 'r').read()
+
+        # Verify that some of the settings are correct.
+        self.assertIsNotNone(settings_content)
 
     def __520_remove_resource_group(self):
         self.lmbr_aws(
-            'resource-group', 'remove', 
+            'resource-group', 'disable', 
             '--resource-group', self.TEST_RESOURCE_GROUP_NAME
         )
 
@@ -462,7 +498,7 @@ class IntegrationTest_CloudGemFramework_ResourceManager_StackOperations(lmbr_aws
 
     def __560_remove_resource_group(self):
         self.lmbr_aws(
-            'resource-group', 'remove', 
+            'resource-group', 'disable', 
             '--resource-group', self.TEST_RESOURCE_GROUP_2_NAME
         )
 
@@ -477,7 +513,8 @@ class IntegrationTest_CloudGemFramework_ResourceManager_StackOperations(lmbr_aws
             'deployment', 'upload-resources', 
             '--deployment', self.TEST_DEPLOYMENT_NAME, 
             '--confirm-aws-usage', 
-            '--confirm-resource-deletion'
+            '--confirm-resource-deletion',
+            '--parallel'
         )
         self.__verify_bucket_deleted(test_bucket_name)
 
@@ -514,11 +551,11 @@ class IntegrationTest_CloudGemFramework_ResourceManager_StackOperations(lmbr_aws
     def __920_delete_deployment_stack_1(self):
 
         deployment_stack_arn = self.get_deployment_stack_arn(self.TEST_DEPLOYMENT_NAME)
-
         self.lmbr_aws(
             'deployment', 'delete',
             '--deployment', self.TEST_DEPLOYMENT_NAME, 
-            '--confirm-resource-deletion'
+            '--confirm-resource-deletion',
+            '--parallel'
         )
 
         res = self.aws_cloudformation.describe_stacks(StackName = deployment_stack_arn)
@@ -549,7 +586,8 @@ class IntegrationTest_CloudGemFramework_ResourceManager_StackOperations(lmbr_aws
         self.lmbr_aws(
             'deployment', 'delete',
             '--deployment', self.TEST_DEPLOYMENT_2_NAME, 
-            '--confirm-resource-deletion'
+            '--confirm-resource-deletion',
+            '--parallel'
         )
         self.__verify_bucket_deleted(test_bucket_1_name)
         self.__verify_bucket_deleted(test_bucket_2_name)
@@ -575,7 +613,7 @@ class IntegrationTest_CloudGemFramework_ResourceManager_StackOperations(lmbr_aws
 
 
     def add_bucket_to_resource_group(self, gem_name, bucket_name):
-        with self.edit_gem_aws_json(gem_name, resource_manager.constant.RESOURCE_GROUP_TEMPLATE_FILENAME) as template:
+        with self.edit_gem_aws_json(gem_name, resource_manager_common.constant.RESOURCE_GROUP_TEMPLATE_FILENAME) as template:
             template['Resources'][bucket_name] = {
                 'Type': 'AWS::S3::Bucket'
             }
@@ -590,7 +628,7 @@ class IntegrationTest_CloudGemFramework_ResourceManager_StackOperations(lmbr_aws
 
 
     def remove_resource(self, gem_name, resource_name):
-        with self.edit_gem_aws_json(gem_name, resource_manager.constant.RESOURCE_GROUP_TEMPLATE_FILENAME) as template:
+        with self.edit_gem_aws_json(gem_name, resource_manager_common.constant.RESOURCE_GROUP_TEMPLATE_FILENAME) as template:
             template['Resources'].pop(resource_name, None)
 
 

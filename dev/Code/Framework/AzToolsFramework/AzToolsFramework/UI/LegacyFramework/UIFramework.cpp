@@ -10,7 +10,7 @@
 *
 */
 
-#include "stdafx.h"
+#include "StdAfx.h"
 
 #include "UIFramework.hxx"
 
@@ -21,24 +21,34 @@
 
 #include <AzCore/Serialization/SerializeContext.h>
 
+#include <AzFramework/CommandLine/CommandLine.h>
+
+#include <AzToolsFramework/UI/UICore/QWidgetSavedState.h>
+#include <AzToolsFramework/UI/LegacyFramework/Core/EditorFrameworkAPI.h>
+#include "MainWindowSavedState.h"
+
+AZ_PUSH_DISABLE_WARNING(4251, "-Wunknown-warning-option") // '...' needs to have dll-interface to be used by clients of class '...'
 #include <QtWidgets/QApplication>
 #include <QtCore/QTimer>
 #include <QtCore/QDir>
-
-#include <AzFramework/CommandLine/CommandLine.h>
-
-#include <AzToolsFramework/UI/LegacyFramework/Core/EditorFrameworkAPI.h>
-#include "MainWindowSavedState.h"
-#include <AzToolsFramework/UI/UICore/QWidgetSavedState.h>
-
 #include <QThread>
 #include <QAction>
 #include <QMenu>
 #include <QFontDatabase>
 #include <QResource>
-#include <QDir>
+#include <QProxyStyle>
+AZ_POP_DISABLE_WARNING
 
 #include <AzFramework/StringFunc/StringFunc.h>
+
+#ifndef AZ_PLATFORM_WINDOWS
+extern int __argc;
+extern char **__argv;
+#endif
+
+#if AZ_TRAIT_OS_PLATFORM_APPLE
+#include <mach-o/dyld.h>
+#endif
 
 //#include "PanelData.h"
 
@@ -114,6 +124,19 @@ namespace AzToolsFramework
         }
     }
 
+    class AZQtApplicationStyle : public QProxyStyle
+    {
+    public:
+        int styleHint(StyleHint hint, const QStyleOption* option = nullptr, const QWidget* widget = nullptr, QStyleHintReturn* returnData = nullptr) const override
+        {
+            if (hint == QStyle::SH_TabBar_Alignment)
+            {
+                return Qt::AlignLeft;
+            }
+            return QProxyStyle::styleHint(hint, option, widget, returnData);
+        }
+    };
+
     class AZQtApplication
         : public QApplication
     {
@@ -122,6 +145,7 @@ namespace AzToolsFramework
         AZQtApplication(int& argc, char** argv)
             : QApplication(argc, argv)
         {
+            setStyle(new AZQtApplicationStyle);
             qInstallMessageHandler(myMessageOutput);
         }
 
@@ -138,7 +162,6 @@ namespace AzToolsFramework
         {
             serialize->Class<Framework, AZ::Component>()
                 ->Version(1)
-                ->SerializerForEmptyClass()
             ;
 
             MainWindowSavedState::Reflect(serialize);
@@ -299,24 +322,22 @@ namespace AzToolsFramework
     void Framework::Init()
     {
         char myFileName[MAX_PATH] = {0};
+#if AZ_TRAIT_OS_PLATFORM_APPLE
+        uint32_t bufSize = AZ_ARRAY_SIZE(myFileName);
+        _NSGetExecutablePath(myFileName, &bufSize);
+        if (strlen(myFileName) > 0)
+#else
         if (GetModuleFileNameA(NULL, myFileName, MAX_PATH))
+#endif
         {
-            char driveName[MAX_PATH] = {0};
-            char directoryName[MAX_PATH] = {0};
-            char qtPluginDirectory[MAX_PATH] = {0};
-            char executableFolder[MAX_PATH] = {0};
-            ::_splitpath_s(myFileName, driveName, MAX_PATH, directoryName, MAX_PATH, NULL, 0, NULL, 0);
+            QFileInfo fi(myFileName);
+            QString executableFolder = fi.absolutePath();
+            QString qtPluginDirectory = fi.dir().absoluteFilePath("qtlibs/plugins");
 
-            strcpy_s(executableFolder, MAX_PATH, driveName);
-            strcat_s(executableFolder, MAX_PATH, directoryName);
-
-            strcpy_s(qtPluginDirectory, MAX_PATH, executableFolder);
-            strcat_s(qtPluginDirectory, MAX_PATH, "qtlibs\\plugins");
-
-            if (AZ::IO::SystemFile::Exists(qtPluginDirectory))
+            if (AZ::IO::SystemFile::Exists(qtPluginDirectory.toUtf8().data()))
             {
                 QApplication::addLibraryPath(qtPluginDirectory);
-                m_QtPluginsPaths.push_back(qtPluginDirectory); // keep track of all Qt plugin folders
+                m_QtPluginsPaths.push_back(qtPluginDirectory.toUtf8().data()); // keep track of all Qt plugin folders
             }
             else
             {
@@ -387,7 +408,7 @@ namespace AzToolsFramework
         EBUS_EVENT_RESULT(pApp, AZ::ComponentApplicationBus, GetApplication);
         if (pApp)
         {
-            
+
             AZStd::chrono::system_clock::time_point now = AZStd::chrono::system_clock::now();
             static AZStd::chrono::system_clock::time_point lastUpdate = now;
 

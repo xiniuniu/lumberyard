@@ -14,9 +14,13 @@
 #include "StdAfx.h"
 #include "VegetationPanel.h"
 #include "VegetationTool.h"
+
+#ifdef LY_TERRAIN_EDITOR
 #include "Terrain/SurfaceType.h"
 #include "Terrain/TerrainManager.h"
 #include "Terrain/Layer.h"
+#endif //LY_TERRAIN_EDITOR
+
 #include "VegetationMap.h"
 #include "VegetationObject.h"
 #include "StringDlg.h"
@@ -43,6 +47,8 @@
 #include <AzToolsFramework/AssetBrowser/AssetSelectionModel.h>
 #include <AzToolsFramework/AssetBrowser/AssetBrowserEntry.h>
 #include <AzToolsFramework/AssetBrowser/Search/Filter.h>
+
+#include <LmbrCentral/Rendering/MeshAsset.h>
 
 #include <ui_VegetationPanel.h>
 
@@ -757,12 +763,16 @@ void CVegetationPanel::UpdateUI()
     if (bPainting)
     {
         m_ui->paintObjectsButton->setChecked(true);
-        GetIEditor()->SetStatusText(tr("Hold Ctrl to Remove Vegetation").toLatin1());
+#if AZ_TRAIT_OS_PLATFORM_APPLE
+        GetIEditor()->SetStatusText(tr("Hold ⌘ to Remove Vegetation"));
+#else
+        GetIEditor()->SetStatusText(tr("Hold Ctrl to Remove Vegetation"));
+#endif
     }
     else
     {
         m_ui->paintObjectsButton->setChecked(false);
-        GetIEditor()->SetStatusText(tr("Push Paint button to start painting").toLatin1());
+        GetIEditor()->SetStatusText(tr("Push Paint button to start painting"));
     }
 }
 
@@ -915,7 +925,7 @@ void CVegetationPanel::OnRemoveCategory()
 
     m_tool->ClearThingSelection();
 
-    CUndo undo(tr("Remove VegObject(s)").toLatin1());
+    CUndo undo(tr("Remove VegObject(s)").toUtf8());
 
     m_bIgnoreSelChange = true;
 
@@ -927,7 +937,9 @@ void CVegetationPanel::OnRemoveCategory()
 
     m_model->RemoveCategory(category);
 
+#ifdef LY_TERRAIN_EDITOR
     GetIEditor()->GetTerrainManager()->ReloadSurfaceTypes();
+#endif //#ifdef LY_TERRAIN_EDITOR
 
     m_bIgnoreSelChange = false;
 
@@ -945,7 +957,7 @@ void CVegetationPanel::OnDistribute()
 {
     if (QMessageBox::Yes == QMessageBox::question(this, tr("Vegetation Distribute"), tr("Are you sure you want to Distribute?")))
     {
-        CUndo undo(tr("Vegetation Distribute").toLatin1());
+        CUndo undo(tr("Vegetation Distribute").toUtf8());
         QApplication::setOverrideCursor(Qt::WaitCursor);
         if (m_tool)
         {
@@ -960,7 +972,7 @@ void CVegetationPanel::OnClear()
 {
     if (QMessageBox::Yes == QMessageBox::question(this, tr("Vegetation Clear"), tr("Are you sure you want to Clear?")))
     {
-        CUndo undo(tr("Vegetation Clear").toLatin1());
+        CUndo undo(tr("Vegetation Clear").toUtf8());
         QApplication::setOverrideCursor(Qt::WaitCursor);
         if (m_tool)
         {
@@ -973,7 +985,7 @@ void CVegetationPanel::OnClear()
 //////////////////////////////////////////////////////////////////////////
 void CVegetationPanel::OnBnClickedScale()
 {
-    CUndo undo(tr("Vegetation Scale").toLatin1());
+    CUndo undo(tr("Vegetation Scale").toUtf8());
     if (m_tool)
     {
         m_tool->ScaleObjects();
@@ -986,7 +998,7 @@ void CVegetationPanel::OnBnClickedImport()
     QString file;
     if (CFileUtil::SelectFile("Vegetation Objects (*.veg);;All Files (*)", GetIEditor()->GetLevelFolder(), file))
     {
-        XmlNodeRef root = XmlHelpers::LoadXmlFromFile(file.toLatin1().data());
+        XmlNodeRef root = XmlHelpers::LoadXmlFromFile(file.toUtf8().data());
         if (!root)
         {
             return;
@@ -995,7 +1007,7 @@ void CVegetationPanel::OnBnClickedImport()
         QWaitCursor wait;
 
         m_tool->ClearThingSelection();
-        CUndo undo(tr("Import Vegetation ").toLatin1());
+        CUndo undo(tr("Import Vegetation ").toUtf8());
 
         m_ui->objectPropertiesControl->RemoveAllItems();
 
@@ -1022,7 +1034,7 @@ void CVegetationPanel::OnBnClickedMerge()
     if (QMessageBox::Yes == QMessageBox::question(this, tr("Merge Vegetation"), tr("Are you sure you want to merge?")))
     {
         QWaitCursor wait;
-        CUndo undo(tr("Vegetation Merge").toLatin1());
+        CUndo undo(tr("Vegetation Merge").toUtf8());
         std::vector<CVegetationObject*> delObjects;
 
         CVegetationObject* pObject = objects[0];
@@ -1046,7 +1058,7 @@ void CVegetationPanel::OnBnClickedMerge()
 //////////////////////////////////////////////////////////////////////////
 void CVegetationPanel::OnBnClickedExport()
 {
-    CUndo undo(tr("Vegetation Export").toLatin1());
+    CUndo undo(tr("Vegetation Export").toUtf8());
     Selection objects;
     m_tool->GetSelectedObjects(objects);
     if (objects.empty())
@@ -1065,14 +1077,14 @@ void CVegetationPanel::OnBnClickedExport()
             XmlNodeRef node = root->newChild("VegetationObject");
             m_vegetationMap->ExportObject(objects[i], node);
         }
-        XmlHelpers::SaveXmlNode(GetIEditor()->GetFileUtil(), root, fileName.toLatin1().data());
+        XmlHelpers::SaveXmlNode(GetIEditor()->GetFileUtil(), root, fileName.toUtf8().data());
     }
 }
 
 //////////////////////////////////////////////////////////////////////////
 void CVegetationPanel::OnBnClickedRandomRotate()
 {
-    CUndo undo(tr("Vegetation Random Rotate").toLatin1());
+    CUndo undo(tr("Vegetation Random Rotate").toUtf8());
     if (m_tool)
     {
         m_tool->DoRandomRotate();
@@ -1082,7 +1094,7 @@ void CVegetationPanel::OnBnClickedRandomRotate()
 //////////////////////////////////////////////////////////////////////////
 void CVegetationPanel::OnBnClickedClearRotate()
 {
-    CUndo undo(tr("Vegetation Clear Rotate").toLatin1());
+    CUndo undo(tr("Vegetation Clear Rotate").toUtf8());
     if (m_tool)
     {
         m_tool->DoClearRotate();
@@ -1186,7 +1198,7 @@ void CVegetationPanel::OnAdd()
     ////////////////////////////////////////////////////////////////////////
     // Add another static object to the list
     ////////////////////////////////////////////////////////////////////////
-    AssetSelectionModel selection = AssetSelectionModel::AssetGroupSelection("Geometry", true);
+    AssetSelectionModel selection = AssetSelectionModel::AssetTypeSelection(azrtti_typeid<LmbrCentral::MeshAsset>(), true);
     AzToolsFramework::EditorRequests::Bus::Broadcast(&AzToolsFramework::EditorRequests::BrowseForAssets, selection);
     if (!selection.IsValid())
     {
@@ -1202,14 +1214,13 @@ void CVegetationPanel::OnAdd()
 
     QApplication::setOverrideCursor(Qt::WaitCursor);
 
-    CUndo undo(tr("Add VegObject(s)").toLatin1());
+    CUndo undo(tr("Add VegObject(s)").toUtf8());
     for (const AssetBrowserEntry* selectionResults : selection.GetResults())
     {
         AZStd::vector<const ProductAssetBrowserEntry*> products;
         selectionResults->GetChildrenRecursively<ProductAssetBrowserEntry>(products);
         for (const ProductAssetBrowserEntry*  product : products)
         {
-           
             // Create a new static object settings class
             CVegetationObject* obj = m_vegetationMap->CreateObject();
             if (!obj)
@@ -1270,7 +1281,7 @@ void CVegetationPanel::OnClone()
     else
     {
         // clone all selected elements in current group / category
-        CUndo undo(tr("Clone VegObject").toLatin1());
+        CUndo undo(tr("Clone VegObject").toUtf8());
         foreach(auto & selection, selected)
         {
             CVegetationObject* object = selection.data(Role::VegetationObjectRole).value<CVegetationObject*>();
@@ -1305,7 +1316,7 @@ void CVegetationPanel::OnReplace()
 
 
     QApplication::setOverrideCursor(Qt::WaitCursor);
-    CUndo undo(tr("Replace VegObject").toLatin1());
+    CUndo undo(tr("Replace VegObject").toUtf8());
     object->SetFileName(selection.GetResult()->GetFullPath().c_str());
     m_vegetationMap->RepositionObject(object);
 
@@ -1339,7 +1350,7 @@ void CVegetationPanel::OnRemove()
     m_tool->ClearThingSelection();
 
     QWaitCursor wait;
-    CUndo undo(tr("Remove VegObject(s)").toLatin1());
+    CUndo undo(tr("Remove VegObject(s)").toUtf8());
 
     m_bIgnoreSelChange = true;
     for (auto object : objects)
@@ -1347,7 +1358,11 @@ void CVegetationPanel::OnRemove()
         m_model->RemoveObject(object);
         m_vegetationMap->RemoveObject(object);
     }
+
+#ifdef LY_TERRAIN_EDITOR
     GetIEditor()->GetTerrainManager()->ReloadSurfaceTypes();
+#endif //#ifdef LY_TERRAIN_EDITOR
+
     m_bIgnoreSelChange = false;
 
     SendToControls();
@@ -1516,6 +1531,7 @@ void CVegetationPanel::SendToControls()
 //////////////////////////////////////////////////////////////////////////
 void CVegetationPanel::AddLayerVars(CVarBlock* pVarBlock, CVegetationObject* pObject)
 {
+#ifdef LY_TERRAIN_EDITOR
     IVariable* pTable = new CVariableArray();
     pTable->SetName(tr("Use On Terrain Layers"));
     pVarBlock->AddVariable(pTable);
@@ -1550,6 +1566,7 @@ void CVegetationPanel::AddLayerVars(CVarBlock* pVarBlock, CVegetationObject* pOb
 
         pTable->AddVariable(pBoolVar);
     }
+#endif //#ifdef LY_TERRAIN_EDITOR
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1590,7 +1607,9 @@ void CVegetationPanel::OnLayerVarChange(IVariable* pVar)
         }
     }
 
+#ifdef LY_TERRAIN_EDITOR
     GetIEditor()->GetTerrainManager()->ReloadSurfaceTypes();
+#endif //#ifdef LY_TERRAIN_EDITOR
 
     for (int i = 0; i < objects.size(); i++)
     {
@@ -1617,6 +1636,7 @@ void CVegetationPanel::SendTextureLayersToControls()
 //////////////////////////////////////////////////////////////////////////
 bool CVegetationPanel::GetTerrainLayerNames(QStringList& layerNames)
 {
+#ifdef LY_TERRAIN_EDITOR
     CTerrainManager* pTerrainManager = GetIEditor()->GetTerrainManager();
     const int nLayers = pTerrainManager->GetLayerCount();
 
@@ -1636,11 +1656,15 @@ bool CVegetationPanel::GetTerrainLayerNames(QStringList& layerNames)
         }
     }
     return nLayers != 0;
+#else
+    return false;
+#endif //#ifdef LY_TERRAIN_EDITOR
 }
 
 //////////////////////////////////////////////////////////////////////////
 void CVegetationPanel::OnGetSettingFromTerrainLayer(int layerId)
 {
+#ifdef LY_TERRAIN_EDITOR
     if (!m_varBlock)
     {
         return;
@@ -1689,6 +1713,7 @@ void CVegetationPanel::OnGetSettingFromTerrainLayer(int layerId)
             }
         }
     }
+#endif //#ifdef LY_TERRAIN_EDITOR
 }
 
 void CVegetationPanel::CreateObjectsContextMenu()

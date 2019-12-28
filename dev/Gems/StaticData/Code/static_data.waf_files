@@ -1,10 +1,4 @@
 {
-    "none": {
-        "Source": [
-            "Source/StdAfx.cpp",
-            "Source/StdAfx.h"
-        ]
-    },
     "auto": {
         "Include": [
             "Include/StaticData/StaticDataBus.h",

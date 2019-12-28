@@ -9,12 +9,12 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "NewEntityDialog.h"
 #include <Dialogs/QT/ui_NewEntityDialog.h>
 #include <AzCore/IO/FileIO.h>
 
-#include <QPushbutton>
+#include <QPushButton>
 #include <QToolTip>
 #include <QMessageBox>
 

@@ -18,6 +18,8 @@ import json
 
 from botocore.exceptions import ClientError
 
+import text_to_speech_s3
+
 BUCKET = {'ttscache': None, 'packagedvoicelines': None}
 TTSCACHE = 'ttscache'
 
@@ -59,19 +61,31 @@ def get_speech_marks(tts_info, from_cgp = False):
     return generate_presigned_url(tts_key)
 
 def add_prosody_tags_to_message(message, character_info):
-    ssml_tags = character_info.get("ssmlTags", {})
-    if ssml_tags:
-        prosody_tag = ""
-        for ssml_tag in ssml_tags:
-            prosody_tag += " " + ssml_tag
+    message_content = message
+    if "<speak>" in message:
+        start_index = message.find("<speak>")
+        end_index = message.find("</speak>")
+        message_content = message[start_index + 7 : end_index]
 
-        if "<speak>" in message:
-            start_index = message.find("<speak>")
-            end_index = message.find("</speak>")
-            message = "<speak><prosody" + prosody_tag + ">" + message[start_index + 7 : end_index] + "</prosody></speak>"
-        else:
-            message = "<speak><prosody" + prosody_tag + ">" + message + "</prosody></speak>"
+    if "ssmlLanguage" in character_info:
+        ssml_lang_tag = "lang=\"" + character_info.get("ssmlLanguage") + "\""
+        message_content = "<lang xml:" + ssml_lang_tag + ">" + message_content + "</lang>"
+
+    if "timbre" in character_info:
+        message_content = "<amazon:effect vocal-tract-length=\"" + \
+            str(character_info.get("timbre")) + "%\">" + \
+            message_content + "</amazon:effect>"
+
+    if "ssmlProsodyTags" in character_info:
+        ssml_prosody_tags = character_info.get("ssmlProsodyTags")
+        if len(ssml_prosody_tags) > 0:
+            prosody_tag = ""
+            for ssml_prosody_tag in ssml_prosody_tags:
+                prosody_tag += " " + ssml_prosody_tag
+            message_content = "<prosody" + prosody_tag + ">" + message_content + "</prosody>"
     
+    message = "<speak>" + message_content + "</speak>"
+
     return message
 
 def __get_speech_mark_types(speech_marks):
@@ -81,6 +95,8 @@ def __get_speech_mark_types(speech_marks):
         speech_mark_types.append('word')
     if 'V' in speech_marks:
         speech_mark_types.append('viseme')
+    if 'T' in speech_marks:
+        speech_mark_types.append('ssml')
     return speech_mark_types
 
 
@@ -118,7 +134,7 @@ def get_voice(tts_info, from_cgp = False):
 
 
 def enable_runtime_capabilities(enable):
-    s3 = boto3.client('s3')
+    s3 = text_to_speech_s3.get_s3_client()
     if enable and key_exists(RUNTIME_CAPABILITIES_FLAG_KEY, TTSCACHE):
         s3.delete_object(Bucket=CloudCanvas.get_setting(TTSCACHE), Key=RUNTIME_CAPABILITIES_FLAG_KEY)
     elif not enable and not key_exists(RUNTIME_CAPABILITIES_FLAG_KEY, TTSCACHE):
@@ -130,7 +146,7 @@ def runtime_capabilities_enabled():
 
 
 def enable_cache_runtime_generated_files(enable):
-    s3 = boto3.client('s3')
+    s3 = text_to_speech_s3.get_s3_client()
     if enable and not cache_runtime_generated_files():
         s3.delete_object(Bucket=CloudCanvas.get_setting(TTSCACHE), Key=RUNTIME_CACHING_FLAG_KEY)
     elif not enable and cache_runtime_generated_files():
@@ -158,7 +174,8 @@ def generate_presigned_url(key):
     '''
     Returns a presigned url for the given key in ttscache bucket
     '''
-    s3_client = boto3.client('s3')
+    s3_client = text_to_speech_s3.get_s3_client()
+
     if cache_runtime_generated_files():
         return s3_client.generate_presigned_url('get_object',
             Params = { "Bucket" : CloudCanvas.get_setting(TTSCACHE), "Key" : key })
@@ -193,7 +210,7 @@ def get_custom_mappings():
     file_key = 'import_custom_mappings.json'
     custom_mappings = {}
     if key_exists(file_key, TTSCACHE):
-        client = boto3.client('s3')
+        client = text_to_speech_s3.get_s3_client()
         response = client.get_object(Bucket=CloudCanvas.get_setting(TTSCACHE), Key=file_key)
         custom_mappings = json.loads(response["Body"].read())
     return custom_mappings

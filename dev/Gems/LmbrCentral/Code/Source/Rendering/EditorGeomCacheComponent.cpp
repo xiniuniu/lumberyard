@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 #include "EditorGeomCacheComponent.h"
 
 #include <AzCore/RTTI/BehaviorContext.h>
@@ -80,7 +80,7 @@ namespace LmbrCentral
                     ->DataElement(AZ::Edit::UIHandlers::Default, &GeometryCacheCommon::m_standin, "Stand-in", "The entity that should stand in for this GeomCache when the viewer is past the Stand-in Distance.")
                     ->Attribute(AZ::Edit::Attributes::ChangeNotify, &GeometryCacheCommon::OnStandinChanged)
 
-                    ->DataElement(AZ::Edit::UIHandlers::Default, &GeometryCacheCommon::m_standinDistance, "Stand-in Distance", "How close does the viewer need to be before the GeomCache replaces the Stand-in")
+                    ->DataElement(AZ::Edit::UIHandlers::Default, &GeometryCacheCommon::m_standinDistance, "Stand-in Distance", "How close does the viewer need to be before the GeomCache replaces the Stand-in.")
 
                     ->ClassElement(AZ::Edit::ClassElements::Group, "Options")
                     ->Attribute(AZ::Edit::Attributes::AutoExpand, false)
@@ -226,6 +226,15 @@ namespace LmbrCentral
         m_currentStandinType = StandinType::None;
     }
 
+    void EditorGeometryCacheCommon::SetMaterial(_smart_ptr<IMaterial> material)
+    {
+        GeometryCacheCommon::SetMaterial(material);
+
+        AzToolsFramework::ToolsApplicationEvents::Bus::Broadcast(
+            &AzToolsFramework::ToolsApplicationEvents::InvalidatePropertyDisplay,
+            AzToolsFramework::Refresh_AttributesAndValues);
+    }
+
     void EditorGeometryCacheComponent::GetProvidedServices(AZ::ComponentDescriptor::DependencyArrayType& provides)
     {
         provides.push_back(AZ_CRC("GeomCacheService", 0x3d2bc48c));
@@ -247,10 +256,10 @@ namespace LmbrCentral
 
             if (AZ::EditContext* editContext = serializeContext->GetEditContext())
             {
-                editContext->Class<EditorGeometryCacheComponent>("Geometry Cache", "")
+                editContext->Class<EditorGeometryCacheComponent>("Geometry Cache", "Controls playback of baked vertex animations.")
                     ->ClassElement(AZ::Edit::ClassElements::EditorData, "")
                     ->Attribute(AZ::Edit::Attributes::Category, "Rendering")
-                    ->Attribute(AZ::Edit::Attributes::Icon, "Editor/Icons/Components/GeometryCache.png")
+                    ->Attribute(AZ::Edit::Attributes::Icon, "Editor/Icons/Components/GeometryCache.svg")
                     ->Attribute(AZ::Edit::Attributes::ViewportIcon, "Editor/Icons/Components/Viewport/GeometryCache.png")
                     ->Attribute(AZ::Edit::Attributes::AutoExpand, true)
                     ->Attribute(AZ::Edit::Attributes::AppearsInAddComponentMenu, AZ_CRC("Game", 0x232b318c))
@@ -310,27 +319,24 @@ namespace LmbrCentral
         gameEntity->CreateComponent<GeometryCacheComponent>(&m_common);
     }
 
-    void EditorGeometryCacheComponent::DisplayEntity(bool& handled)
+    void EditorGeometryCacheComponent::DisplayEntityViewport(
+        const AzFramework::ViewportInfo& viewportInfo,
+        AzFramework::DebugDisplayRequests& debugDisplay)
     {
-        handled = true;
-
         // Don't draw extra visualization unless selected.
         if (!IsSelected())
         {
             return;
         }
 
-        auto* dc = AzFramework::EntityDebugDisplayRequestBus::FindFirstHandler();
-        AZ_Assert(dc, "Invalid display context.");
-        
-        dc->PushMatrix(m_currentWorldTransform);
+        debugDisplay.PushMatrix(m_currentWorldTransform);
 
-        dc->SetColor(AZ::Vector4(1.0f, 1.0f, 1.0f, 1.0f));
+        debugDisplay.SetColor(AZ::Vector4(1.0f, 1.0f, 1.0f, 1.0f));
 
-        dc->DrawWireSphere(AZ::Vector3::CreateZero(), m_common.m_standinDistance);
-        dc->DrawWireSphere(AZ::Vector3::CreateZero(), m_common.m_streamInDistance);
+        debugDisplay.DrawWireSphere(AZ::Vector3::CreateZero(), m_common.GetStandInDistance());
+        debugDisplay.DrawWireSphere(AZ::Vector3::CreateZero(), m_common.GetStreamInDistance());
 
-        dc->PopMatrix();
+        debugDisplay.PopMatrix();
     }
 
     void EditorGeometryCacheComponent::OnTransformChanged(const AZ::Transform& /*local*/, const AZ::Transform& world)

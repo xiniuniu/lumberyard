@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "LegacyTimeDemoRecorder_precompiled.h"
 
 #include <AzCore/Component/Entity.h>
 #include <AzCore/Serialization/SerializeContext.h>
@@ -25,7 +25,7 @@ namespace LegacyTimeDemoRecorder
         {
             serialize->Class<LegacyTimeDemoRecorderSystemComponent, AZ::Component>()
                 ->Version(0)
-                ->SerializerForEmptyClass();
+                ;
 
             if (AZ::EditContext* ec = serialize->GetEditContext())
             {

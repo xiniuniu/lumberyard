@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "EditorEntityIdContainer.h"
 #include <AzCore/Serialization/SerializeContext.h>
 #include <AzCore/Component/Component.h>
@@ -19,9 +19,16 @@
 #include <AzCore/IO/GenericStreams.h>
 #include <AzCore/IO/ByteContainerStream.h>
 
+#include <QString>
 
 namespace AzToolsFramework
 {
+    const QString& EditorEntityIdContainer::GetMimeType()
+    {
+        static QString mimeType = QStringLiteral("editor/entityidlist");
+        return mimeType;
+    }
+
     void EditorEntityIdContainer::Reflect(AZ::ReflectContext* context)
     {
         AZ::SerializeContext* serializeContext = azrtti_cast<AZ::SerializeContext*>(context);

@@ -39,16 +39,6 @@ namespace Ui
     class AssetBrowserDialog;
 }
 
-namespace AssetBrowser
-{
-    const UINT kMaxDatabaseCount = 100;
-};
-
-#define ID_ASSET_BROWSER_TIMER_REPORT_CONTROL 1
-#define IDW_ASSET_BROWSER_LIST_VIEW_PANE (AFX_IDW_CONTROLBAR_FIRST + 1110)
-#define IDW_ASSET_BROWSER_FILTERS_PANE (AFX_IDW_CONTROLBAR_FIRST + 1111)
-#define IDW_ASSET_BROWSER_PREVIEW_PANE (AFX_IDW_CONTROLBAR_FIRST + 1112)
-
 template<typename T>
 class CWidgetWrapper;
 
@@ -165,7 +155,6 @@ public:
     void OnUpdateAssetBrowserShowList();
     void OnUpdateAssetBrowserShowPreview();
     void OnUpdateAssetBrowserShowFilters();
-    void OnUpdateAssetBrowserEditTags();
     void OnAssetBrowserFromViewportSelection();
     void OnAssetBrowserSelectInViewport();
 

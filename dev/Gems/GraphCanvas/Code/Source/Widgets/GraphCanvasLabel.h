@@ -17,8 +17,8 @@
 
 #include <QGraphicsWidget>
 
-#include <Styling/StyleHelper.h>
-#include <Types/TranslationTypes.h>
+#include <GraphCanvas/Styling/StyleHelper.h>
+#include <GraphCanvas/Types/TranslationTypes.h>
 
 namespace GraphCanvas
 {
@@ -74,7 +74,8 @@ namespace GraphCanvas
     protected:
         // QGraphicsItem
         bool event(QEvent* qEvent) override;
-        void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget = nullptr) override;             
+        void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget = nullptr) override;
+        ////
 
         // QGraphicsLayoutItem
         QSizeF sizeHint(Qt::SizeHint which, const QSizeF& constraint = QSizeF()) const override;

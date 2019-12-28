@@ -10,8 +10,8 @@
 *
 */
 
-#include <QMenu.h>
-#include <QEvent.h>
+#include <QMenu>
+#include <QEvent>
 #include <AzCore/Component/ComponentApplicationBus.h>
 #include <AzCore/Serialization/SerializeContext.h>
 #include <AzFramework/StringFunc/StringFunc.h>
@@ -29,8 +29,8 @@ namespace AZ
 
         QWidget* GraphTypeSelector::CreateGUI(QWidget* parent)
         {
-            QPushButton* base = new QPushButton("Select required graph types");
-            QMenu* menu = new QMenu();
+            QPushButton* base = new QPushButton("Select required graph types", parent);
+            QMenu* menu = new QMenu(base);
             menu->setLayoutDirection(Qt::LeftToRight);
             menu->setStyleSheet("border: none; background-color: #333333;");
 

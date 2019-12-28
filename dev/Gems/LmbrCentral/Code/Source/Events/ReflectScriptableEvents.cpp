@@ -9,16 +9,19 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 #include "Events/ReflectScriptableEvents.h"
 #include <AzCore/RTTI/BehaviorContext.h>
+#include <AzCore/Serialization/SerializeContext.h>
+#include <AzCore/Script/ScriptContext.h>
 #include <AzCore/Script/ScriptContextAttributes.h>
 #include <GameplayEventBus.h>
 #include <InputEventBus.h>
 #include <InputRequestBus.h>
 #include <AzCore/Math/Vector3.h>
 #include <LmbrCentral/Shape/ShapeComponentBus.h>
-#include <AzFramework/Math/MathUtils.h>
+#include <AzCore/Math/Transform.h>
+#include <AzCore/Math/Quaternion.h>
 
 
 namespace LmbrCentral
@@ -97,19 +100,16 @@ namespace LmbrCentral
         }
         else if (dc.GetNumArguments() == 1 && dc.IsString(0))
         {
-
-            const char* currentProfileName = nullptr;
-            EBUS_EVENT_RESULT(currentProfileName, AZ::PlayerProfileRequestBus, GetCurrentProfileForCurrentUser);
-            thisOutPtr->m_profileIdCrc = Input::ProfileId(currentProfileName);
+            thisOutPtr->m_localUserId = AzFramework::LocalUserIdAny;
             const char* actionName = nullptr;
             dc.ReadArg(0, actionName);
             thisOutPtr->m_actionNameCrc = Input::ProcessedEventName(actionName);
         }
         else if (dc.GetNumArguments() == 2 && dc.IsClass<AZ::Crc32>(0) && dc.IsString(1))
         {
-            Input::ProfileId profileId = 0;
-            dc.ReadArg(0, profileId);
-            thisOutPtr->m_profileIdCrc = profileId;
+            AzFramework::LocalUserId localUserId = 0;
+            dc.ReadArg(0, localUserId);
+            thisOutPtr->m_localUserId = localUserId;
             const char* actionName = nullptr;
             dc.ReadArg(1, actionName);
             thisOutPtr->m_actionNameCrc = Input::ProcessedEventName(actionName);
@@ -122,97 +122,145 @@ namespace LmbrCentral
 
     void GameplayEventIdNonIntrusiveConstructor(AZ::GameplayNotificationId* outData, AZ::ScriptDataContext& dc)
     {
-        if (dc.GetNumArguments() == 0)
+        static const int s_channelIndex = 0;
+        static const int s_actionNameIndex = 1;
+        static const int s_payloadTypeIndex = 2;
+        static const int s_defaultConstructorArgCount = 0;
+        static const int s_deprecatedConstructorArgCount = 2;
+        static const int s_verboseConstructorArgCount = 3;
+        static const bool s_showCallStack = true;
+        if (dc.GetNumArguments() == s_defaultConstructorArgCount)
         {
             // Use defaults.
             outData->m_channel.SetInvalid();
             outData->m_actionNameCrc = 0;
             outData->m_payloadTypeId = AZ::Uuid::CreateNull();
         }
-        else if (dc.GetNumArguments() == 2 && dc.IsClass<AZ::EntityId>(0) && dc.IsString(1))
+        else if (dc.GetNumArguments() == s_deprecatedConstructorArgCount 
+            && dc.IsClass<AZ::EntityId>(s_channelIndex) 
+            && dc.IsString(s_actionNameIndex))
         {
             AZ::EntityId channel(0);
-            dc.ReadArg(0, channel);
+            dc.ReadArg(s_channelIndex, channel);
             outData->m_channel = channel;
             const char* actionName = nullptr;
-            dc.ReadArg(1, actionName);
+            dc.ReadArg(s_actionNameIndex, actionName);
             outData->m_actionNameCrc = AZ_CRC(actionName);
             outData->m_payloadTypeId = AZ::Uuid::CreateNull();
-            AZ_Warning("GameplayNotificationId", false, "This constructor has been deprecated.  Please add the name of the type you wish to send/receive, example 'float'");
+            AZ::ScriptContext::FromNativeContext(dc.GetNativeContext())->Error(
+                AZ::ScriptContext::ErrorType::Warning, 
+                s_showCallStack,
+                "This constructor has been deprecated.  Please add the name of the type you wish to send/receive, example \"float\""
+            );
         }
-        else if (dc.GetNumArguments() == 3 && dc.IsClass<AZ::EntityId>(0) 
-            && (dc.IsString(1) || dc.IsClass<AZ::Crc32>(1))
-            && (dc.IsString(2) || dc.IsClass<AZ::Crc32>(2) || dc.IsClass<AZ::Uuid>(2)))
+        else if (dc.GetNumArguments() == s_verboseConstructorArgCount 
+            && dc.IsClass<AZ::EntityId>(s_channelIndex)
+            && (dc.IsString(s_actionNameIndex) || dc.IsClass<AZ::Crc32>(s_actionNameIndex))
+            && (dc.IsString(s_payloadTypeIndex) || dc.IsClass<AZ::Crc32>(s_payloadTypeIndex) || dc.IsClass<AZ::Uuid>(s_payloadTypeIndex)))
         {
-            dc.ReadArg(0, outData->m_channel);
-            if (dc.IsString(1))
+            dc.ReadArg(s_channelIndex, outData->m_channel);
+            if (dc.IsString(s_actionNameIndex))
             {
                 const char* actionName = nullptr;
-                dc.ReadArg(1, actionName);
+                dc.ReadArg(s_actionNameIndex, actionName);
                 outData->m_actionNameCrc = AZ_CRC(actionName);
             }
             else
             {
-                dc.ReadArg(1, outData->m_actionNameCrc);
+                dc.ReadArg(s_actionNameIndex, outData->m_actionNameCrc);
             }
 
-            if (dc.IsClass<AZ::Uuid>(2))
+            if (dc.IsClass<AZ::Uuid>(s_payloadTypeIndex))
             {
-                dc.ReadArg(2, outData->m_payloadTypeId);
+                dc.ReadArg(s_payloadTypeIndex, outData->m_payloadTypeId);
             }
             else
             {
+                AZ::BehaviorContext* behaviorContext = nullptr;
+                AZ::ComponentApplicationBus::BroadcastResult(behaviorContext, &AZ::ComponentApplicationBus::Events::GetBehaviorContext);
                 const char* payloadClassName = nullptr;
-                AZ::Crc32 payloadClassCrc;
-                if (dc.IsString(2))
+                if (dc.IsString(s_payloadTypeIndex))
                 {
-                    dc.ReadArg(2, payloadClassName);
-                    payloadClassCrc = AZ::Crc32(payloadClassName);
-                }
-                else
-                {
-                    dc.ReadArg(2, payloadClassCrc);
-                }
-
-                AZ::SerializeContext* serializeContext = nullptr;
-                AZ::ComponentApplicationBus::BroadcastResult(serializeContext, &AZ::ComponentApplicationBus::Events::GetSerializeContext);
-                AZStd::vector<AZ::Uuid> classIds = serializeContext->FindClassId(payloadClassCrc);
-                if (classIds.size() == 1)
-                {
-                    outData->m_payloadTypeId = classIds[0];
-                }
-                else
-                {
-                    AZStd::string errorClassName = payloadClassName ? payloadClassName : AZStd::to_string(payloadClassCrc);
-                    if (classIds.size() == 0)
+                    dc.ReadArg(s_payloadTypeIndex, payloadClassName);
+                    // Specifically handling float for gameplay event bus support.
+                    // LuaNumber is a double, so typeid(1) will return double, and fundamental numerics are not exposed to BehaviorContext.
+                    // This is case sensitive since it is possible to have float and Float and FlOaT, etc.
+                    if (strcmp(payloadClassName, "float") == 0)
                     {
-                        outData->m_payloadTypeId = AZ::Uuid::CreateNull();
-                        AZ_Warning("GameplayNotificationId", false, "No class found with key %s", errorClassName.c_str());
+                        outData->m_payloadTypeId = AZ::AzTypeInfo<float>::Uuid();
                     }
                     else
                     {
-                        outData->m_payloadTypeId = AZ::Uuid::CreateNull();
-                        AZStd::string errorOutput = AZStd::string::format("Too many classes with key %s.  You may need to create a Uiid via Uuid.CreateString() using one of the following uuids: ", errorClassName.c_str());
-                        for (AZ::Uuid classId : classIds)
+                        auto&& behaviorClassIterator = behaviorContext->m_classes.find(payloadClassName);
+                        if (behaviorClassIterator != behaviorContext->m_classes.end())
                         {
-                            errorOutput += AZStd::string::format("%s, ", classId.ToString<AZStd::string>().c_str());
+                            outData->m_payloadTypeId = behaviorClassIterator->second->m_typeId;
                         }
-                        AZ_Warning("GameplayNotificationId", false, errorOutput.c_str());
+                        else
+                        {
+                            AZ::ScriptContext::FromNativeContext(dc.GetNativeContext())->Error(
+                                AZ::ScriptContext::ErrorType::Warning,
+                                s_showCallStack,
+                                "Class \"%s\" not found in behavior context.  Ensure your type is reflected to behavior context or consider using typeid(type).",
+                                payloadClassName
+                            );
+                        }
+                    }
+                }
+                else
+                {
+                    AZ::Crc32 requestedCrc;
+                    dc.ReadArg(s_payloadTypeIndex, requestedCrc);
+                    AZ::ScriptContext::FromNativeContext(dc.GetNativeContext())->Error(
+                        AZ::ScriptContext::ErrorType::Warning, 
+                        s_showCallStack,
+                        "Constructing a GameplayNotificationId with a Crc32 for payload type is expensive. Consider using string name or typeid instead."
+                    );
+                    for (auto&& behaviorClassPair : behaviorContext->m_classes)
+                    {
+                        AZ::Crc32 currentBehaviorClassCrc = AZ::Crc32(behaviorClassPair.first.c_str());
+                        if (currentBehaviorClassCrc == requestedCrc)
+                        {
+                            outData->m_payloadTypeId = behaviorClassPair.second->m_typeId;
+                        }
                     }
                 }
             }
         }
         else
         {
-            AZ_Error("GameplayNotificationId", false, "The GameplayNotificationId takes 3 arguments: an entityId representing the channel, a string or crc representing the action's name, and a string or crc or uuid for the type");
+            AZ::ScriptContext::FromNativeContext(dc.GetNativeContext())->Error(
+                AZ::ScriptContext::ErrorType::Error, 
+                s_showCallStack,
+                "The GameplayNotificationId takes 3 arguments: an entityId representing the channel, a string or crc representing the action's name, and a string or uuid for the type"
+            );
         }
     }
 
-    void ReflectScriptableEvents::Reflect(AZ::BehaviorContext* behaviorContext)
+    void ReflectScriptableEvents::Reflect(AZ::ReflectContext* context)
     {
-        if (behaviorContext)
+        if (auto serializeContext = azrtti_cast<AZ::SerializeContext*>(context))
+        {
+            serializeContext->Class<AZ::GameplayNotificationId>()
+                ->Version(1)
+                ->Field("Channel", &AZ::GameplayNotificationId::m_channel)
+                ->Field("ActionName", &AZ::GameplayNotificationId::m_actionNameCrc)
+                ->Field("PayloadType", &AZ::GameplayNotificationId::m_payloadTypeId)
+            ;
+
+            serializeContext->Class<AZ::InputEventNotificationId>()
+                ->Version(1)
+                ->Field("LocalUserId", &AZ::InputEventNotificationId::m_localUserId)
+                ->Field("ActionName", &AZ::InputEventNotificationId::m_actionNameCrc)
+            ;
+        }
+
+        ShapeComponentConfig::Reflect(context);
+
+        if (auto behaviorContext = azrtti_cast<AZ::BehaviorContext*>(context))
         {
             behaviorContext->Class<AZ::GameplayNotificationId>("GameplayNotificationId")
+                ->Attribute(AZ::Script::Attributes::Deprecated, true)
                 ->Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)
                 ->Constructor<AZ::EntityId, AZ::Crc32>()
                     ->Attribute(AZ::Script::Attributes::Storage, AZ::Script::Attributes::StorageType::Value)
@@ -232,7 +280,7 @@ namespace LmbrCentral
                     ->Attribute(AZ::Script::Attributes::Storage, AZ::Script::Attributes::StorageType::Value)
                     ->Attribute(AZ::Script::Attributes::ConstructorOverride, &InputEventNonIntrusiveConstructor)
                 ->Property("actionNameCrc", BehaviorValueProperty(&AZ::InputEventNotificationId::m_actionNameCrc))
-                ->Property("profileCrc", BehaviorValueProperty(&AZ::InputEventNotificationId::m_profileIdCrc))
+                ->Property("localUserId", BehaviorValueProperty(&AZ::InputEventNotificationId::m_localUserId))
                 ->Method("ToString", &AZ::InputEventNotificationId::ToString)
                     ->Attribute(AZ::Script::Attributes::Operator, AZ::Script::Attributes::OperatorType::ToString)
                 ->Method("Equal", &AZ::InputEventNotificationId::operator==)
@@ -244,34 +292,35 @@ namespace LmbrCentral
                 ;
 
             behaviorContext->EBus<AZ::GameplayNotificationBus>("GameplayNotificationBus")
-                ->Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)
+                ->Attribute(AZ::Script::Attributes::Deprecated, true)
+                ->Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::List)
                 ->Handler<BehaviorGameplayNotificationBusHandler>()
                 ->Event("OnEventBegin", &AZ::GameplayNotificationBus::Events::OnEventBegin)
                 ->Event("OnEventUpdating", &AZ::GameplayNotificationBus::Events::OnEventUpdating)
                 ->Event("OnEventEnd", &AZ::GameplayNotificationBus::Events::OnEventEnd);
 
             behaviorContext->Class<AxisWrapper>("AxisType")
-                ->Constant("XPositive", BehaviorConstant(AzFramework::Axis::XPositive))
-                ->Constant("XNegative", BehaviorConstant(AzFramework::Axis::XNegative))
-                ->Constant("YPositive", BehaviorConstant(AzFramework::Axis::YPositive))
-                ->Constant("YNegative", BehaviorConstant(AzFramework::Axis::YNegative))
-                ->Constant("ZPositive", BehaviorConstant(AzFramework::Axis::ZPositive))
-                ->Constant("ZNegative", BehaviorConstant(AzFramework::Axis::ZNegative));
+                ->Constant("XPositive", BehaviorConstant(AZ::Transform::Axis::XPositive))
+                ->Constant("XNegative", BehaviorConstant(AZ::Transform::Axis::XNegative))
+                ->Constant("YPositive", BehaviorConstant(AZ::Transform::Axis::YPositive))
+                ->Constant("YNegative", BehaviorConstant(AZ::Transform::Axis::YNegative))
+                ->Constant("ZPositive", BehaviorConstant(AZ::Transform::Axis::ZPositive))
+                ->Constant("ZNegative", BehaviorConstant(AZ::Transform::Axis::ZNegative));
 
             behaviorContext->Class<MathUtils>("MathUtils")
-                ->Method("ConvertTransformToEulerDegrees", &AzFramework::ConvertTransformToEulerDegrees)
-                ->Method("ConvertTransformToEulerRadians", &AzFramework::ConvertTransformToEulerRadians)
+                ->Method("ConvertTransformToEulerDegrees", &AZ::ConvertTransformToEulerDegrees)
+                ->Method("ConvertTransformToEulerRadians", &AZ::ConvertTransformToEulerRadians)
                     ->Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::All)
-                ->Method("ConvertEulerDegreesToTransform", &AzFramework::ConvertEulerDegreesToTransform)
+                ->Method("ConvertEulerDegreesToTransform", &AZ::ConvertEulerDegreesToTransform)
                     ->Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::All)
-                ->Method("ConvertEulerDegreesToTransformPrecise", &AzFramework::ConvertEulerDegreesToTransformPrecise)
-                ->Method("ConvertQuaternionToEulerDegrees", &AzFramework::ConvertQuaternionToEulerDegrees)
-                ->Method("ConvertQuaternionToEulerRadians", &AzFramework::ConvertQuaternionToEulerRadians)
+                ->Method("ConvertEulerDegreesToTransformPrecise", &AZ::ConvertEulerDegreesToTransformPrecise)
+                ->Method("ConvertQuaternionToEulerDegrees", &AZ::ConvertQuaternionToEulerDegrees)
+                ->Method("ConvertQuaternionToEulerRadians", &AZ::ConvertQuaternionToEulerRadians)
                     ->Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::All)
-                ->Method("ConvertEulerRadiansToQuaternion", &AzFramework::ConvertEulerRadiansToQuaternion)
+                ->Method("ConvertEulerRadiansToQuaternion", &AZ::ConvertEulerRadiansToQuaternion)
                     ->Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::All)
-                ->Method("ConvertEulerDegreesToQuaternion", &AzFramework::ConvertEulerDegreesToQuaternion)
-                ->Method("CreateLookAt", &AzFramework::CreateLookAt);
+                ->Method("ConvertEulerDegreesToQuaternion", &AZ::ConvertEulerDegreesToQuaternion)
+                ->Method("CreateLookAt", &AZ::Transform::CreateLookAt);
 
             ShapeComponentGeneric::Reflect(behaviorContext);
 

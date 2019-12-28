@@ -14,6 +14,7 @@
 #include <AzQtComponents/Components/Titlebar.h>
 #include <AzQtComponents/Components/WindowDecorationWrapper.h>
 #include <AzQtComponents/Components/EditorProxyStyle.h>
+#include <AzQtComponents/Components/TitleBarOverdrawHandler.h>
 
 #include <QMainWindow>
 #include <QMouseEvent>
@@ -21,6 +22,8 @@
 #include <QPainter>
 #include <QGuiApplication>
 #include <QWindow>
+#include <QStylePainter>
+#include <QStyleOptionFrame>
 
 #if QT_VERSION < QT_VERSION_CHECK(5, 6, 1) && defined(Q_OS_WIN32)
 #include <QtGui/private/qwindow_p.h>
@@ -28,25 +31,49 @@
 
 namespace AzQtComponents
 {
+    static bool forceSkipTitleBarOverdraw()
+    {
+#ifdef Q_OS_WIN
+        static bool isWin10 = QSysInfo::windowsVersion() == QSysInfo::WV_WINDOWS10;
+        if (!isWin10)
+        {
+            // non-win10 never uses title bar overdraw
+            return true;
+        }
+
+        return false;
+#else
+        // Non-windows never uses title bar overdraw
+        return true;
+#endif
+    }
+
     StyledDockWidget::StyledDockWidget(const QString& name, QWidget* parent)
+        : StyledDockWidget(name, false, parent)
+    {
+    }
+
+    StyledDockWidget::StyledDockWidget(const QString& name, bool skipTitleBarDrawing, QWidget* parent)
         : QDockWidget(name, parent)
+        , m_skipTitleBarOverdraw(skipTitleBarDrawing || forceSkipTitleBarOverdraw())
     {
         init();
     }
 
     StyledDockWidget::StyledDockWidget(QWidget* parent)
-        : QDockWidget(parent)
+        : StyledDockWidget(QString(), parent)
     {
-        init();
     }
 
     void StyledDockWidget::init()
     {
-        EditorProxyStyle::addTitleBarOverdrawWidget(this);
+        if (doesTitleBarOverdraw())
+        {
+            TitleBarOverdrawHandler::getInstance()->addTitleBarOverdrawWidget(this);
+        }
+
         connect(this, &QDockWidget::topLevelChanged, this, &StyledDockWidget::onFloatingChanged);
         createCustomTitleBar();
-        // Workaround intel driver bug visible when a QOpenGLWidget is used with custom window margins
-        setAttribute(Qt::WA_NativeWindow);
     }
 
     StyledDockWidget::~StyledDockWidget()
@@ -94,6 +121,7 @@ namespace AzQtComponents
             return;
         }
 
+        Q_EMIT aboutToClose();
         QDockWidget::closeEvent(event);
     }
 
@@ -105,13 +133,10 @@ namespace AzQtComponents
             titleBar->setDrawSideBorders(!isFloating());
         }
 
-#ifdef Q_OS_WIN32
         if (isFloating())
         {
             fixFramelessFlags();
         }
-
-#endif
 
         QDockWidget::showEvent(event);
     }
@@ -146,18 +171,31 @@ namespace AzQtComponents
 
     void StyledDockWidget::paintEvent(QPaintEvent*)
     {
-        if (isFloating() && customTitleBar())
-        {
-            QPainter p(this);
-            drawFrame(p, rect(), /*drawTop=*/ false);
-        }
+        // By default QDockWidget::paintEvent only draws the frame if the dock widget doesn't have
+        // a custom title bar and does not have native window decorations. As a result, QDockWidget
+        // cannot be styled using QSS when floating.
+        // UI 1.0 paint code moved to EditorProxyStyle::drawPrimitive.
+        QStylePainter p(this);
+        QStyleOptionFrame framOpt;
+        framOpt.init(this);
+        p.drawPrimitive(QStyle::PE_FrameDockWidget, framOpt);
+    }
+
+    bool StyledDockWidget::doesTitleBarOverdraw() const
+    {
+        return !m_skipTitleBarOverdraw;
+    }
+
+    bool StyledDockWidget::skipTitleBarOverdraw() const
+    {
+        return m_skipTitleBarOverdraw;
     }
 
     void StyledDockWidget::fixFramelessFlags()
     {
         // This ensures we have native frames (but no native titlebar)
         QWindow* w = windowHandle();
-        if (w && (w->flags() & Qt::FramelessWindowHint) && isFloating())
+        if (doesTitleBarOverdraw() && w && (w->flags() & Qt::FramelessWindowHint) && isFloating())
         {
             w->setFlags(WindowDecorationWrapper::specialFlagsForOS() | Qt::Tool);
         }
@@ -225,7 +263,7 @@ namespace AzQtComponents
         p.restore();
     }
 
-    TitleBar* StyledDockWidget::customTitleBar()
+    TitleBar* StyledDockWidget::customTitleBar() const
     {
         return qobject_cast<TitleBar*>(titleBarWidget());
     }

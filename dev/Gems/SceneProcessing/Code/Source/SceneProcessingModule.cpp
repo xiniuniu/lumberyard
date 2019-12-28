@@ -13,9 +13,12 @@
 #include <AzCore/Module/Module.h>
 #include <AzCore/Module/DynamicModuleHandle.h>
 #include <AzFramework/Metrics/MetricsPlainTextNameRegistration.h>
+#include <SceneBuilder/SceneBuilderComponent.h>
+#include <SceneBuilder/SceneSerializationHandler.h>
 #include <Config/Components/SceneProcessingConfigSystemComponent.h>
 #include <Config/Components/SoftNameBehavior.h>
-#include <Config/Widgets/GraphTypeSelector.h>
+#include <Exporting/Components/TangentGenerateComponent.h>
+#include <Exporting/Components/TangentPreExportComponent.h>
 
 namespace AZ
 {
@@ -42,9 +45,11 @@ namespace AZ
                 {
                     SceneProcessingConfig::SceneProcessingConfigSystemComponent::CreateDescriptor(),
                     SceneProcessingConfig::SoftNameBehavior::CreateDescriptor(),
+                    SceneBuilder::BuilderPluginComponent::CreateDescriptor(),
+                    SceneBuilder::SceneSerializationHandler::CreateDescriptor(),
+                    AZ::SceneExportingComponents::TangentPreExportComponent::CreateDescriptor(),
+                    AZ::SceneExportingComponents::TangentGenerateComponent::CreateDescriptor()
                 });
-
-                SceneProcessingConfig::GraphTypeSelector::Register();
 
                 // This is an internal Amazon gem, so register it's components for metrics tracking, otherwise the name of the component won't get sent back.
                 // IF YOU ARE A THIRDPARTY WRITING A GEM, DO NOT REGISTER YOUR COMPONENTS WITH EditorMetricsComponentRegistrationBus
@@ -59,8 +64,6 @@ namespace AZ
 
             ~SceneProcessingModule()
             {
-                SceneProcessingConfig::GraphTypeSelector::Unregister();
-
                 UnloadModule(s_fbxSceneBuilderModule);
                 UnloadModule(s_sceneDataModule);
                 UnloadModule(s_sceneCoreModule);

@@ -18,6 +18,8 @@
 
 #include "IDefragAllocator.h"
 
+#include "System.h"
+
 #ifndef _RELEASE
 #define CDBA_DEBUG
 #endif
@@ -170,6 +172,10 @@ public:
     void DumpState(const char* filename);
     void RestoreState(const char* filename);
 #endif
+
+    // allocatorDisplayOffset will offset the statistics for the allocator depending on the index.
+    // 0 means no offset and default location, 1 means bar will be rendered above the 0th bar and stats to the right of the 0th stats
+    void DisplayMemoryUsage(const char* title, unsigned int allocatorDisplayOffset = 0);
 
     bool AppendSegment(UINT_PTR capacity);
     void UnAppendSegment();
@@ -619,7 +625,7 @@ private:
     {
         UINT_PTR dstChunkBase = dstChunk.ptr;
         UINT_PTR dstChunkEnd = dstChunkBase + dstChunk.attr.GetSize();
-#if defined(WIN64) || defined(DURANGO)
+#if AZ_LEGACY_CRYSYSTEM_TRAIT_USE_BIT64
         UINT_PTR allocAlign = BIT64(srcChunk.logAlign);
 #else
         UINT_PTR allocAlign = BIT(srcChunk.logAlign);

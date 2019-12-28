@@ -15,9 +15,9 @@
 
 #include <Components/Connections/DataConnections/DataConnectionVisualComponent.h>
 #include <Components/StylingComponent.h>
+#include <Source/Components/Connections/ConnectionLayerControllerComponent.h>
 #include <GraphCanvas/Components/Slots/SlotBus.h>
 #include <GraphCanvas/Components/Slots/Data/DataSlotBus.h>
-#include <GraphCanvas/Components/Nodes/Variable/VariableNodeBus.h>
 
 namespace GraphCanvas
 {
@@ -36,43 +36,38 @@ namespace GraphCanvas
         }
     }
 
-    AZ::Entity* DataConnectionComponent::CreateDataConnection(const Endpoint& sourceEndpoint, const Endpoint& targetEndpoint, const AZStd::string& substyle)
+    AZ::Entity* DataConnectionComponent::CreateDataConnection(const Endpoint& sourceEndpoint, const Endpoint& targetEndpoint, bool createModelConnection, const AZStd::string& substyle)
     {
         // Create this Connection's entity.
         AZ::Entity* entity = aznew AZ::Entity("Connection");
 
-        entity->CreateComponent<DataConnectionComponent>(sourceEndpoint, targetEndpoint);
+        entity->CreateComponent<DataConnectionComponent>(sourceEndpoint, targetEndpoint, createModelConnection);
         entity->CreateComponent<StylingComponent>(Styling::Elements::Connection, AZ::EntityId(), substyle);
         entity->CreateComponent<DataConnectionVisualComponent>();
-
-        entity->Init();
-        entity->Activate();
+        entity->CreateComponent<ConnectionLayerControllerComponent>();
 
         return entity;
     }
     
-    DataConnectionComponent::DataConnectionComponent(const Endpoint& sourceEndpoint, const Endpoint& targetEndpoint)
-        : ConnectionComponent(sourceEndpoint, targetEndpoint)
+    DataConnectionComponent::DataConnectionComponent(const Endpoint& sourceEndpoint, const Endpoint& targetEndpoint, bool createModelConnection)
+        : ConnectionComponent(sourceEndpoint, targetEndpoint, createModelConnection)
     {
     }
 
     void DataConnectionComponent::Activate()
     {
         ConnectionComponent::Activate();
-        
-        SceneMemberNotificationBus::Handler::BusConnect(GetEntityId());
     }
 
     void DataConnectionComponent::Deactivate()
     {
-        SceneMemberNotificationBus::Handler::BusDisconnect();
-
         ConnectionComponent::Deactivate();
     }
     
-    bool DataConnectionComponent::OnConnectionMoveComplete(const QPointF& scenePos, const QPoint& screenPos)
+    ConnectionComponent::ConnectionMoveResult DataConnectionComponent::OnConnectionMoveComplete(const QPointF& scenePos, const QPoint& screenPos)
     {
-        bool retVal = false;
+        ConnectionMoveResult retVal = ConnectionMoveResult::DeleteConnection;
+
         // If we are missing an endpoint, default to the normal behavior
         if (!m_sourceEndpoint.IsValid() || !m_targetEndpoint.IsValid())
         {
@@ -103,6 +98,10 @@ namespace GraphCanvas
             else if (sourceSlotType == DataSlotType::Value)
             {
                 DataSlotRequestBus::EventResult(converted, GetTargetSlotId(), &DataSlotRequests::ConvertToValue);
+            }
+            else if (sourceSlotType == DataSlotType::Container)
+            {
+                retVal = ConnectionComponent::OnConnectionMoveComplete(scenePos, screenPos);
             }
 
             if (converted)

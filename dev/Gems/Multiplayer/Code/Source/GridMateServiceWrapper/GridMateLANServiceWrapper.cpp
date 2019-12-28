@@ -9,13 +9,14 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "Multiplayer_precompiled.h"
 
 #include <GridMate/Session/LANSession.h>
 
 #include "Multiplayer/GridMateServiceWrapper/GridMateLANServiceWrapper.h"
 
 #include "Multiplayer/MultiplayerUtils.h"
+#include <Multiplayer_Traits_Platform.h>
 
 namespace Multiplayer
 {
@@ -61,6 +62,10 @@ namespace Multiplayer
         searchParams.m_version = params.m_version;
         searchParams.m_familyType = static_cast<GridMate::Driver::BSDSocketFamilyType>(params.FetchValueOrDefault<int>("gm_ipversion", GridMate::Driver::BSDSocketFamilyType::BSD_AF_INET));
 
+#if AZ_TRAIT_MULTIPLAYER_ASSIGN_NETWORK_FAMILY
+        AZ_Error(AZ_TRAIT_MULTIPLAYER_SESSION_NAME, searchParams.m_familyType == AZ_TRAIT_MULTIPLAYER_ADDRESS_TYPE, AZ_TRAIT_MULTIPLAYER_DRIVER_MESSAGE);
+        searchParams.m_familyType = AZ_TRAIT_MULTIPLAYER_ADDRESS_TYPE;
+#endif
 
         EBUS_EVENT_ID_RESULT(retVal, gridMate, GridMate::LANSessionServiceBus, StartGridSearch, searchParams);
         

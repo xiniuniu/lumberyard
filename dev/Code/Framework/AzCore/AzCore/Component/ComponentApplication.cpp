@@ -9,24 +9,31 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#ifndef AZ_UNITY_BUILD
 
-#include <AzCore/PlatformIncl.h>
+#include <AzCore/AzCoreModule.h>
 
 #include <AzCore/Casting/numeric_cast.h>
+#include <AzCore/Casting/lossy_cast.h>
 
 #include <AzCore/Component/ComponentApplication.h>
 #include <AzCore/Component/TickBus.h>
 
 #include <AzCore/Memory/AllocationRecords.h>
 
-#include <AzCore/Serialization/SerializeContext.h>
+#include <AzCore/Memory/OverrunDetectionAllocator.h>
+#include <AzCore/Memory/AllocatorManager.h>
+
+#include <AzCore/Memory/MallocSchema.h>
+
 #include <AzCore/Serialization/EditContext.h>
 #include <AzCore/Serialization/ObjectStream.h>
+#include <AzCore/Serialization/Utils.h>
+
+#include <AzCore/Serialization/Json/BaseJsonSerializer.h>
+#include <AzCore/Serialization/Json/RegistrationContext.h>
 
 #include <AzCore/RTTI/AttributeReader.h>
 #include <AzCore/RTTI/BehaviorContext.h>
-#include <AzCore/RTTI/AzStdReflectionComponent.h>
 
 #include <AzCore/Module/Module.h>
 #include <AzCore/Module/ModuleManager.h>
@@ -39,23 +46,15 @@
 #include <AzCore/Debug/TraceMessagesDriller.h>
 #include <AzCore/Debug/ProfilerDriller.h>
 #include <AzCore/Debug/EventTraceDriller.h>
+#include <AzCore/Debug/Profiler.h>
 
-#include <AzCore/Asset/AssetManagerComponent.h>
-#include <AzCore/UserSettings/UserSettingsComponent.h>
-#include <AzCore/Memory/MemoryComponent.h>
-#include <AzCore/Debug/FrameProfilerComponent.h>
-#include <AzCore/IO/StreamerComponent.h>
-#include <AzCore/Jobs/JobManagerComponent.h>
-#include <AzCore/Serialization/ObjectStreamComponent.h>
-#include <AzCore/Script/ScriptSystemComponent.h>
-
-#include <AzCore/Slice/SliceComponent.h>
-#include <AzCore/Slice/SliceSystemComponent.h>
-#include <AzCore/Slice/SliceMetadataInfoComponent.h>
+#include <AzCore/Script/ScriptSystemBus.h>
 
 #include <AzCore/Math/PolygonPrism.h>
 #include <AzCore/Math/Spline.h>
 #include <AzCore/Math/VertexContainer.h>
+
+#include <AzCore/UserSettings/UserSettingsComponent.h>
 
 #include <AzCore/XML/rapidxml.h>
 
@@ -63,12 +62,39 @@
 #include <AzCore/Debug/StackTracer.h>
 #endif // defined(AZ_ENABLE_DEBUG_TOOLS)
 
-#if defined(AZ_PLATFORM_APPLE)
-#   include <mach-o/dyld.h>
-#endif
+#include <AzCore/Module/Environment.h>
 
 namespace AZ
 {
+    // Forward declare platform specific functions ...
+    namespace Platform
+    {
+        void GetExePath(char* exeDirectory, size_t exeDirectorySize, bool& pathIncludesExe);
+    }
+
+    static EnvironmentVariable<OverrunDetectionSchema> s_overrunDetectionSchema;
+
+    static EnvironmentVariable<MallocSchema> s_mallocSchema;
+
+    static EnvironmentVariable<ReflectionEnvironment> s_reflectionEnvironment;
+    static const char* s_reflectionEnvironmentName = "ReflectionEnvironment";
+
+    void ReflectionEnvironment::Init()
+    {
+        s_reflectionEnvironment = AZ::Environment::CreateVariable<ReflectionEnvironment>(s_reflectionEnvironmentName);
+    }
+
+    void ReflectionEnvironment::Reset()
+    {
+        s_reflectionEnvironment.Reset();
+    }
+
+    ReflectionManager* ReflectionEnvironment::GetReflectionManager()
+    {
+        AZ::EnvironmentVariable<ReflectionEnvironment> environment = AZ::Environment::FindVariable<ReflectionEnvironment>(s_reflectionEnvironmentName);
+        return environment ? environment->Get() : nullptr;
+    }
+
     //=========================================================================
     // ComponentApplication::Descriptor
     // [5/30/2012]
@@ -93,9 +119,9 @@ namespace AZ
         m_reservedDebug = 0;
         m_recordingMode = Debug::AllocationRecords::RECORD_STACK_IF_NO_FILE_LINE;
         m_stackRecordLevels = 5;
-        m_enableDrilling = true;
-
-        m_x360IsPhysicalMemory = false; // ACCEPTED_USE
+        m_enableDrilling = false;
+        m_useOverrunDetection = false;
+        m_useMalloc = false;
     }
 
     bool AppDescriptorConverter(SerializeContext& serialize, SerializeContext::DataElementNode& node)
@@ -139,12 +165,26 @@ namespace AZ
         ComponentApplication::Descriptor::Reflect(serializeContext, app);
     }
 
+    void ComponentApplication::Descriptor::AllocatorRemapping::Reflect(ReflectContext* context, ComponentApplication* app)
+    {
+        (void)app;
+
+        if (auto serializeContext = azrtti_cast<SerializeContext*>(context))
+        {
+            serializeContext->Class<AllocatorRemapping>()
+                ->Field("from", &AllocatorRemapping::m_from)
+                ->Field("to", &AllocatorRemapping::m_to)
+                ;
+        }
+    }
+
     //=========================================================================
     // Reflect
     //=========================================================================
     void  ComponentApplication::Descriptor::Reflect(ReflectContext* context, ComponentApplication* app)
     {
         DynamicModuleDescriptor::Reflect(context);
+        AllocatorRemapping::Reflect(context, app);
 
         if (auto serializeContext = azrtti_cast<SerializeContext*>(context))
         {
@@ -168,8 +208,10 @@ namespace AZ
                 ->Field("reservedOS", &Descriptor::m_reservedOS)
                 ->Field("reservedDebug", &Descriptor::m_reservedDebug)
                 ->Field("enableDrilling", &Descriptor::m_enableDrilling)
+                ->Field("useOverrunDetection", &Descriptor::m_useOverrunDetection)
+                ->Field("useMalloc", &Descriptor::m_useMalloc)
+                ->Field("allocatorRemappings", &Descriptor::m_allocatorRemappings)
                 ->Field("modules", &Descriptor::m_modules)
-                ->Field("x360PhysicalMemory", &Descriptor::m_x360IsPhysicalMemory) // ACCEPTED_USE
                 ;
 
             if (EditContext* ec = serializeContext->GetEditContext())
@@ -205,7 +247,8 @@ namespace AZ
                     ->DataElement(Edit::UIHandlers::SpinBox, &Descriptor::m_reservedOS, "OS reserved memory", "System memory reserved for OS (used only when 'Allocate all memory at startup' is true)")
                     ->DataElement(Edit::UIHandlers::SpinBox, &Descriptor::m_reservedDebug, "Memory reserved for debugger", "System memory reserved for Debug allocator, like memory tracking (used only when 'Allocate all memory at startup' is true)")
                     ->DataElement(Edit::UIHandlers::CheckBox, &Descriptor::m_enableDrilling, "Enable Driller", "Enable Drilling support for the application (ignored in Release builds)")
-                    ->DataElement(Edit::UIHandlers::CheckBox, &Descriptor::m_x360IsPhysicalMemory, "Physical memory", "Used only on X360 to indicate is we want to allocate physical memory") // ACCEPTED_USE
+                    ->DataElement(Edit::UIHandlers::CheckBox, &Descriptor::m_useOverrunDetection, "Use Overrun Detection", "Use the overrun detection memory manager (only available on some platforms, ignored in Release builds)")
+                    ->DataElement(Edit::UIHandlers::CheckBox, &Descriptor::m_useMalloc, "Use Malloc", "Use malloc for memory allocations (for memory debugging only, ignored in Release builds)")
                     ;
             }
         }
@@ -238,17 +281,13 @@ namespace AZ
         m_isStarted = false;
         m_isSystemAllocatorOwner = false;
         m_isOSAllocatorOwner = false;
-        m_memoryBlock = nullptr;
+        m_fixedMemoryBlock = nullptr;
         m_osAllocator = nullptr;
-        m_serializeContext = nullptr;
-        m_behaviorContext = nullptr;
         m_currentTime = AZStd::chrono::system_clock::time_point::max();
         m_drillerManager = nullptr;
 
         m_deltaTime = 0.f;
         m_exeDirectory[0] = '\0';
-
-        TickBus::AllowFunctionQueuing(true);
     }
 
     //=========================================================================
@@ -302,8 +341,9 @@ namespace AZ
 
         AZ::SystemAllocator::Descriptor desc;
 
-        // Create temporary system allocator
-        bool isExistingSystemAllocator = AZ::AllocatorInstance<AZ::SystemAllocator>::IsReady();
+        // Create temporary system allocator to initialize the serialization context, after that the SystemAllocator
+        // will be created by CreateSystemAllocator
+        const bool isExistingSystemAllocator = AZ::AllocatorInstance<AZ::SystemAllocator>::IsReady();
 
         if (!isExistingSystemAllocator)
         {
@@ -312,9 +352,9 @@ namespace AZ
                 TemporaryBlockSize = 10 *  1024 * 1024
             };
 
-            desc.m_heap.m_numMemoryBlocks = 1;
-            desc.m_heap.m_memoryBlocksByteSize[0] = TemporaryBlockSize;
-            desc.m_heap.m_memoryBlocks[0] = m_osAllocator->Allocate(desc.m_heap.m_memoryBlocksByteSize[0], desc.m_heap.m_memoryBlockAlignment);
+            desc.m_heap.m_numFixedMemoryBlocks = 1;
+            desc.m_heap.m_fixedMemoryBlocksByteSize[0] = TemporaryBlockSize;
+            desc.m_heap.m_fixedMemoryBlocks[0] = m_osAllocator->Allocate(desc.m_heap.m_fixedMemoryBlocksByteSize[0], desc.m_heap.m_memoryBlockAlignment);
             AZ::AllocatorInstance<AZ::SystemAllocator>::Create(desc);
         }
 
@@ -322,20 +362,14 @@ namespace AZ
         {
             SerializeContext sc;
             Descriptor::Reflect(&sc, this);
-            ObjectStream::LoadBlocking(&stream, sc, nullptr, ObjectStream::FilterDescriptor(0, ObjectStream::FILTERFLAG_IGNORE_UNKNOWN_CLASSES));
+            AZ::Utils::LoadObjectFromStreamInPlace(stream, m_descriptor, &sc, ObjectStream::FilterDescriptor(&AZ::Data::AssetFilterNoAssetLoading, ObjectStream::FILTERFLAG_IGNORE_UNKNOWN_CLASSES));
         }
 
         // Destroy the temp system allocator
         if (!isExistingSystemAllocator)
         {
             AZ::AllocatorInstance<AZ::SystemAllocator>::Destroy();
-            m_osAllocator->DeAllocate(desc.m_heap.m_memoryBlocks[0], desc.m_heap.m_memoryBlocksByteSize[0], desc.m_heap.m_memoryBlockAlignment);
-        }
-        else
-        {
-            AZ_Assert(m_descriptor.m_useExistingAllocator,
-                "%s has useExistingAllocator set to false, but an existing system allocator was found! If you will create the system allocator yourself then set useExistingAllocator to true!",
-                applicationDescriptorFile);
+            m_osAllocator->DeAllocate(desc.m_heap.m_fixedMemoryBlocks[0], desc.m_heap.m_fixedMemoryBlocksByteSize[0], desc.m_heap.m_memoryBlockAlignment);
         }
 
         CreateCommon();
@@ -345,7 +379,7 @@ namespace AZ
         stream.Seek(0, IO::GenericStream::ST_SEEK_BEGIN);
 
         AZ::Entity* systemEntity = nullptr;
-        ObjectStream::LoadBlocking(&stream, *m_serializeContext, [this, &systemEntity](void* classPtr, const AZ::Uuid& classId, const AZ::SerializeContext* sc) {
+        ObjectStream::LoadBlocking(&stream, *GetSerializeContext(), [this, &systemEntity](void* classPtr, const AZ::Uuid& classId, const AZ::SerializeContext* sc) {
             if (ModuleEntity* moduleEntity = sc->Cast<ModuleEntity*>(classPtr, classId))
             {
                 m_moduleManager->AddModuleEntity(moduleEntity);
@@ -363,7 +397,9 @@ namespace AZ
                 classId.ToString(idStr, AZ_ARRAY_SIZE(idStr));
                 AZ_Error("ComponentApplication", false, "Unknown class type %p %s", classPtr, idStr);
             }
-        });
+        }, 
+            ObjectStream::FilterDescriptor(&AZ::Data::AssetFilterNoAssetLoading, ObjectStream::FILTERFLAG_IGNORE_UNKNOWN_CLASSES));
+        // we cannot load assets during system bootstrap since we haven't even got the catalog yet.  But we can definitely read their IDs.
 
         AZ_Assert(systemEntity, "SystemEntity failed to load!");
         cfg.Close();
@@ -381,7 +417,6 @@ namespace AZ
         const StartupParameters& startupParameters)
     {
         AZ_Assert(!m_isStarted, "Component application already started!");
-
 
         if (startupParameters.m_allocator == nullptr)
         {
@@ -418,13 +453,14 @@ namespace AZ
 
         CreateSystemAllocator();
 
+        CreateReflectionManager();
+
+        // Call this and child class's reflects
+        ReflectionEnvironment::GetReflectionManager()->Reflect(azrtti_typeid(this), AZStd::bind(&ComponentApplication::Reflect, this, AZStd::placeholders::_1));
+
         RegisterCoreComponents();
-
-        CreateSerializeContext();
-        Reflect(m_serializeContext);
-
-        CreateBehaviorContext();
-        Reflect(m_behaviorContext);
+        TickBus::AllowFunctionQueuing(true);
+        SystemTickBus::AllowFunctionQueuing(true);
 
         ComponentApplicationBus::Handler::BusConnect();
 
@@ -443,6 +479,10 @@ namespace AZ
         // Setup the modules list
         m_moduleManager = AZStd::make_unique<ModuleManager>();
         m_moduleManager->SetSystemComponentTags(m_startupParameters.m_systemComponentTags);
+
+        // Load static modules
+        ModuleManagerRequestBus::Broadcast(&ModuleManagerRequests::LoadStaticModules, AZStd::bind(&ComponentApplication::CreateStaticModules, this, AZStd::placeholders::_1), ModuleInitializationSteps::RegisterComponentDescriptors);
+
         // Load dynamic modules if appropriate for the platform
         if (m_startupParameters.m_loadDynamicModules)
         {
@@ -456,11 +496,6 @@ namespace AZ
             }
 #endif
         }
-        // Load static modules if provided by the platform
-        if (m_startupParameters.m_createStaticModulesCallback)
-        {
-            ModuleManagerRequestBus::Broadcast(&ModuleManagerRequests::LoadStaticModules, m_startupParameters.m_createStaticModulesCallback, ModuleInitializationSteps::RegisterComponentDescriptors);
-        }
     }
 
     //=========================================================================
@@ -470,8 +505,15 @@ namespace AZ
     void ComponentApplication::Destroy()
     {
         // Finish all queued work
+        AZ::SystemTickBus::Broadcast(&AZ::SystemTickBus::Events::OnSystemTick);
+        
         TickBus::ExecuteQueuedEvents();
         TickBus::AllowFunctionQueuing(false);
+        
+        SystemTickBus::ExecuteQueuedEvents();
+        SystemTickBus::AllowFunctionQueuing(false);
+
+        AZ::UserSettingsComponentRequestBus::Broadcast(&AZ::UserSettingsComponentRequests::Finalize);
 
         // deactivate all entities
         Entity* systemEntity = nullptr;
@@ -495,8 +537,9 @@ namespace AZ
         // This problem could also be solved by using ref-counting for reflected data.
         ScriptSystemRequestBus::Broadcast(&ScriptSystemRequests::GarbageCollect);
 
-        // Uninit and unload any dynamic modules.
-        m_moduleManager.reset();
+        // Deactivate all module entities before the System Entity is deactivated, but do not unload the modules as
+        // components on the SystemEntity are allowed to reference module data at this point.
+        m_moduleManager->DeactivateEntities();
 
         // deactivate all system components
         if (systemEntity)
@@ -505,16 +548,20 @@ namespace AZ
             {
                 systemEntity->Deactivate();
             }
-
-            delete systemEntity;
         }
 
         m_entities.clear();
         m_entities.rehash(0); // force free all memory
 
+        DestroyReflectionManager();
 
-        DestroyBehaviorContext();
-        DestroySerializeContext();
+        // Uninit and unload any dynamic modules.
+        m_moduleManager.reset();
+
+        if (systemEntity)
+        {
+            delete systemEntity;
+        }
 
         // delete all descriptors left for application clean up
         EBUS_EVENT(ComponentDescriptorBus, ReleaseDescriptor);
@@ -535,20 +582,19 @@ namespace AZ
         // kill the system allocator if we created it
         if (m_isSystemAllocatorOwner)
         {
+            AZ::Debug::Trace::Instance().Destroy();
             AZ::AllocatorInstance<AZ::SystemAllocator>::Destroy();
 
+            if (m_fixedMemoryBlock)
             {
-                if (m_memoryBlock != nullptr)
-                {
-                    m_osAllocator->DeAllocate(m_memoryBlock);
-                }
+                m_osAllocator->DeAllocate(m_fixedMemoryBlock);
             }
-            m_memoryBlock = nullptr;
+            m_fixedMemoryBlock = nullptr;
             m_isSystemAllocatorOwner = false;
         }
 
-        
-
+        s_overrunDetectionSchema.Reset();
+        s_mallocSchema.Reset();
         if (m_isOSAllocatorOwner)
         {
             AZ::AllocatorInstance<AZ::OSAllocator>::Destroy();
@@ -572,7 +618,7 @@ namespace AZ
     //=========================================================================
     void ComponentApplication::CreateSystemAllocator()
     {
-        if (m_descriptor.m_useExistingAllocator)
+        if (m_descriptor.m_useExistingAllocator || AZ::AllocatorInstance<AZ::SystemAllocator>::IsReady())
         {
             m_isSystemAllocatorOwner = false;
             AZ_Assert(AZ::AllocatorInstance<AZ::SystemAllocator>::IsReady(), "You must setup AZ::SystemAllocator instance, before you can call Create application with m_useExistingAllocator flag set to true");
@@ -583,7 +629,6 @@ namespace AZ
             AZ::SystemAllocator::Descriptor desc;
             desc.m_heap.m_pageSize = m_descriptor.m_pageSize;
             desc.m_heap.m_poolPageSize = m_descriptor.m_poolPageSize;
-            desc.m_heap.m_numMemoryBlocks = 1;
             if (m_descriptor.m_grabAllMemory)
             {
                 // grab all available memory
@@ -593,27 +638,27 @@ namespace AZ
                 AZ_Warning("Memory", false, "This platform is not supported for grabAllMemory flag! Provide a valid allocation size and set the m_grabAllMemory flag to false! Using default max memory size %llu!", availableOS);
                 AZ_Assert(availableOS > 0, "OS doesn't have any memory available!");
                 // compute total memory to grab
-                desc.m_heap.m_memoryBlocksByteSize[0] = static_cast<size_t>(availableOS - reservedOS - reservedDbg);
+                desc.m_heap.m_fixedMemoryBlocksByteSize[0] = static_cast<size_t>(availableOS - reservedOS - reservedDbg);
                 // memory block MUST be a multiple of pages
-                desc.m_heap.m_memoryBlocksByteSize[0] = AZ::SizeAlignDown(desc.m_heap.m_memoryBlocksByteSize[0], m_descriptor.m_pageSize);
+                desc.m_heap.m_fixedMemoryBlocksByteSize[0] = AZ::SizeAlignDown(desc.m_heap.m_fixedMemoryBlocksByteSize[0], m_descriptor.m_pageSize);
             }
             else
             {
-                desc.m_heap.m_memoryBlocksByteSize[0] = static_cast<size_t>(m_descriptor.m_memoryBlocksByteSize);
+                desc.m_heap.m_fixedMemoryBlocksByteSize[0] = static_cast<size_t>(m_descriptor.m_memoryBlocksByteSize);
             }
 
+            if (desc.m_heap.m_fixedMemoryBlocksByteSize[0] > 0) // 0 means one demand memory which we support
             {
-                if (desc.m_heap.m_memoryBlocksByteSize[0] > 0) // 0 means one demand memory which we support
-                {
-                    m_memoryBlock = m_osAllocator->Allocate(desc.m_heap.m_memoryBlocksByteSize[0], m_descriptor.m_memoryBlockAlignment);
-                }
+                m_fixedMemoryBlock = m_osAllocator->Allocate(desc.m_heap.m_fixedMemoryBlocksByteSize[0], m_descriptor.m_memoryBlockAlignment);
+                desc.m_heap.m_fixedMemoryBlocks[0] = m_fixedMemoryBlock;
+                desc.m_heap.m_numFixedMemoryBlocks = 1;
             }
-
-            desc.m_heap.m_memoryBlocks[0] = m_memoryBlock;
             desc.m_allocationRecords = m_descriptor.m_allocationRecords;
             desc.m_stackRecordLevels = aznumeric_caster(m_descriptor.m_stackRecordLevels);
             AZ::AllocatorInstance<AZ::SystemAllocator>::Create(desc);
-            AZ::Debug::AllocationRecords* records = AllocatorInstance<SystemAllocator>::Get().GetRecords();
+            AZ::Debug::Trace::Instance().Init();
+
+            AZ::Debug::AllocationRecords* records = AllocatorInstance<SystemAllocator>::GetAllocator().GetRecords();
             if (records)
             {
                 records->SetMode(m_descriptor.m_recordingMode);
@@ -625,6 +670,37 @@ namespace AZ
 
             m_isSystemAllocatorOwner = true;
         }
+
+#ifndef RELEASE
+        if (m_descriptor.m_useOverrunDetection)
+        {
+            OverrunDetectionSchema::Descriptor overrunDesc(false); //
+            s_overrunDetectionSchema = Environment::CreateVariable<OverrunDetectionSchema>(AzTypeInfo<OverrunDetectionSchema>::Name(), overrunDesc);
+            OverrunDetectionSchema* schemaPtr = &s_overrunDetectionSchema.Get();
+
+            AZ::AllocatorManager::Instance().SetOverrideAllocatorSource(schemaPtr);
+        }
+#endif
+
+#ifndef RELEASE
+        if (m_descriptor.m_useMalloc)
+        {
+            AZ_Printf("Malloc", "WARNING: Malloc override is enabled. Registered allocators will use malloc instead of their normal allocation schemas.");
+            s_mallocSchema = Environment::CreateVariable<MallocSchema>(AzTypeInfo<MallocSchema>::Name());
+            MallocSchema* schemaPtr = &s_mallocSchema.Get();
+
+            AZ::AllocatorManager::Instance().SetOverrideAllocatorSource(schemaPtr);
+        }
+#endif
+
+        AllocatorManager& allocatorManager = AZ::AllocatorManager::Instance();
+
+        for (const auto& remapping : m_descriptor.m_allocatorRemappings)
+        {
+            allocatorManager.AddAllocatorRemapping(remapping.m_from.c_str(), remapping.m_to.c_str());
+        }
+
+        allocatorManager.FinalizeConfiguration();
     }
 
     //=========================================================================
@@ -654,13 +730,9 @@ namespace AZ
     //=========================================================================
     void ComponentApplication::RegisterComponentDescriptor(const ComponentDescriptor* descriptor)
     {
-        // reflect the factory if possible
-        descriptor->Reflect(m_serializeContext);
-
-        // reflect into behaviorContext
-        if (m_behaviorContext)
+        if (ReflectionEnvironment::GetReflectionManager())
         {
-            descriptor->Reflect(m_behaviorContext);
+            ReflectionEnvironment::GetReflectionManager()->Reflect(descriptor->GetUuid(), AZStd::bind(&ComponentDescriptor::Reflect, descriptor, AZStd::placeholders::_1));
         }
     }
 
@@ -669,21 +741,9 @@ namespace AZ
     //=========================================================================
     void ComponentApplication::UnregisterComponentDescriptor(const ComponentDescriptor* descriptor)
     {
-        if (m_behaviorContext)
+        if (ReflectionEnvironment::GetReflectionManager())
         {
-            m_behaviorContext->EnableRemoveReflection();
-            descriptor->Reflect(m_behaviorContext);
-            m_behaviorContext->DisableRemoveReflection();
-        }
-
-        if (m_serializeContext)
-        {
-            // \todo: Unreflect from script context: https://issues.labcollab.net/browse/LMBR-17558.
-
-            // Remove all reflected data from this descriptor
-            m_serializeContext->EnableRemoveReflection();
-            descriptor->Reflect(m_serializeContext);
-            m_serializeContext->DisableRemoveReflection();
+            ReflectionEnvironment::GetReflectionManager()->Unreflect(descriptor->GetUuid());
         }
     }
 
@@ -693,7 +753,11 @@ namespace AZ
     //=========================================================================
     bool ComponentApplication::AddEntity(Entity* entity)
     {
-        EBUS_EVENT(ComponentApplicationEventBus, OnEntityAdded, entity);
+        AZ_Error("ComponentApplication", entity, "Input entity is null, cannot add entity");
+        if (!entity)
+        {
+            return false;
+        }
 
         return m_entities.insert(AZStd::make_pair(entity->GetId(), entity)).second;
     }
@@ -704,7 +768,11 @@ namespace AZ
     //=========================================================================
     bool ComponentApplication::RemoveEntity(Entity* entity)
     {
-        EBUS_EVENT(ComponentApplicationEventBus, OnEntityRemoved, entity->GetId());
+        AZ_Error("ComponentApplication", entity, "Input entity is null, cannot remove entity");
+        if (!entity)
+        {
+            return false;
+        }
 
         return (m_entities.erase(entity->GetId()) == 1);
     }
@@ -764,45 +832,63 @@ namespace AZ
     }
 
     //=========================================================================
-    // CreateSerializeContext
-    // [5/30/2012]
+    // GetSerializeContext
     //=========================================================================
-    void ComponentApplication::CreateSerializeContext()
+    AZ::SerializeContext* ComponentApplication::GetSerializeContext()
     {
-        if (m_serializeContext == nullptr)
+        return ReflectionEnvironment::GetReflectionManager() ? ReflectionEnvironment::GetReflectionManager()->GetReflectContext<SerializeContext>() : nullptr;
+    }
+
+    //=========================================================================
+    // GetBehaviorContext
+    //=========================================================================
+    AZ::BehaviorContext* ComponentApplication::GetBehaviorContext()
+    {
+        return ReflectionEnvironment::GetReflectionManager() ? ReflectionEnvironment::GetReflectionManager()->GetReflectContext<BehaviorContext>() : nullptr;
+    }
+
+    //=========================================================================
+    // GetJsonRegistrationContext
+    //=========================================================================
+    AZ::JsonRegistrationContext* ComponentApplication::GetJsonRegistrationContext()
+    {
+        return ReflectionEnvironment::GetReflectionManager() ? ReflectionEnvironment::GetReflectionManager()->GetReflectContext<JsonRegistrationContext>() : nullptr;
+    }
+
+    //=========================================================================
+    // CreateReflectionManager
+    //=========================================================================
+    void ComponentApplication::CreateReflectionManager()
+    {
+        ReflectionEnvironment::Init();
+
+        ReflectionEnvironment::GetReflectionManager()->AddReflectContext<SerializeContext>();
+        ReflectionEnvironment::GetReflectionManager()->AddReflectContext<BehaviorContext>();
+        ReflectionEnvironment::GetReflectionManager()->AddReflectContext<JsonRegistrationContext>();
+    }
+
+    //=========================================================================
+    // DestroyReflectionManager
+    //=========================================================================
+    void ComponentApplication::DestroyReflectionManager()
+    {
+        // Must clear before resetting so that calls to GetSerializeContext et al will succeed will unreflecting
+
+        ReflectionEnvironment::GetReflectionManager()->Clear();
+        ReflectionEnvironment::Reset();
+    }
+
+    //=========================================================================
+    // CreateStaticModules
+    //=========================================================================
+    void ComponentApplication::CreateStaticModules(AZStd::vector<AZ::Module*>& outModules)
+    {
+        if (m_startupParameters.m_createStaticModulesCallback)
         {
-            m_serializeContext = aznew SerializeContext;
+            m_startupParameters.m_createStaticModulesCallback(outModules);
         }
-    }
 
-    //=========================================================================
-    // DestroySerializeContext
-    // [11/9/2012]
-    //=========================================================================
-    void ComponentApplication::DestroySerializeContext()
-    {
-        delete m_serializeContext;
-        m_serializeContext = nullptr;
-    }
-
-    //=========================================================================
-    // CreateBehaviorContext
-    //=========================================================================
-    void ComponentApplication::CreateBehaviorContext()
-    {
-        if (m_behaviorContext == nullptr)
-        {
-            m_behaviorContext = aznew BehaviorContext;
-        }
-    }
-
-    //=========================================================================
-    // DestroyBehaviorContext
-    //=========================================================================
-    void ComponentApplication::DestroyBehaviorContext()
-    {
-        delete m_behaviorContext;
-        m_behaviorContext = nullptr;
+        outModules.emplace_back(aznew AzCoreModule());
     }
 
     //=========================================================================
@@ -873,8 +959,9 @@ namespace AZ
             return false;
         }
 
-        AZ_Assert(m_serializeContext, "ComponentApplication::m_serializeContext is NULL!");
-        ObjectStream* objStream = ObjectStream::Create(fileStream.get(), *m_serializeContext, ObjectStream::ST_XML);
+        SerializeContext* serializeContext = GetSerializeContext();
+        AZ_Assert(serializeContext, "ComponentApplication::m_serializeContext is NULL!");
+        ObjectStream* objStream = ObjectStream::Create(fileStream.get(), *serializeContext, ObjectStream::ST_XML);
         bool descWriteOk = objStream->WriteClass(&m_descriptor);
         AZ_Warning("ComponentApplication", descWriteOk, "Failed to write memory descriptor to application descriptor file %s!", fileName);
         bool entityWriteOk = objStream->WriteClass(systemEntity);
@@ -896,27 +983,9 @@ namespace AZ
 
     //=========================================================================
     // RegisterCoreComponents
-    // [5/30/2012]
     //=========================================================================
     void ComponentApplication::RegisterCoreComponents()
     {
-        RegisterComponentDescriptor(AzStdReflectionComponent::CreateDescriptor());
-        RegisterComponentDescriptor(MemoryComponent::CreateDescriptor());
-        RegisterComponentDescriptor(StreamerComponent::CreateDescriptor());
-        RegisterComponentDescriptor(JobManagerComponent::CreateDescriptor());
-        RegisterComponentDescriptor(AssetManagerComponent::CreateDescriptor());
-        RegisterComponentDescriptor(ObjectStreamComponent::CreateDescriptor());
-        RegisterComponentDescriptor(UserSettingsComponent::CreateDescriptor());
-        RegisterComponentDescriptor(Debug::FrameProfilerComponent::CreateDescriptor());
-        RegisterComponentDescriptor(SliceComponent::CreateDescriptor());
-        RegisterComponentDescriptor(SliceSystemComponent::CreateDescriptor());
-        RegisterComponentDescriptor(SliceMetadataInfoComponent::CreateDescriptor());
-
-
-#if !defined(AZCORE_EXCLUDE_LUA)
-        RegisterComponentDescriptor(ScriptSystemComponent::CreateDescriptor());
-#endif // #if !defined(AZCORE_EXCLUDE_LUA)
-
     }
 
     //=========================================================================
@@ -937,48 +1006,17 @@ namespace AZ
     bool ComponentApplication::ShouldAddSystemComponent(AZ::ComponentDescriptor* descriptor)
     {
         // NOTE: This is different than modules! All system components must be listed in GetRequiredSystemComponents, and then AZ::Edit::Attributes::SystemComponentTags may be used to filter down from there
-
-        // If the required tags are empty, it is assumed all components with the attribute are required
-        if (m_startupParameters.m_systemComponentTags.empty())
+        if (m_moduleManager->GetSystemComponentTags().empty())
         {
             return true;
         }
 
-        const SerializeContext::ClassData* classData = m_serializeContext->FindClassData(descriptor->GetUuid());
+        const SerializeContext::ClassData* classData = GetSerializeContext()->FindClassData(descriptor->GetUuid());
         AZ_Warning("ComponentApplication", classData, "Component type %s not reflected to SerializeContext!", descriptor->GetName());
-        if (classData)
-        {
-            if (Attribute* attribute = FindAttribute(Edit::Attributes::SystemComponentTags, classData->m_attributes))
-            {
-                // Read the tags
-                AZStd::vector<AZ::Crc32> tags;
-                AZ::AttributeReader reader(nullptr, attribute);
-                AZ::Crc32 tag;
-                if (reader.Read<AZ::Crc32>(tag))
-                {
-                    tags.emplace_back(tag);
-                }
-                else
-                {
-                    AZ_Verify(reader.Read<AZStd::vector<AZ::Crc32>>(tags), "Attribute \"AZ::Edit::Attributes::SystemComponentTags\" must be of type AZ::Crc32 or AZStd::vector<AZ::Crc32>");
-                }
 
-                // Match tags to required tags
-                for (const AZ::Crc32& requiredTag : m_startupParameters.m_systemComponentTags)
-                {
-                    if (AZStd::find(tags.begin(), tags.end(), requiredTag) != tags.end())
-                    {
-                        // Tag match, add component
-                        return true;
-                    }
-                }
-
-                // If the tags didn't match, don't use the component
-                return false;
-            }
-        }
-        // If attribute not present, assume wanted for all contexts
-        return true;
+        // Note, if there are no SystemComponentTags on the classData, we will return true
+        // in order to maintain backwards compatibility with legacy non-tagged components
+        return Edit::SystemComponentTagsMatchesAtLeastOneTag(classData, m_moduleManager->GetSystemComponentTags(), true);
     }
 
     //=========================================================================
@@ -1022,7 +1060,6 @@ namespace AZ
 
         AZ_Warning("Module", componentCount == systemEntity->GetComponents().size(),
             "Application implements deprecated function 'AddSystemComponents'. Use 'GetRequiredSystemComponents' instead.");
-        componentCount = systemEntity->GetComponents().size();
     }
 
     //=========================================================================
@@ -1036,57 +1073,45 @@ namespace AZ
             return;
         }
 
-#if   defined(AZ_PLATFORM_ANDROID)
-        // On Android, all dlopen calls should be relative.
-        azstrcpy(m_exeDirectory, AZ_ARRAY_SIZE(m_exeDirectory), "");
-#else
-
         char exeDirectory[AZ_MAX_PATH_LEN];
 
-        // Platform specific get exe path: http://stackoverflow.com/a/1024937
-#if defined(AZ_PLATFORM_WINDOWS) || defined(AZ_PLATFORM_XBONE)
-        // https://msdn.microsoft.com/en-us/library/windows/desktop/ms683197(v=vs.85).aspx
-        DWORD pathLen = GetModuleFileNameA(nullptr, exeDirectory, AZ_ARRAY_SIZE(exeDirectory));
-#elif defined(AZ_PLATFORM_APPLE)
-        // https://developer.apple.com/library/mac/documentation/Darwin/Reference/ManPages/man3/dyld.3.html
-        uint32_t bufSize = AZ_ARRAY_SIZE(exeDirectory);
-        _NSGetExecutablePath(exeDirectory, &bufSize);
-        // _NSGetExecutablePath doesn't update bufSize
-        size_t pathLen = strlen(exeDirectory);
-#else
-        // http://man7.org/linux/man-pages/man5/proc.5.html
-        size_t pathLen = readlink("/proc/self/exe", exeDirectory, AZ_ARRAY_SIZE(exeDirectory));
-#endif // MSVC
+        bool pathIncludesExe = true;
+        Platform::GetExePath(exeDirectory, AZ_ARRAY_SIZE(exeDirectory), pathIncludesExe);
 
-        char* exeDirEnd = exeDirectory + pathLen;
-
-        AZStd::replace(exeDirectory, exeDirEnd, '\\', '/');
-
-        // exeDirectory currently contains full path to EXE.
-        // Modify to end the string after the last '/'
-
-        // Iterate until finding last '/'
-        char* finalSlash = nullptr;
-        for (char* c = exeDirectory; c < exeDirEnd; ++c)
+        if (pathIncludesExe)
         {
-            if (*c == '/')
+            // exeDirectory currently contains full path to EXE.
+            // Modify to end the string after the last '/'
+            char* finalSlash = strrchr(exeDirectory, '/');
+            if (finalSlash)
             {
-                finalSlash = c;
+                *(finalSlash + 1) = '\0';
+            }
+            else
+            {
+                // If no slashes found, path invalid.
+                AZ_Error("ComponentApplication", false, "Failed to process exe directory. Path given by OS: %s", exeDirectory);
             }
         }
 
-        // If no slashes found, path invalid.
-        if (finalSlash)
-        {
-            *(finalSlash + 1) = '\0';
-        }
-        else
-        {
-            AZ_Error("ComponentApplication", false, "Failed to process exe directory. Path given by OS: %s", exeDirectory);
-        }
-
         azstrcpy(m_exeDirectory, AZ_ARRAY_SIZE(m_exeDirectory), exeDirectory);
-#endif
+
+        PlatformCalculateBinFolder();
+    }
+
+    //=========================================================================
+    // CheckEngineMarkerFile
+    //=========================================================================
+    bool ComponentApplication::CheckPathForEngineMarker(const char* fullPath) const
+    {
+        static const char* engineMarkerFileName = "engine.json";
+        char engineMarkerFullPathToCheck[AZ_MAX_PATH_LEN] = "";
+
+        azstrcpy(engineMarkerFullPathToCheck, AZ_ARRAY_SIZE(engineMarkerFullPathToCheck), fullPath);
+        azstrcat(engineMarkerFullPathToCheck, AZ_ARRAY_SIZE(engineMarkerFullPathToCheck), "/");
+        azstrcat(engineMarkerFullPathToCheck, AZ_ARRAY_SIZE(engineMarkerFullPathToCheck), engineMarkerFileName);
+
+        return AZ::IO::SystemFile::Exists(engineMarkerFullPathToCheck);
     }
 
     //=========================================================================
@@ -1103,7 +1128,7 @@ namespace AZ
 
         bool isFullPath = false;
 
-#if defined (AZ_PLATFORM_X360) || defined (AZ_PLATFORM_WINDOWS) || defined (AZ_PLATFORM_XBONE) // ACCEPTED_USE
+#if AZ_TRAIT_OS_USE_WINDOWS_FILE_PATHS || AZ_TRAIT_IS_ABS_PATH_IF_COLON_FOUND_ANYWHERE
         if (nullptr != strstr(fullApplicationDescriptorPath.c_str(), ":"))
         {
             isFullPath = true;
@@ -1187,11 +1212,6 @@ namespace AZ
         SplineReflect(context);
         // reflect polygon prism
         PolygonPrismReflect(context);
-
-        // reflect all registered classes
-        EBUS_EVENT(ComponentDescriptorBus, Reflect, context);
     }
 
 } // namespace AZ
-
-#endif // #ifndef AZ_UNITY_BUILD

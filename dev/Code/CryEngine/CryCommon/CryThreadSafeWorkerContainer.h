@@ -23,6 +23,9 @@
 
 #include "platform.h"
 #include <vector>
+
+#include <AzCore/Jobs/JobContext.h>
+#include <AzCore/Jobs/JobManager.h>
 #include <AzCore/std/typetraits/typetraits.h>
 
 
@@ -119,11 +122,13 @@ private:
     class SWorker
     {
     public:
+        AZ_CLASS_ALLOCATOR(SWorker, AZ::LegacyAllocator, 0);
+
         SWorker()
             : m_dataSize(0) {}
 
         uint32 m_dataSize;
-        std::vector<T> m_data;
+        AZStd::vector<T> m_data;
     } _ALIGN(128);
 
     T* push_back_impl(size_t& nIndex);
@@ -131,8 +136,8 @@ private:
 
     threadID m_foreignThreadId; // OS thread ID of the non-job-manager-worker-thread allowed to use this container, too.
 
-    SWorker* m_workers;   // Holds data for each thread that can use this container. A non-worker-thread (Main) has data stored at 0. Actual worker threads range from 1 to m_nNumWorkers-1
-    uint32 m_nNumWorkers; // The number of threads that can use this container, including one non-worker-thread.
+    AZStd::vector<SWorker> m_workers;   // Holds data for each thread that can use this container. A non-worker-thread (Main) has data stored at 0. Actual worker threads range from 1 to m_nNumWorkers-1
+    uint32 m_nNumWorkers = 0; // The number of threads that can use this container, including one non-worker-thread.
 
     uint32 m_coalescedArrCapacity;
     T* m_coalescedArr;
@@ -154,15 +159,15 @@ template<typename T>
 inline CThreadSafeWorkerContainer<T>::~CThreadSafeWorkerContainer()
 {
     clear();
-    SAFE_DELETE_ARRAY(m_workers);
+    m_workers.clear();
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 template<typename T>
 inline void CThreadSafeWorkerContainer<T>::Init()
 {
-    m_nNumWorkers = gEnv->GetJobManager()->GetNumWorkerThreads() + 1;
-    m_workers = new  CThreadSafeWorkerContainer<T>::SWorker[m_nNumWorkers];
+    m_nNumWorkers = AZ::JobContext::GetGlobalContext()->GetJobManager().GetNumWorkerThreads() + 1;
+    m_workers.resize(m_nNumWorkers);
 
     m_foreignThreadId = THREADID_NULL;
 }
@@ -230,6 +235,8 @@ inline T& CThreadSafeWorkerContainer<T>::operator[](size_t n)
 
     IF ((m_isCoalesced && !nHasWorkerEncodedIndex), 1)
     {
+        AZ_Assert(m_coalescedArr, "null array");
+        AZ_Assert(n < m_coalescedArrCapacity, "Index out of bounds");
         return m_coalescedArr[n];
     }
     else
@@ -262,6 +269,8 @@ inline T& CThreadSafeWorkerContainer<T>::operator[](size_t n)
             // Out of bound access detected!
             CRY_ASSERT_MESSAGE(false, "CThreadSafeWorkerContainer::operator[] - Out of bounds access");
             __debugbreak();
+            AZ_Assert(m_coalescedArr, "null array");
+            AZ_Assert(m_coalescedArrCapacity > 0, "Index out of bounds");
             return m_coalescedArr[0];
         }
     }
@@ -341,7 +350,7 @@ inline void CThreadSafeWorkerContainer<T>::clear(const OnElementDeleteFunctor& r
             rFunctor(&m_workers[i].m_data[j]);
         }
 
-        stl::free_container(m_workers[i].m_data);
+        m_workers[i].m_data.clear();
         m_workers[i].m_dataSize = 0;
     }
 
@@ -485,6 +494,7 @@ inline void CThreadSafeWorkerContainer<T>::CoalesceMemory()
         {
             continue;
         }
+        AZ_Assert((nOffest + rWorker.m_dataSize) <= m_coalescedArrCapacity, "Index out of bounds");
         memcpy(m_coalescedArr + nOffest, &rWorker.m_data[0], sizeof(T) * rWorker.m_dataSize);
         nOffest += rWorker.m_dataSize;
     }
@@ -570,10 +580,9 @@ inline T* CThreadSafeWorkerContainer<T>::push_back_impl(size_t& nIndex)
 template<typename T>
 uint32 CThreadSafeWorkerContainer<T>::GetWorkerId_threadlocal() const
 {
-    const uint32 workerThreadId =  JobManager::GetWorkerThreadId();
+    const uint32 workerThreadId =  AZ::JobContext::GetGlobalContext()->GetJobManager().GetWorkerThreadId();
 
-    const bool isValidWorkerThread = (workerThreadId != ~0);
-    if (!isValidWorkerThread)
+    if (workerThreadId == AZ::JobManager::InvalidWorkerThreadId)
     {
         // Only one non-worker thread is allowed, so check to see if this is that thread.
         
@@ -585,6 +594,7 @@ uint32 CThreadSafeWorkerContainer<T>::GetWorkerId_threadlocal() const
     }
 
     // Non-worker has id of ~0 ... add +1 to shift to 0. Worker0 will use slot 1 etc.
+    static_assert(AZ::JobManager::InvalidWorkerThreadId == ~0u, "Assumptions about InvalidWorkerId no longer hold true");
     return workerThreadId + 1;
 }
 

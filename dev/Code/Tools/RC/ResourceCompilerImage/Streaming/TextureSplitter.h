@@ -35,6 +35,24 @@
 
 struct D3DBaseTexture;
 
+#if defined(AZ_TOOLS_EXPAND_FOR_RESTRICTED_PLATFORMS)
+#define TEXTURESPLITTER_H_SECTION_DEFINES 1
+#define TEXTURESPLITTER_H_SECTION_CTEXTURE 2
+#define TEXTURESPLITTER_H_SECTION_SMARTPOINTER 3
+
+#if defined(TOOLS_SUPPORT_XENIA)
+#define AZ_RESTRICTED_SECTION TEXTURESPLITTER_H_SECTION_DEFINES
+    #include "Xenia/TextureSplitter_h_xenia.inl"
+#endif
+#if defined(TOOLS_SUPPORT_PROVO)
+#define AZ_RESTRICTED_SECTION TEXTURESPLITTER_H_SECTION_DEFINES
+    #include "Provo/TextureSplitter_h_provo.inl"
+#endif
+#if defined(TOOLS_SUPPORT_SALEM)
+#define AZ_RESTRICTED_SECTION TEXTURESPLITTER_H_SECTION_DEFINES
+    #include "Salem/TextureSplitter_h_salem.inl"
+#endif
+#endif
 
 namespace TextureHelper
 {
@@ -79,8 +97,9 @@ protected:
     // applied to attached images recursively after processing
     // necessary to correctly swap all endians according to the current platform
     void ProcessPlatformSpecificConversions(std::vector<STexture>& resourcesOut, byte* fileContent, const size_t fileSize);
-    void ProcessPlatformSpecificConversions_Orbis(STexture& resource, DWORD dwSides, DWORD dwWidth, DWORD dwHeight, DWORD dwDepth, DWORD dwMips, ETEX_Format format, bool bDXTCompressed, uint32 nBitsPerPixel); // ACCEPTED_USE
-    void ProcessPlatformSpecificConversions_Durango(STexture& resource, DWORD dwSides, DWORD dwWidth, DWORD dwHeight, DWORD dwDepth, DWORD dwMips, ETEX_Format format, bool bDXTCompressed, uint32 nBitsPerPixel); // ACCEPTED_USE
+    void ProcessPlatformSpecificConversions_Nx(STexture& resource, DWORD dwSides, DWORD dwWidth, DWORD dwHeight, DWORD dwDepth, DWORD dwMips, ETEX_Format format, bool bDXTCompressed, uint32 nBitsPerPixel);
+    void ProcessPlatformSpecificConversions_Orbis(STexture& resource, DWORD dwSides, DWORD dwWidth, DWORD dwHeight, DWORD dwDepth, DWORD dwMips, ETEX_Format format, bool bDXTCompressed, uint32 nBitsPerPixel);
+    void ProcessPlatformSpecificConversions_Durango(STexture& resource, DWORD dwSides, DWORD dwWidth, DWORD dwHeight, DWORD dwDepth, DWORD dwMips, ETEX_Format format, bool bDXTCompressed, uint32 nBitsPerPixel);
 
     // process single texture
     void ProcessResource(
@@ -111,7 +130,6 @@ public:
 
     virtual void DeInit();
     virtual ICompiler* CreateCompiler();
-    virtual bool SupportsMultithreading() const;
     virtual const char* GetExt(int index) const;
 
     // Used to override reported name of the source file.
@@ -122,8 +140,9 @@ public:
     {
         eTT_None,
         eTT_PC,
-        eTT_Orbis, // ACCEPTED_USE
-        eTT_Durango, // ACCEPTED_USE
+        eTT_Nx,
+        eTT_Orbis,
+        eTT_Durango,
     };
 
 protected:
@@ -142,7 +161,20 @@ protected:
         eStreamableResourceFlags_NoSplit                             = 1 << 2       // indicates that the texture is to be unsplitted
     };
 
-
+#if defined(AZ_TOOLS_EXPAND_FOR_RESTRICTED_PLATFORMS)
+#if defined(TOOLS_SUPPORT_XENIA)
+#define AZ_RESTRICTED_SECTION TEXTURESPLITTER_H_SECTION_CTEXTURE
+    #include "Xenia/TextureSplitter_h_xenia.inl"
+#endif
+#if defined(TOOLS_SUPPORT_PROVO)
+#define AZ_RESTRICTED_SECTION TEXTURESPLITTER_H_SECTION_CTEXTURE
+    #include "Provo/TextureSplitter_h_provo.inl"
+#endif
+#if defined(TOOLS_SUPPORT_SALEM)
+#define AZ_RESTRICTED_SECTION TEXTURESPLITTER_H_SECTION_CTEXTURE
+    #include "Salem/TextureSplitter_h_salem.inl"
+#endif
+#endif
 
     // structure to store mapping information about interleaved resource
     struct STexture
@@ -202,6 +234,20 @@ protected:
         SideVec                                     m_surfaces;
         std::list<SChunkDesc>           m_chunks;                   // all file chunks
 
+#if defined(AZ_TOOLS_EXPAND_FOR_RESTRICTED_PLATFORMS)
+#if defined(TOOLS_SUPPORT_XENIA)
+#define AZ_RESTRICTED_SECTION TEXTURESPLITTER_H_SECTION_SMARTPOINTER
+    #include "Xenia/TextureSplitter_h_xenia.inl"
+#endif
+#if defined(TOOLS_SUPPORT_PROVO)
+#define AZ_RESTRICTED_SECTION TEXTURESPLITTER_H_SECTION_SMARTPOINTER
+    #include "Provo/TextureSplitter_h_provo.inl"
+#endif
+#if defined(TOOLS_SUPPORT_SALEM)
+#define AZ_RESTRICTED_SECTION TEXTURESPLITTER_H_SECTION_SMARTPOINTER
+    #include "Salem/TextureSplitter_h_salem.inl"
+#endif
+#endif
 
         SSurface* TryGetSurface(int nSide, int nMip);
         void AddSurface(const SSurface& surf);

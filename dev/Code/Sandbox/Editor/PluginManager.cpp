@@ -141,7 +141,7 @@ bool CPluginManager::LoadPlugins(const char* pPathWithMask)
 
     if (!QFileInfo::exists(strPath))
     {
-        CLogFile::FormatLine("[Plugin Manager] Cannot find plugin directory '%s'", strPath.toLatin1().data());
+        CLogFile::FormatLine("[Plugin Manager] Cannot find plugin directory '%s'", strPath.toUtf8().data());
         return false;
     }
 
@@ -237,7 +237,7 @@ bool CPluginManager::LoadPlugins(const char* pPathWithMask)
         try
         {
             // Create an instance of the plugin
-            pPlugin = SafeCallFactory(pfnFactory, &sInitParam, iter->m_path.toLatin1().data());
+            pPlugin = SafeCallFactory(pfnFactory, &sInitParam, iter->m_path.toUtf8().data());
         }
 
         catch (...)
@@ -260,7 +260,6 @@ bool CPluginManager::LoadPlugins(const char* pPathWithMask)
                 CLogFile::FormatLine("[Plugin Manager] Cannot create instance of plugin DLL '%s'! Error code %u.", pathUtf8.c_str(), sInitParam.outErrorCode);
             }
 
-            assert(pPlugin);
             hPlugin->unload();
             delete hPlugin;
 

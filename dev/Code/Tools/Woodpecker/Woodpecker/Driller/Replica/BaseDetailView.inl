@@ -16,7 +16,7 @@ namespace Driller
     void BaseDetailView<Key>::DrawActiveGraph()
     {
         const BandwidthUsageContainer emptyContainer;
-        const ReplicaBandwidthChartData<Key>::BandwidthUsageMap s_emptyMap;
+        const typename ReplicaBandwidthChartData<Key>::BandwidthUsageMap s_emptyMap;
 
         ConfigureGraphAxis();
 
@@ -27,12 +27,12 @@ namespace Driller
             ConfigureBaseDetailDisplayHelper(detailDisplayHelper);
         }        
         
-        const ReplicaBandwidthChartData<Key>::FrameMap& frameMap = GetFrameData();
+        const typename ReplicaBandwidthChartData<Key>::FrameMap& frameMap = GetFrameData();
 
         for (FrameNumberType frameId = m_replicaDataView->GetStartFrame(); frameId <= m_replicaDataView->GetEndFrame(); ++frameId)
         {            
-            ReplicaBandwidthChartData<Key>::FrameMap::const_iterator frameIter = frameMap.find(frameId);
-            const ReplicaBandwidthChartData<Key>::BandwidthUsageMap* usageMap = nullptr;
+            typename ReplicaBandwidthChartData<Key>::FrameMap::const_iterator frameIter = frameMap.find(frameId);
+            const typename ReplicaBandwidthChartData<Key>::BandwidthUsageMap* usageMap = nullptr;
             
             if (frameIter != frameMap.end())
             {
@@ -52,7 +52,7 @@ namespace Driller
             for (const Key& currentId : m_activeIds)
             {
                 const BandwidthUsageContainer* usageContainer = &emptyContainer;
-                ReplicaBandwidthChartData<Key>::BandwidthUsageMap::const_iterator usageIter = usageMap->find(currentId);
+                typename ReplicaBandwidthChartData<Key>::BandwidthUsageMap::const_iterator usageIter = usageMap->find(currentId);
 
                 if (usageIter != usageMap->end())
                 {
@@ -224,12 +224,12 @@ namespace Driller
 
         ConfigureBaseDetailDisplayHelper(aggregateDisplayHelper);
 
-        const ReplicaBandwidthChartData<Key>::FrameMap& frameMap = GetFrameData();            
+        const typename ReplicaBandwidthChartData<Key>::FrameMap& frameMap = GetFrameData();            
 
         for (FrameNumberType frameId = m_replicaDataView->GetStartFrame(); frameId <= m_replicaDataView->GetEndFrame(); ++frameId)
         {            
-            ReplicaBandwidthChartData<Key>::FrameMap::const_iterator frameIter = frameMap.find(frameId);
-            const ReplicaBandwidthChartData<Key>::BandwidthUsageMap* usageMap = nullptr;
+            typename ReplicaBandwidthChartData<Key>::FrameMap::const_iterator frameIter = frameMap.find(frameId);
+            const typename ReplicaBandwidthChartData<Key>::BandwidthUsageMap* usageMap = nullptr;
             
             if (frameIter != frameMap.end())
             {
@@ -237,7 +237,7 @@ namespace Driller
             }
             else
             {
-                static ReplicaBandwidthChartData<Key>::BandwidthUsageMap s_emptyMap;
+                static typename ReplicaBandwidthChartData<Key>::BandwidthUsageMap s_emptyMap;
                 usageMap = &s_emptyMap;
             }
 
@@ -260,7 +260,7 @@ namespace Driller
             for (const Key& currentId : m_activeIds)
             {
                 const BandwidthUsageContainer* usageContainer = nullptr;
-                ReplicaBandwidthChartData<Key>::BandwidthUsageMap::const_iterator usageIter = usageMap->find(currentId);
+                typename ReplicaBandwidthChartData<Key>::BandwidthUsageMap::const_iterator usageIter = usageMap->find(currentId);
 
                 if (usageIter != usageMap->end())
                 {
@@ -283,11 +283,11 @@ namespace Driller
                     for (BaseDisplayHelper* helper : dataSets)
                     {
                         KeyedDisplayHelper<size_t>* dataSet = static_cast<KeyedDisplayHelper<size_t>*>(helper);
-                        const BandwidthUsageContainer::UsageAggregationMap::const_iterator usageIter = dataSetUsage.find(dataSet->GetKey());
+                        const BandwidthUsageContainer::UsageAggregationMap::const_iterator usageAggIter = dataSetUsage.find(dataSet->GetKey());
 
-                        if (usageIter != dataSetUsage.end())
+                        if (usageAggIter != dataSetUsage.end())
                         {
-                            const BandwidthUsage& currentUsage = usageIter->second;
+                            const BandwidthUsage& currentUsage = usageAggIter->second;
 
                             overallDataSetUsage.m_bytesSent += currentUsage.m_usageAggregator.m_bytesSent;
                             overallDataSetUsage.m_bytesReceived += currentUsage.m_usageAggregator.m_bytesReceived;
@@ -299,7 +299,7 @@ namespace Driller
                                 dataSetAggregator.m_bytesReceived += currentUsage.m_usageAggregator.m_bytesReceived;
                             }
                         }
-                    }                        
+                    }
                 }
 
                 if (rpcFilter)
@@ -311,11 +311,11 @@ namespace Driller
                     for (BaseDisplayHelper* helper : rpcs)
                     {
                         KeyedDisplayHelper<size_t>* rpc = static_cast<KeyedDisplayHelper<size_t>*>(helper);
-                        const BandwidthUsageContainer::UsageAggregationMap::const_iterator usageIter = rpcUsage.find(rpc->GetKey());
+                        const BandwidthUsageContainer::UsageAggregationMap::const_iterator usageAggIter = rpcUsage.find(rpc->GetKey());
 
-                        if (usageIter != rpcUsage.end())
+                        if (usageAggIter != rpcUsage.end())
                         {
-                            const BandwidthUsage& currentUsage = usageIter->second;
+                            const BandwidthUsage& currentUsage = usageAggIter->second;
 
                             overallRPCUsage.m_bytesSent += currentUsage.m_usageAggregator.m_bytesSent;
                             overallRPCUsage.m_bytesReceived += currentUsage.m_usageAggregator.m_bytesReceived;

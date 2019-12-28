@@ -16,7 +16,10 @@
 
 #include "StdAfx.h"
 
+#ifdef LY_TERRAIN_LEGACY_RUNTIME
 #include "terrain.h"
+#endif
+
 #include "ObjMan.h"
 #include "VisAreas.h"
 #include "3dEngine.h"
@@ -34,8 +37,8 @@ void CObjManager::MakeShadowCastersList(CVisArea* pArea, const AABB& aabbReceive
 
     assert(pLight && vLightPos.len() > 1); // world space pos required
 
-    pFr->pCastersList->Clear();
-    pFr->pJobExecutedCastersList->Clear();
+    pFr->m_castersList.Clear();
+    pFr->m_jobExecutedCastersList.Clear();
 
     CVisArea* pLightArea = pLight->m_pOwner ? (CVisArea*)pLight->m_pOwner->GetEntityVisArea() : NULL;
 
@@ -84,8 +87,10 @@ void CObjManager::MakeShadowCastersList(CVisArea* pArea, const AABB& aabbReceive
     }
     else
     {
+#ifdef LY_TERRAIN_LEGACY_RUNTIME
         PodArray<CTerrainNode*>& lstCastingNodes = m_lstTmpCastingNodes;
         lstCastingNodes.Clear();
+#endif
 
         if (Get3DEngine()->IsObjectTreeReady())
         {
@@ -132,6 +137,7 @@ void CObjManager::MakeShadowCastersList(CVisArea* pArea, const AABB& aabbReceive
             }
         }
 
+#ifdef LY_TERRAIN_LEGACY_RUNTIME
         bool bNeedRenderTerrain = GetCVars()->e_GsmCastFromTerrain && (pLight->m_Flags & DLF_SUN);      // Sunlight with terrain shadows
         bNeedRenderTerrain = bNeedRenderTerrain || (pLight->m_Flags & DLF_CAST_TERRAIN_SHADOWS);        // Light with terrain shadow flag
         bNeedRenderTerrain = bNeedRenderTerrain && GetTerrain();                                        // Terrain has to exist to cast shadows
@@ -159,9 +165,10 @@ void CObjManager::MakeShadowCastersList(CVisArea* pArea, const AABB& aabbReceive
                     }
                 }
 
-                pFr->pCastersList->Add(pNode);
+                pFr->m_castersList.Add(pNode);
             }
         }
+#endif //#ifdef LY_TERRAIN_LEGACY_RUNTIME
     }
 
     // add casters with per object shadow map for point lights
@@ -185,7 +192,7 @@ void CObjManager::MakeShadowCastersList(CVisArea* pArea, const AABB& aabbReceive
                 continue;
             }
 
-            pFr->pCastersList->Add(pCaster);
+            pFr->m_castersList.Add(pCaster);
         }
     }
 }

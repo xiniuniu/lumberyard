@@ -11,20 +11,20 @@
  */
 
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "QRollupCtrl.h"
 
 #include <algorithm>
 #include <qapplication.h>
 #include <qeventloop.h>
 #include <QLayout>
-#include <qlist.h>
-#include <qpainter.h>
-#include <qscrollarea.h>
-#include <qstyle.h>
-#include <qstyleoption.h>
+#include <QList>
+#include <QPainter>
+#include <QScrollArea>
+#include <QStyle>
+#include <QStyleOption>
 #include <QToolTip>
-#include <qabstractbutton.h>
+#include <QAbstractButton>
 #include <QSettings>
 #include <QMenu>
 #include <QToolButton>

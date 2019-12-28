@@ -135,6 +135,7 @@ public:
 
     virtual void SetFlags(int flags) { m_Flags = flags; };
     virtual int GetFlags() const { return m_Flags; };
+    virtual void UpdateFlags();
 
     bool IsMaterialGroup() const override;
     bool IsSubMaterial() const override;
@@ -281,6 +282,9 @@ public:
     virtual void SetMaterialLinkName(const char* name);
     virtual const char* GetMaterialLinkName() const;
 
+    uint32 GetDccMaterialHash() const override { return m_dccMaterialHash; }
+    void SetDccMaterialHash(uint32 hash) override { m_dccMaterialHash = hash; }
+
     virtual CryCriticalSection& GetSubMaterialResizeLock();
 public:
     //////////////////////////////////////////////////////////////////////////
@@ -289,10 +293,6 @@ public:
 #ifdef TRACE_MATERIAL_LEAKS
     string  m_sLoadingCallstack;
 #endif
-
-private:
-
-    void UpdateMaterialFlags();
 
 private:
     friend class CMatMan;
@@ -310,6 +310,8 @@ private:
     //! Material flags.
     //! @see EMatInfoFlags
     int m_Flags;
+
+    uint32 m_dccMaterialHash;
 
     SShaderItem m_shaderItem;
 

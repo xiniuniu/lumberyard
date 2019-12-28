@@ -10,7 +10,7 @@
 *
 */
 
-#include <StdAfx.h>
+#include <CloudGemAWSScriptBehaviors_precompiled.h>
 
 #include "AWSBehaviorMap.h"
 #include <AzCore/JSON/document.h>
@@ -129,7 +129,7 @@ namespace CloudGemAWSScriptBehaviors
             }
             else
             {
-                AZ_Warning("AWSBehavior", "StringMap::FromJSON JSON Element %s contains non-string value of type %d", iter->name.GetString(), iter->value.GetType());
+                AZ_Warning("AWSBehavior", false, "StringMap::FromJSON JSON Element %s contains non-string value of type %d", iter->name.GetString(), iter->value.GetType());
             }
         }
     }

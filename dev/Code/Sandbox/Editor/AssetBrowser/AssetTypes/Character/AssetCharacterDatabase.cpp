@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "AssetCharacterDatabase.h"
 #include "AssetCharacterItem.h"
 #include "Include/IAssetViewer.h"
@@ -160,12 +160,12 @@ void CAssetCharacterDatabase::Refresh()
         CAssetCharacterItem* poModelDatabaseItem = new CAssetCharacterItem();
 
         poModelDatabaseItem->SetFileSize(rstFileDescriptor.size);
-        poModelDatabaseItem->SetFilename(strFileNameOnly.toLatin1().data());
-        poModelDatabaseItem->SetRelativePath(strPathOnly.toLatin1().data());
+        poModelDatabaseItem->SetFilename(strFileNameOnly.toUtf8().data());
+        poModelDatabaseItem->SetRelativePath(strPathOnly.toUtf8().data());
         poModelDatabaseItem->SetOwnerDatabase(this);
-        poModelDatabaseItem->SetFileExtension(strExtension.toLatin1().data());
+        poModelDatabaseItem->SetFileExtension(strExtension.toUtf8().data());
         poModelDatabaseItem->SetFlag(IAssetItem::eFlag_Visible, true);
-        poModelDatabaseItem->SetHash(AssetBrowser::HashStringSbdm(strOutputModelName.toLatin1().data()));
+        poModelDatabaseItem->SetHash(CAssetBrowserManager::HashStringSbdm(strOutputModelName.toUtf8().data()));
         poModelDatabaseItem->CheckIfItsLod();
         m_assets[strOutputModelName] = poModelDatabaseItem;
     }

@@ -16,6 +16,7 @@
 #include <AzCore/std/algorithm.h>
 #include <AzCore/std/createdestroy.h>
 #include <AzCore/std/typetraits/alignment_of.h>
+#include <AzCore/std/typetraits/is_constructible.h>
 
 namespace AZStd
 {
@@ -272,6 +273,7 @@ namespace AZStd
 
 #if defined(AZ_HAS_INITIALIZERS_LIST)
         AZ_FORCE_INLINE list(std::initializer_list<T> list)
+            : m_numElements(0)
         {
             m_head.m_next = m_head.m_prev = &m_head;
             insert(begin(), list.begin(), list.end());
@@ -357,8 +359,8 @@ namespace AZStd
         AZ_FORCE_INLINE void push_back(const_reference value)   { insert(end(), value); }
         AZ_FORCE_INLINE void pop_back()                         { erase(--end()); }
 
-#if defined(AZ_HAS_RVALUE_REFS)
-        list(this_type&& rhs)
+        template <typename MyAllocator=allocator_type>
+        list(this_type&& rhs, typename AZStd::enable_if_t<AZStd::is_default_constructible<MyAllocator>::value>* = nullptr)
             : m_numElements(0)
         {
             m_head.m_next = m_head.m_prev = &m_head;
@@ -416,7 +418,6 @@ namespace AZStd
             insert_element(insertPos, AZStd::forward<ArgumentsInputs>(agruments) ...);
             return iterator((--insertPos).m_node);
         }
-#endif // AZ_HAS_RVALUE_REFS
 
 #if defined(AZ_HAS_INITIALIZERS_LIST)
         iterator insert(const_iterator insertPos, std::initializer_list<T> ilist)
@@ -584,7 +585,7 @@ namespace AZStd
             else
             {
                 this_type temp(m_allocator);
-#ifdef AZ_HAS_RVALUE_REFS
+
                 // Different allocators, move elements
                 for (auto& element : * this)
                 {
@@ -600,12 +601,6 @@ namespace AZStd
                 {
                     rhs.push_back(AZStd::move(element));
                 }
-#else
-                // Different allocators, use assign.
-                temp = *this;
-                *this = rhs;
-                rhs = temp;
-#endif
             }
         }
 
@@ -1173,6 +1168,35 @@ namespace AZStd
             orphan_all();
 #endif
         }
+
+        //! Extension allows for a list node to be unlinked without deletion
+        //! This is used to implement a node handle construct in the unordered_map
+        node_ptr_type unlink(const_iterator unlinkPos)
+        {
+            node_ptr_type unlinkNode = static_cast<node_ptr_type>(unlinkPos.m_node);
+
+            unlinkNode->m_prev->m_next = unlinkNode->m_next;
+            unlinkNode->m_next->m_prev = unlinkNode->m_prev;
+            unlinkNode->m_next = nullptr;
+            unlinkNode->m_prev = nullptr;
+
+            --m_numElements;
+            return unlinkNode;
+        }
+
+        //! Extension allows for a list node to be relinked to list
+        //! Requirements: The list node must use the same allocator as the list being linked to
+        iterator relink(const_iterator insertPos, const base_node_ptr_type nodeToLink)
+        {
+            base_node_ptr_type insNode = insertPos.m_node;
+
+            ++m_numElements;
+            nodeToLink->m_next = insNode;
+            nodeToLink->m_prev = insNode->m_prev;
+            insNode->m_prev = nodeToLink;
+            nodeToLink->m_prev->m_next = nodeToLink;
+            return iterator(AZSTD_CHECKED_ITERATOR(iterator_impl, nodeToLink));
+        }
         /// @}
     protected:
         AZ_FORCE_INLINE void    deallocate_node(node_ptr_type node, const true_type& /* allocator::allow_memory_leaks */)
@@ -1236,7 +1260,6 @@ namespace AZStd
             }
         }
 
-#ifdef AZ_HAS_RVALUE_REFS
         template<class ... ArgumentsInputs>
         void insert_element(const_iterator insertPos, ArgumentsInputs&& ... agruments)
         {
@@ -1258,7 +1281,6 @@ namespace AZStd
             insNode->m_prev = newNode;
             newNode->m_prev->m_next = newNode;
         }
-#endif //
 
         base_node_type      m_head;
         size_type           m_numElements;

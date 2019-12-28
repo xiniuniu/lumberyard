@@ -37,9 +37,12 @@ namespace LegacyFramework
         bool m_shouldRunAssetProcessor; // false if you want to disable auto launching the asset processor.
         bool m_saveUserSettings; // true by default - set it to false if you want not to store usersettings (ie, you have no per-user state because you're something like an asset builder!)
 
+        int m_argc;
+        char** m_argv;
+
         char m_applicationName[_MAX_PATH];
 
-        ApplicationDesc(const char* name = "Application");
+        ApplicationDesc(const char* name = "Application", int argc = 0, char** argv = nullptr);
         ApplicationDesc(const ApplicationDesc& other);
         ApplicationDesc& operator=(const ApplicationDesc& other);
     private:
@@ -54,6 +57,7 @@ namespace LegacyFramework
         /// Create application, if systemEntityFileName is NULL, we will create with default settings.
     public:
 
+        using CoreMessageBus::Handler::Run;
         virtual int Run(const ApplicationDesc& desc);
         Application();
         virtual ~Application();
@@ -81,7 +85,7 @@ namespace LegacyFramework
         // ------------------------------------------------------------------
 
 
-        virtual AZ::Entity* Create(const char* systemEntityFileName);
+        AZ::Entity* Create(const char* systemEntityFileName, const StartupParameters& startupParameters = StartupParameters()) override;
         virtual void Destroy();
         /**
          * Before we reflect for serialization make sure we have the serialize context

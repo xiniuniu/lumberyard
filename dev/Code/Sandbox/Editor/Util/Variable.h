@@ -34,6 +34,52 @@ struct ISplineInterpolator;
 class CUsedResources;
 struct IVariable;
 
+namespace
+{
+    template<typename T>
+    T nextNiceNumberBelow(T number);
+
+    template<typename T>
+    T nextNiceNumberAbove(T number)
+    {
+        if (number == 0)
+        {
+            return 0;
+        }
+        if (number < 0)
+        {
+            return -nextNiceNumberBelow(-number);
+        }
+
+        // number = 8000
+        auto l = log10(number);   // 3.90
+        AZ::s64 i = l;            // 3
+        int f = pow(10, l - i);   // 10^0.9 = 8
+        f = f < 2 ? 2 : f < 5 ? 5 : 10; // f -> 10
+        return pow(10, i) * f;
+    }
+
+    template<typename T>
+    T nextNiceNumberBelow(T number)
+    {
+        if (number == 0)
+        {
+            return 0;
+        }
+        if (number < 0)
+        {
+            return -nextNiceNumberAbove(-number);
+        }
+
+        // number = 8000
+        auto l = log10(number);   // 3.90
+        AZ::s64 i = l;            // 3
+        int f = pow(10, l - i);   // 10^0.9 = 8
+        f = f > 5 ? 5 : f > 2 ? 2 : 1;  // f -> 5
+        return pow(10, i) * f;
+    }
+}
+
 /** IVariableContainer
  *  Interface for all classes that hold child variables
  */
@@ -151,6 +197,7 @@ struct IVariable
         DT_AUDIO_PRELOAD_REQUEST,
         DT_UI_ELEMENT,
         DT_COLORA,      // DT_COLOR with alpha channel
+        DT_MOTION,      // Motion animation asset
         DT_CURVE = BIT(7),  // Combined with other types
     };
 
@@ -504,7 +551,7 @@ public:
     }
 
 
-    void OnSetValue(bool bRecursive)
+    virtual void OnSetValue(bool bRecursive)
     {
         // If have wired variables or OnSet callback, process them.
         // Send value to wired variable.
@@ -537,9 +584,9 @@ public:
     {
         if (load)
         {
-            if (node->haveAttr(m_name.toLatin1().data()))
+            if (node->haveAttr(m_name.toUtf8().data()))
             {
-                Set(node->getAttr(m_name.toLatin1().data()));
+                Set(node->getAttr(m_name.toUtf8().data()));
             }
         }
         else
@@ -547,7 +594,7 @@ public:
             // Saving.
             QString str;
             Get(str);
-            node->setAttr(m_name.toLatin1().data(), str.toLatin1().data());
+            node->setAttr(m_name.toUtf8().data(), str.toUtf8().data());
         }
     }
 
@@ -599,18 +646,17 @@ protected:
     QString m_humanName;
     QString m_description;
 
+    //! Optional userdata pointer
+    QVariant m_userData;
+
     //! Extended data (Extended data is never copied, it's always private to this variable).
     WiredList m_wiredVars;
     OnSetCallbackList m_onSetFuncs;
     OnSetEnumCallbackList m_onSetEnumFuncs;
 
-
     uint16 m_flags;
     //! Limited to 8 flags.
     unsigned char m_dataType;
-
-    //! Optional userdata pointer
-    QVariant m_userData;
 
     bool m_boUpdateCallbacksEnabled;
 
@@ -709,7 +755,7 @@ public:
             return;
         }
         int numSrc = fromVar->GetNumVariables();
-        int numTrg = m_vars.size();
+        int numTrg = static_cast<int>(m_vars.size());
         for (int i = 0; i < numSrc && i < numTrg; i++)
         {
             // Copy Every child variable.
@@ -721,7 +767,7 @@ public:
     }
 
     //////////////////////////////////////////////////////////////////////////
-    virtual int GetNumVariables() const { return m_vars.size(); }
+    virtual int GetNumVariables() const { return static_cast<int>(m_vars.size()); }
 
     virtual IVariable* GetVariable(int index) const
     {
@@ -799,7 +845,7 @@ public:
                 IVariable* var = *it;
                 if (var->GetNumVariables())
                 {
-                    XmlNodeRef child = node->findChild(var->GetName().toLatin1().data());
+                    XmlNodeRef child = node->findChild(var->GetName().toUtf8().data());
                     if (child)
                     {
                         var->Serialize(child, load);
@@ -819,7 +865,7 @@ public:
                 IVariable* var = *it;
                 if (var->GetNumVariables())
                 {
-                    XmlNodeRef child = node->newChild(var->GetName().toLatin1().data());
+                    XmlNodeRef child = node->newChild(var->GetName().toUtf8().data());
                     var->Serialize(child, load);
                 }
                 else
@@ -842,7 +888,7 @@ protected:
 namespace var_type
 {
     //////////////////////////////////////////////////////////////////////////
-    template <int TypeID, bool IsStandart, bool IsInteger, bool IsSigned>
+    template <int TypeID, bool IsStandart, bool IsInteger, bool IsSigned, bool SupportsRange>
     struct type_traits_base
     {
         static int type() { return TypeID; };
@@ -850,40 +896,41 @@ namespace var_type
         static bool is_standart() { return IsStandart; };
         static bool is_integer() { return IsInteger; };
         static bool is_signed() { return IsSigned; };
+        static bool supports_range() { return SupportsRange; };
     };
 
     template <class Type>
     struct type_traits
-        : public type_traits_base<IVariable::UNKNOWN, false, false, false> {};
+        : public type_traits_base<IVariable::UNKNOWN, false, false, false, false> {};
 
     // Types specialization.
     template<>
     struct type_traits<int>
-        : public type_traits_base<IVariable::INT, true, true, true> {};
+        : public type_traits_base<IVariable::INT, true, true, true, true> {};
     template<>
     struct type_traits<bool>
-        : public type_traits_base<IVariable::BOOL, true, true, false> {};
+        : public type_traits_base<IVariable::BOOL, true, true, false, true> {};
     template<>
     struct type_traits<float>
-        : public type_traits_base<IVariable::FLOAT, true, false, false> {};
+        : public type_traits_base<IVariable::FLOAT, true, false, false, true> {};
     template<>
     struct type_traits<double>
-        : public type_traits_base<IVariable::DOUBLE, true, false, false>{};
+        : public type_traits_base<IVariable::DOUBLE, true, false, false, true>{};
     template<>
     struct type_traits<Vec2>
-        : public type_traits_base<IVariable::VECTOR2, false, false, false> {};
+        : public type_traits_base<IVariable::VECTOR2, false, false, false, false> {};
     template<>
     struct type_traits<Vec3>
-        : public type_traits_base<IVariable::VECTOR, false, false, false> {};
+        : public type_traits_base<IVariable::VECTOR, false, false, false, false> {};
     template<>
     struct type_traits<Vec4>
-        : public type_traits_base<IVariable::VECTOR4, false, false, false> {};
+        : public type_traits_base<IVariable::VECTOR4, false, false, false, false> {};
     template<>
     struct type_traits<Quat>
-        : public type_traits_base<IVariable::QUAT, false, false, false> {};
+        : public type_traits_base<IVariable::QUAT, false, false, false, false> {};
     template<>
     struct type_traits<QString>
-        : public type_traits_base<IVariable::STRING, false, false, false> {};
+        : public type_traits_base<IVariable::STRING, false, false, false, false> {};
     //////////////////////////////////////////////////////////////////////////
 
     //////////////////////////////////////////////////////////////////////////
@@ -1155,8 +1202,23 @@ public:
         // Flag to determine when this variable has custom limits set
         m_customLimits = true;
     }
+
     virtual void GetLimits(float& fMin, float& fMax, float& fStep, bool& bHardMin, bool& bHardMax)
     {
+        if (!m_customLimits && var_type::type_traits<T>::supports_range())
+        {
+            float value;
+            GetValue(value);
+            if (value > m_valueMax && !m_bHardMax)
+            {
+                SetLimits(m_valueMin, nextNiceNumberAbove(value), 0.0, false, false);
+            }
+            if (value < m_valueMin && !m_bHardMin)
+            {
+                SetLimits(nextNiceNumberBelow(value), m_valueMax, 0.0, false, false);
+            }
+        }
+
         fMin = m_valueMin;
         fMax = m_valueMax;
         fStep = m_valueStep;
@@ -1245,7 +1307,7 @@ protected:
         {
             CVariableBase::CancelResolveRequest(functor(*this, &CVariable<T>::OnResolved));
         }
-        m_bResolving = CVariableBase::StartResolveRequest(GetDataType(), value.toLatin1().data(), functor(*this, &CVariable<T>::OnResolved));
+        m_bResolving = CVariableBase::StartResolveRequest(GetDataType(), value.toUtf8().data(), functor(*this, &CVariable<T>::OnResolved));
     }
 
     void OnResolved(uint32 id, bool success, const char* orgVal, const char* newVal)
@@ -1258,13 +1320,12 @@ protected:
 
 protected:
     T m_valueDef;
-
-    // Min/Max value.
-    float m_valueMin, m_valueMax, m_valueStep;
-    unsigned char m_bHardMin : 1;
-    unsigned char m_bHardMax : 1;
     bool m_customLimits;
     bool m_bResolving;
+    unsigned char m_bHardMin : 1;
+    unsigned char m_bHardMax : 1;
+    // Min/Max value.
+    float m_valueMin, m_valueMax, m_valueStep;
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -1362,7 +1423,7 @@ public:
                 IVariable* var = *it;
                 if (var->GetNumVariables())
                 {
-                    XmlNodeRef child = node->findChild(var->GetName().toLatin1().data());
+                    XmlNodeRef child = node->findChild(var->GetName().toUtf8().data());
                     if (child)
                     {
                         var->Serialize(child, load);
@@ -1382,7 +1443,7 @@ public:
                 IVariable* var = *it;
                 if (var->GetNumVariables())
                 {
-                    XmlNodeRef child = node->newChild(var->GetName().toLatin1().data());
+                    XmlNodeRef child = node->newChild(var->GetName().toUtf8().data());
                     var->Serialize(child, load);
                 }
                 else
@@ -1749,7 +1810,7 @@ public:
     void AddVariable(CVariableBase& var, const char* varName, unsigned char dataType = IVariable::DT_SIMPLE);
 
     //! Returns number of variables in block.
-    virtual int GetNumVariables() const { return m_vars.size(); }
+    virtual int GetNumVariables() const { return static_cast<int>(m_vars.size()); }
 
     //! Get pointer to stored variable by index.
     virtual IVariable* GetVariable(int index) const

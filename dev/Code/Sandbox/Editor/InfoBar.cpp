@@ -24,6 +24,7 @@
 
 #include "MathConversion.h"
 #include <AzFramework/Math/MathUtils.h>
+#include <AzToolsFramework/Viewport/ViewportMessages.h>
 
 #include <QFontMetrics>
 
@@ -52,8 +53,6 @@ CInfoBar::CInfoBar(QWidget* parent)
         buttons->setProperty("class", "tiny");
     }
 
-    //{{AFX_DATA_INIT(CInfoBar)
-    //}}AFX_DATA_INIT
     m_enabledVector = false;
     m_bVectorLock = false;
     m_prevEditMode = 0;
@@ -104,6 +103,9 @@ CInfoBar::CInfoBar(QWidget* parent)
 
     connect(ui->m_setVector, &QToolButton::clicked, this, &CInfoBar::OnBnClickedSetVector);
     connect(ui->m_terrainCollision, &QToolButton::clicked, this, &CInfoBar::OnBnClickedTerrainCollision);
+    connect(ui->m_physicsBtn, &QToolButton::clicked, this, &CInfoBar::OnBnClickedPhysics);
+    connect(ui->m_physSingleStepBtn, &QToolButton::clicked, this, &CInfoBar::OnBnClickedSingleStepPhys);
+    connect(ui->m_physDoStepBtn, &QToolButton::clicked, this, &CInfoBar::OnBnClickedDoStepPhys);
     connect(ui->m_syncPlayerBtn, &QToolButton::clicked, this, &CInfoBar::OnBnClickedSyncplayer);
     connect(ui->m_gotoPos, &QToolButton::clicked, this, &CInfoBar::OnBnClickedGotoPosition);
     connect(ui->m_speed_01, &QToolButton::clicked, this, &CInfoBar::OnBnClickedSpeed01);
@@ -113,11 +115,62 @@ CInfoBar::CInfoBar(QWidget* parent)
     connect(ui->m_vrBtn, &QToolButton::clicked, this, &CInfoBar::OnBnClickedEnableVR);
 
     connect(this, &CInfoBar::ActionTriggered, MainWindow::instance()->GetActionManager(), &ActionManager::ActionTriggered);
+
+    connect(ui->m_lockSelection, &QAbstractButton::toggled, ui->m_lockSelection, [this](bool checked) {
+        ui->m_lockSelection->setToolTip(checked ? tr("Unlock Object Selection") : tr("Lock Object Selection"));
+    });
+    connect(ui->m_vectorLock, &QAbstractButton::toggled, ui->m_vectorLock, [this](bool checked) {
+        ui->m_vectorLock->setToolTip(checked ? tr("Unlock Axis Vectors") : tr("Lock Axis Vectors"));
+    });
+    connect(ui->m_terrainCollision, &QAbstractButton::toggled, ui->m_terrainCollision, [this](bool checked) {
+        ui->m_terrainCollision->setToolTip(checked ? tr("Disable Terrain Camera Collision (Q)") : tr("Enable Terrain Camera Collision (Q)"));
+    });
+    connect(ui->m_physicsBtn, &QAbstractButton::toggled, ui->m_physicsBtn, [this](bool checked) {
+        ui->m_physicsBtn->setToolTip(checked ? tr("Disable Physics/AI (Ctrl+P)") : tr("Enable Physics/AI (Ctrl+P)"));
+    });
+    connect(ui->m_physSingleStepBtn, &QAbstractButton::toggled, ui->m_physSingleStepBtn, [this](bool checked) {
+        ui->m_physSingleStepBtn->setToolTip(checked ? tr("Disable Physics/AI Single-step Mode ('<' in Game Mode)") : tr("Enable Physics/AI Single-step Mode ('<' in Game Mode)"));
+    });
+    connect(ui->m_syncPlayerBtn, &QAbstractButton::toggled, ui->m_syncPlayerBtn, [this](bool checked) {
+        ui->m_syncPlayerBtn->setToolTip(checked ? tr("Synchronize Player with Camera") : tr("Move Player and Camera Separately"));
+    });
+    connect(ui->m_muteBtn, &QAbstractButton::toggled, ui->m_muteBtn, [this](bool checked) {
+        ui->m_muteBtn->setToolTip(checked ? tr("Un-mute Audio") : tr("Mute Audio"));
+    });
+    connect(ui->m_vrBtn, &QAbstractButton::toggled, ui->m_vrBtn, [this](bool checked) {
+        ui->m_vrBtn->setToolTip(checked ? tr("Disable VR Preview") : tr("Enable VR Preview"));
+    });
+
+    // hide old ui elements that are not valid with the new viewport interaction model
+    if (GetIEditor()->IsNewViewportInteractionModelEnabled())
+    {
+        ui->m_lockSelection->setVisible(false);
+        ui->m_posCtrlX->setVisible(false);
+        ui->m_posCtrlY->setVisible(false);
+        ui->m_posCtrlZ->setVisible(false);
+        ui->m_setVector->setVisible(false);
+        ui->label_2->setVisible(false);
+        ui->label_3->setVisible(false);
+        ui->label_4->setVisible(false);
+        ui->m_vectorLock->setVisible(false);
+    }
+
+    // hide the terrain collision button if terrain editing has been disabled
+#ifndef LY_TERRAIN_EDITOR
+    ui->m_terrainCollision->setVisible(false);
+#endif //#ifdef LY_TERRAIN_EDITOR
+
+
+    using namespace AzToolsFramework::ComponentModeFramework;
+    EditorComponentModeNotificationBus::Handler::BusConnect(AzToolsFramework::GetEntityContextId());
 }
 
 //////////////////////////////////////////////////////////////////////////
 CInfoBar::~CInfoBar()
 {
+    using namespace AzToolsFramework::ComponentModeFramework;
+    EditorComponentModeNotificationBus::Handler::BusDisconnect();
+
     GetIEditor()->UnregisterNotifyListener(this);
 
     AZ::VR::VREventBus::Handler::BusDisconnect();
@@ -138,13 +191,44 @@ void CInfoBar::OnEditorNotifyEvent(EEditorNotifyEvent event)
     }
     else if (event == eNotify_OnBeginLoad || event == eNotify_OnCloseScene)
     {
+        // make sure AI/Physics is disabled on level load (CE-4229)
+        if (GetIEditor()->GetGameEngine()->GetSimulationMode())
+        {
+            OnBnClickedPhysics();
+        }
+
+        ui->m_physicsBtn->setEnabled(false);
+        ui->m_physSingleStepBtn->setEnabled(false);
+        ui->m_physDoStepBtn->setEnabled(false);
     }
     else if (event == eNotify_OnEndLoad || event == eNotify_OnEndNewScene)
     {
+        ui->m_physicsBtn->setEnabled(true);
+        ui->m_physSingleStepBtn->setEnabled(true);
+        ui->m_physDoStepBtn->setEnabled(true);
     }
     else if (event == eNotify_OnSelectionChange)
     {
         m_bSelectionChanged = true;
+    }
+    else if (event == eNotify_OnEditModeChange)
+    {
+        int emode = GetIEditor()->GetEditMode();
+        switch (emode)
+        {
+        case eEditModeMove:
+            ui->m_setVector->setToolTip(tr("Set Position of Selected Objects"));
+            break;
+        case eEditModeRotate:
+            ui->m_setVector->setToolTip(tr("Set Rotation of Selected Objects"));
+            break;
+        case eEditModeScale:
+            ui->m_setVector->setToolTip(tr("Set Scale of Selected Objects"));
+            break;
+        default:
+            ui->m_setVector->setToolTip(tr("Set Position/Rotation/Scale of Selected Objects (None Selected)"));
+            break;
+        }
     }
 }
 
@@ -276,16 +360,21 @@ void CInfoBar::OnVectorUpdate(bool followTerrain)
     {
         if (obj)
         {
-            Quat qrot = AZQuaternionToLYQuaternion(AzFramework::ConvertEulerDegreesToQuaternion(LYVec3ToAZVec3(v)));
+            AZ::Vector3 av = LYVec3ToAZVec3(v);
+            AZ::Transform tr = AZ::ConvertEulerDegreesToTransformPrecise(av);
+            Matrix34 lyTransform = AZTransformToLYTransform(tr);
+
+            AffineParts newap;
+            newap.SpectralDecompose(lyTransform);
 
             if (referenceCoordSys == COORDS_WORLD)
             {
-                tm = Matrix34::Create(ap.scale, qrot, ap.pos);
+                tm = Matrix34::Create(ap.scale, newap.rot, ap.pos);
                 obj->SetWorldTM(tm);
             }
             else
             {
-                obj->SetRotation(qrot);
+                obj->SetRotation(newap.rot);
             }
         }
         else
@@ -297,7 +386,7 @@ void CInfoBar::OnVectorUpdate(bool followTerrain)
                 refObj = pGroup->GetObject(0);
                 AffineParts ap;
                 ap.SpectralDecompose(refObj->GetWorldTM());
-                Vec3 oldEulerRotation = AZVec3ToLYVec3(AzFramework::ConvertQuaternionToEulerDegrees(LYQuaternionToAZQuaternion(ap.rot)));
+                Vec3 oldEulerRotation = AZVec3ToLYVec3(AZ::ConvertQuaternionToEulerDegrees(LYQuaternionToAZQuaternion(ap.rot)));
                 Vec3 diff = v - oldEulerRotation;
                 GetIEditor()->GetSelection()->Rotate((Ang3)diff, referenceCoordSys);
             }
@@ -430,6 +519,19 @@ void CInfoBar::IdleUpdate()
             ui->m_terrainCollision->setChecked(!noCollision);
         }
 
+        bool bPhysics = GetIEditor()->GetGameEngine()->GetSimulationMode();
+        if ((ui->m_physicsBtn->isChecked() && !bPhysics) ||
+            (!ui->m_physicsBtn->isChecked() && bPhysics))
+        {
+            ui->m_physicsBtn->setChecked(bPhysics);
+        }
+
+        bool bSingleStep = (gEnv->pPhysicalWorld->GetPhysVars()->bSingleStepMode != 0);
+        if (ui->m_physSingleStepBtn->isChecked() != bSingleStep)
+        {
+            ui->m_physSingleStepBtn->setChecked(bSingleStep);
+        }
+
         bool bSyncPlayer = GetIEditor()->GetGameEngine()->IsSyncPlayerPosition();
         if ((!ui->m_syncPlayerBtn->isChecked() && !bSyncPlayer) ||
             (ui->m_syncPlayerBtn->isChecked() && bSyncPlayer))
@@ -559,7 +661,7 @@ void CInfoBar::IdleUpdate()
                 }
 
                 // Always convert objRot to v in order to ensure that the inspector and info bar are always in sync
-                v = AZVec3ToLYVec3(AzFramework::ConvertQuaternionToEulerDegrees(LYQuaternionToAZQuaternion(objRot)));
+                v = AZVec3ToLYVec3(AZ::ConvertQuaternionToEulerDegrees(LYQuaternionToAZQuaternion(objRot)));
             }
             enable = true;
             min = -10000;
@@ -735,6 +837,10 @@ void CInfoBar::OnInitDialog()
     ui->m_posCtrlZ->setMaximumWidth(width);
     ui->m_setVector->setEnabled(false);
 
+    ui->m_physicsBtn->setEnabled(false);
+    ui->m_physSingleStepBtn->setEnabled(false);
+    ui->m_physDoStepBtn->setEnabled(false);
+
     ui->m_moveSpeed->setRange(0.01, 100);
     ui->m_moveSpeed->setSingleStep(0.1);
 
@@ -790,6 +896,33 @@ void CInfoBar::OnEndVectorUpdate()
 void CInfoBar::OnBnClickedTerrainCollision()
 {
     emit ActionTriggered(ID_TERRAIN_COLLISION);
+}
+
+void CInfoBar::OnBnClickedPhysics()
+{
+    if (!ui->m_physicsBtn->isEnabled())
+    {
+        return;
+    }
+
+    bool bPhysics = GetIEditor()->GetGameEngine()->GetSimulationMode();
+    ui->m_physicsBtn->setChecked(bPhysics);
+    emit ActionTriggered(ID_SWITCH_PHYSICS);
+
+    if (bPhysics && ui->m_physSingleStepBtn->isChecked())
+    {
+        OnBnClickedSingleStepPhys();
+    }
+}
+
+void CInfoBar::OnBnClickedSingleStepPhys()
+{
+    ui->m_physSingleStepBtn->setChecked(gEnv->pPhysicalWorld->GetPhysVars()->bSingleStepMode ^= 1);
+}
+
+void CInfoBar::OnBnClickedDoStepPhys()
+{
+    gEnv->pPhysicalWorld->GetPhysVars()->bDoStep = 1;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -848,6 +981,16 @@ void CInfoBar::OnBnClickedEnableVR()
 {
     gSettings.bEnableGameModeVR = !gSettings.bEnableGameModeVR;
     ui->m_vrBtn->setChecked(gSettings.bEnableGameModeVR);
+}
+
+void CInfoBar::EnteredComponentMode(const AZStd::vector<AZ::Uuid>& /*componentModeTypes*/)
+{
+    ui->m_physicsBtn->setDisabled(true);
+}
+
+void CInfoBar::LeftComponentMode(const AZStd::vector<AZ::Uuid>& /*componentModeTypes*/)
+{
+    ui->m_physicsBtn->setEnabled(true);
 }
 
 #include <InfoBar.moc>

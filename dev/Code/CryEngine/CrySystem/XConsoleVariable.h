@@ -117,6 +117,17 @@ public:
     virtual const SFunctor& GetOnChangeFunctor(uint64 nFunctorId) const override;
     virtual ConsoleVarFunc GetOnChangeCallback() const;
 
+    virtual bool ShouldReset() const { return (m_nFlags & VF_RESETTABLE) != 0; }
+    virtual void Reset() override
+    {
+        if (ShouldReset())
+        {
+            ResetImpl();
+        }
+    }
+
+    virtual void ResetImpl() = 0;
+
     virtual void SetLimits(float min, float max) override;
     virtual void GetLimits(float& min, float& max) override;
     virtual bool HasCustomLimits() override;
@@ -128,7 +139,7 @@ public:
     {
         CRY_ASSERT(m_pDataProbeString == NULL);
         m_pDataProbeString = new char[ strlen(pDataProbeString) + 1 ];
-        strcpy(m_pDataProbeString, pDataProbeString);
+        azstrcpy(m_pDataProbeString, strlen(pDataProbeString) + 1, pDataProbeString);
     }
 #endif
     virtual const char* GetDataProbeString() const
@@ -178,8 +189,8 @@ public:
     CXConsoleVariableString(CXConsole* pConsole, const char* sName, const char* szDefault, int nFlags, const char* help)
         : CXConsoleVariableBase(pConsole, sName, nFlags, help)
     {
-        ScopedSwitchToGlobalHeap useGlobalHeap;
         m_sValue = szDefault;
+        m_sDefault = szDefault;
     }
 
     // interface ICVar --------------------------------------------------------------------------------------
@@ -188,6 +199,10 @@ public:
     virtual int64 GetI64Val() const { return _atoi64(m_sValue); }
     virtual float GetFVal() const { return (float)atof(m_sValue); }
     virtual const char* GetString() const { return m_sValue; }
+    virtual void ResetImpl()
+    {
+        Set(m_sDefault);
+    }
     virtual void Set(const char* s)
     {
         if (!s)
@@ -204,7 +219,6 @@ public:
         {
             m_nFlags |= VF_MODIFIED;
             {
-                ScopedSwitchToGlobalHeap useGlobalHeap;
                 m_sValue = s;
             }
 
@@ -245,7 +259,8 @@ public:
 
     virtual void GetMemoryUsage(class ICrySizer* pSizer) const { pSizer->AddObject(this, sizeof(*this)); }
 private: // --------------------------------------------------------------------------------------------
-    string m_sValue;                                            //!<
+    string m_sValue;                                            
+    string m_sDefault;                                                                              //!<
 };
 
 
@@ -258,6 +273,7 @@ public:
     CXConsoleVariableInt(CXConsole* pConsole, const char* sName, const int iDefault, int nFlags, const char* help)
         : CXConsoleVariableBase(pConsole, sName, nFlags, help)
         , m_iValue(iDefault)
+        , m_iDefault(iDefault)
     {
     }
 
@@ -273,6 +289,7 @@ public:
         sprintf_s(szReturnString, "%d", GetIVal());
         return szReturnString;
     }
+    virtual void ResetImpl() { Set(m_iDefault); }
     virtual void Set(const char* s)
     {
         int nValue = TextToInt(s, m_iValue, (m_nFlags & VF_BITFIELD) != 0);
@@ -308,7 +325,8 @@ public:
     virtual void GetMemoryUsage(class ICrySizer* pSizer) const { pSizer->AddObject(this, sizeof(*this)); }
 protected: // --------------------------------------------------------------------------------------------
 
-    int                             m_iValue;                                           //!<
+    int                             m_iValue;                                           
+    int                             m_iDefault;                                 //!<
 };
 
 
@@ -320,6 +338,7 @@ public:
     CXConsoleVariableInt64(CXConsole* pConsole, const char* sName, const int64 iDefault, int nFlags, const char* help)
         : CXConsoleVariableBase(pConsole, sName, nFlags, help)
         , m_iValue(iDefault)
+        , m_iDefault(iDefault)
     {
     }
 
@@ -334,6 +353,7 @@ public:
         sprintf_s(szReturnString, "%lld", GetI64Val());
         return szReturnString;
     }
+    virtual void ResetImpl() { Set(m_iDefault); }
     virtual void Set(const char* s)
     {
         int64 nValue = TextToInt64(s, m_iValue, (m_nFlags & VF_BITFIELD) != 0);
@@ -373,7 +393,8 @@ public:
     virtual void GetMemoryUsage(class ICrySizer* pSizer) const { pSizer->AddObject(this, sizeof(*this)); }
 protected: // --------------------------------------------------------------------------------------------
 
-    int64                           m_iValue;                                           //!<
+    int64                           m_iValue;                                           
+    int64                           m_iDefault;                                 //!<
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -385,6 +406,7 @@ public:
     CXConsoleVariableFloat(CXConsole* pConsole, const char* sName, const float fDefault, int nFlags, const char* help)
         : CXConsoleVariableBase(pConsole, sName, nFlags, help)
         , m_fValue(fDefault)
+        , m_fDefault(fDefault)
     {
     }
 
@@ -400,6 +422,7 @@ public:
         sprintf_s(szReturnString, "%g", m_fValue);        // %g -> "2.01",   %f -> "2.01000"
         return szReturnString;
     }
+    virtual void ResetImpl() { Set(m_fDefault); }
     virtual void Set(const char* s)
     {
         float fValue = 0;
@@ -477,7 +500,8 @@ protected:
 
 private: // --------------------------------------------------------------------------------------------
 
-    float                           m_fValue;                                           //!<
+    float                           m_fValue;                                           
+    float                           m_fDefault;                             //!<
 };
 
 
@@ -490,6 +514,7 @@ public:
     CXConsoleVariableIntRef(CXConsole* pConsole, const char* sName, int32* pVar, int nFlags, const char* help)
         : CXConsoleVariableBase(pConsole, sName, nFlags, help)
         , m_iValue(*pVar)
+        , m_iDefault(*pVar)
     {
         assert(pVar);
     }
@@ -506,6 +531,7 @@ public:
         sprintf_s(szReturnString, "%d", m_iValue);
         return szReturnString;
     }
+    virtual void ResetImpl() { Set(m_iDefault); }
     virtual void Set(const char* s)
     {
         int nValue = TextToInt(s, m_iValue, (m_nFlags & VF_BITFIELD) != 0);
@@ -564,7 +590,8 @@ public:
     virtual void GetMemoryUsage(class ICrySizer* pSizer) const { pSizer->AddObject(this, sizeof(*this)); }
 private: // --------------------------------------------------------------------------------------------
 
-    int&                           m_iValue;                                            //!<
+    int&                           m_iValue;                                            
+    int                            m_iDefault;                                  //!<
 };
 
 
@@ -580,6 +607,7 @@ public:
     CXConsoleVariableFloatRef(CXConsole* pConsole, const char* sName, float* pVar, int nFlags, const char* help)
         : CXConsoleVariableBase(pConsole, sName, nFlags, help)
         , m_fValue(*pVar)
+        , m_fDefault(*pVar)
     {
         assert(pVar);
     }
@@ -596,6 +624,7 @@ public:
         sprintf_s(szReturnString, "%g", m_fValue);
         return szReturnString;
     }
+    virtual void ResetImpl() { Set(m_fDefault); }
     virtual void Set(const char* s)
     {
         float fValue = 0;
@@ -669,7 +698,8 @@ protected:
 
 private: // --------------------------------------------------------------------------------------------
 
-    float&                         m_fValue;                                            //!<
+    float&                         m_fValue;
+    float                          m_fDefault;                                  //!<
 };
 
 
@@ -683,6 +713,7 @@ public:
     CXConsoleVariableStringRef(CXConsole* pConsole, const char* sName, const char** userBuf, const char* defaultValue, int nFlags, const char* help)
         : CXConsoleVariableBase(pConsole, sName, nFlags, help)
         , m_sValue(defaultValue)
+        , m_sDefault(defaultValue)
         , m_userPtr(*userBuf)
     {
         m_userPtr = m_sValue.c_str();
@@ -698,6 +729,7 @@ public:
     {
         return m_sValue.c_str();
     }
+    virtual void ResetImpl() { Set(m_sDefault); }
     virtual void Set(const char* s)
     {
         if ((m_sValue == s) && (m_nFlags & VF_ALWAYSONCHANGE) == 0)
@@ -709,7 +741,6 @@ public:
         {
             m_nFlags |= VF_MODIFIED;
             {
-                ScopedSwitchToGlobalHeap useGlobalHeap;
                 m_sValue = s;
                 m_userPtr = m_sValue.c_str();
             }
@@ -736,6 +767,7 @@ public:
 private: // --------------------------------------------------------------------------------------------
 
     string m_sValue;
+    string m_sDefault;
     const char*& m_userPtr;                                         //!<
 };
 

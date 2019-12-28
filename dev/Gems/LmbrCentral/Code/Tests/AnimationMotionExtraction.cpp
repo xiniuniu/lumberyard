@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 #include <AzTest/AzTest.h>
 
 #include <AzCore/Math/Transform.h>
@@ -33,7 +33,7 @@ TEST(AnimationMotionParameterExtraction, BasicExtractionTest)
     AZ::Vector3 frameTranslation(-1.f, 0.f, 0.f);
 
     // Ground is oriented downhill with respect to our movement direction.
-    const float groundSlope = -0.2;
+    const float groundSlope = -0.2f;
     AZ::Vector3 groundNormal = AZ::Quaternion::CreateRotationZ(AZ::Constants::HalfPi) * AZ::Quaternion::CreateRotationX(-groundSlope) * AZ::Vector3::CreateAxisZ();
 
     const float timeStep = 0.016f;

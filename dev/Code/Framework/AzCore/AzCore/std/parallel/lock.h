@@ -14,7 +14,7 @@
 
 #include <AzCore/std/parallel/config.h>
 #include <AzCore/std/createdestroy.h>
-//#include <AzCore/std/algorithm.h> // for swap
+#include <AzCore/std/parallel/thread.h>
 
 namespace AZStd
 {
@@ -25,15 +25,24 @@ namespace AZStd
     struct try_to_lock_t { };   // try to acquire ownership of the mutex without blocking
     struct adopt_lock_t { };    // assume the calling thread has already
 
+    constexpr defer_lock_t defer_lock{};
+    constexpr try_to_lock_t try_to_lock{};
+    constexpr adopt_lock_t adopt_lock{};
+
     template <class Mutex>
     class lock_guard
     {
     public:
         typedef Mutex mutex_type;
         AZ_FORCE_INLINE explicit lock_guard(mutex_type& mtx)
-            : m_mutex(mtx)         { m_mutex.lock(); }
+            : m_mutex(mtx)
+        {
+            m_mutex.lock();
+        }
         AZ_FORCE_INLINE lock_guard(mutex_type& mtx, adopt_lock_t)
-            : m_mutex(mtx)    {}
+            : m_mutex(mtx)
+        {
+        }
         AZ_FORCE_INLINE ~lock_guard()
         {
             m_mutex.unlock();
@@ -67,7 +76,10 @@ namespace AZStd
             : m_mutex(&mtx)
             , m_owns(false) {}
         AZ_FORCE_INLINE unique_lock(mutex_type& mtx, try_to_lock_t)
-            : m_mutex(&mtx) { m_owns = m_mutex->try_lock(); }
+            : m_mutex(&mtx)
+        {
+            m_owns = m_mutex->try_lock();
+        }
         AZ_FORCE_INLINE unique_lock(mutex_type& mtx, adopt_lock_t)
             : m_mutex(&mtx)
             , m_owns(true) {}
@@ -152,7 +164,7 @@ namespace AZStd
         }
         // 30.4.3.2.4 observers
         AZ_FORCE_INLINE bool owns_lock() const { return m_owns; }
-        AZ_FORCE_INLINE operator bool () const { return m_owns; }
+        AZ_FORCE_INLINE operator bool() const { return m_owns; }
         AZ_FORCE_INLINE mutex_type* mutex() const { return m_mutex; }
 
     private:
@@ -175,7 +187,10 @@ namespace AZStd
     public:
         typedef Mutex mutex_type;
         AZ_FORCE_INLINE explicit shared_lock(mutex_type& mutex)
-            : m_mutex(mutex) { m_mutex.lock_shared(); }
+            : m_mutex(mutex)
+        {
+            m_mutex.lock_shared();
+        }
         AZ_FORCE_INLINE shared_lock(mutex_type& mutex, adopt_lock_t)
             : m_mutex(mutex) {}
         AZ_FORCE_INLINE ~shared_lock() { m_mutex.unlock_shared(); }
@@ -186,322 +201,154 @@ namespace AZStd
         mutex_type& m_mutex; // exposition only
     };
 
-    template <typename Mutex>
-    class upgrade_lock
+    template<class Lockable1, class Lockable2>
+    int try_lock(Lockable1& lockable1, Lockable2& lockable2)
     {
-    protected:
-        Mutex* m_mutex;
-        bool m_owns;
-
-    public:
-        typedef Mutex mutex_type;
-
-        upgrade_lock()
-            : m_mutex(nullptr)
-            , m_owns(false)
-        {}
-
-        explicit upgrade_lock(Mutex& mtx)
-            : m_mutex(&mtx)
-            , m_owns(false)
+        AZStd::unique_lock<Lockable1> firstLock(lockable1, AZStd::try_to_lock);
+        if (firstLock.owns_lock())
         {
-            lock();
-        }
-
-        upgrade_lock(Mutex& mtx, adopt_lock_t)
-            : m_mutex(&mtx)
-            , m_owns(true)
-        {
-        }
-
-        upgrade_lock(Mutex& mtx, defer_lock_t)
-            : m_mutex(&mtx)
-            , m_owns(false)
-        {}
-
-        upgrade_lock(Mutex& mtx, try_to_lock_t)
-            : m_mutex(&mtx)
-            , m_owns(false)
-        {
-            try_lock();
-        }
-
-        //template <class Clock, class Duration>
-        //upgrade_lock(Mutex& mtx, const chrono::time_point<Clock, Duration>& t)
-        //    : m_mutex(&mtx), m_owns(mtx.try_lock_upgrade_until(t))
-        //{
-        //}
-        //template <class Rep, class Period>
-        //upgrade_lock(Mutex& mtx, const chrono::duration<Rep, Period>& d)
-        //    : m_mutex(&mtx), m_owns(mtx.try_lock_upgrade_for(d))
-        //{
-        //}
-
-        upgrade_lock(upgrade_lock<Mutex>&& other)
-            : m_mutex(other.m_mutex)
-            , m_owns(other.m_owns)
-        {
-            other.m_owns = false;
-            other.m_mutex = nullptr;
-        }
-
-        upgrade_lock(unique_lock<Mutex>&& other)
-            : m_mutex(other.m_mutex)
-            , m_owns(other.m_owns)
-        {
-            if (m_owns)
+            if (lockable2.try_lock())
             {
-                m_mutex->unlock_and_lock_upgrade();
-            }
-            other.m_owns = false;
-            other.m_mutex = nullptr;
-        }
-
-        //std-2104 unique_lock move-assignment should not be noexcept
-        upgrade_lock& operator=(upgrade_lock<Mutex>&& other)
-        {
-            upgrade_lock temp(AZStd::move(other));
-            swap(temp);
-            return *this;
-        }
-
-        upgrade_lock& operator=(unique_lock<Mutex>&& other)
-        {
-            upgrade_lock temp(AZStd::move(other));
-            swap(temp);
-            return *this;
-        }
-
-        // Conversion from shared locking
-        upgrade_lock(shared_lock<mutex_type>&& sl, try_to_lock_t)
-            : m_mutex(0)
-            , m_owns(false)
-        {
-            if (sl.owns_lock())
-            {
-                if (sl.mutex()->try_unlock_shared_and_lock_upgrade())
-                {
-                    m_mutex = sl.release();
-                    m_owns = true;
-                }
+                firstLock.release();
+                return -1;
             }
             else
             {
-                m_mutex = sl.release();
+                return 1;
             }
         }
-
-        /* template <class Clock, class Duration>
-         upgrade_lock(shared_lock<mutex_type>&&  sl, const chrono::time_point<Clock, Duration>& abs_time)
-             : m_mutex(0)
-             , m_owns(false)
-         {
-             if (sl.owns_lock())
-             {
-                 if (sl.mutex()->try_unlock_shared_and_lock_upgrade_until(abs_time))
-                 {
-                     m_mutex = sl.release();
-                     m_owns = true;
-                 }
-             }
-             else
-             {
-                 m_mutex = sl.release();
-             }
-         }
-
-         template <class Rep, class Period>
-         upgrade_lock(shared_lock<mutex_type>&& sl, const chrono::duration<Rep, Period>& rel_time)
-             : m_mutex(0)
-             , m_owns(false)
-         {
-             if (sl.owns_lock())
-             {
-                 if (sl.mutex()->try_unlock_shared_and_lock_upgrade_for(rel_time))
-                 {
-                     m_mutex = sl.release();
-                     m_owns = true;
-                 }
-             }
-             else
-             {
-                 m_mutex = sl.release();
-             }
-         }*/
-
-        void swap(upgrade_lock& other)
-        {
-            AZStd::swap(m_mutex, other.m_mutex);
-            AZStd::swap(m_owns, other.m_owns);
-        }
-
-        Mutex* mutex() const
-        {
-            return m_mutex;
-        }
-
-        Mutex* release()
-        {
-            Mutex* const res = m_mutex;
-            m_mutex = 0;
-            m_owns = false;
-            return res;
-        }
-
-        ~upgrade_lock()
-        {
-            if (owns_lock())
-            {
-                m_mutex->unlock_upgrade();
-            }
-        }
-
-        void lock()
-        {
-            AZ_Assert(m_mutex != nullptr, "You need mutex to lock it!");
-            AZ_Assert(!owns_lock(), "upgrade_lock owns already the mutex");
-            if (m_mutex)
-            {
-                m_mutex->lock_upgrade();
-                m_owns = true;
-            }
-        }
-
-        bool try_lock()
-        {
-            AZ_Assert(m_mutex != nullptr, "You need mutex to lock it!");
-            AZ_Assert(!owns_lock(), "upgrade_lock owns already the mutex");
-            if (m_mutex)
-            {
-                m_owns = m_mutex->try_lock_upgrade();
-            }
-            return m_owns;
-        }
-
-        void unlock()
-        {
-            AZ_Assert(m_mutex != nullptr, "You need mutex to lock it!");
-            AZ_Assert(owns_lock(), "upgrade_lock doesn't own the mutex");
-            if (m_mutex)
-            {
-                m_mutex->unlock_upgrade();
-                m_owns = false;
-            }
-        }
-
-        /* template <class Rep, class Period>
-         bool try_lock_for(const chrono::duration<Rep, Period>& rel_time)
-         {
-             AZ_Assert(m_mutex != nullptr, "You need mutex to lock it!");
-             AZ_Assert(!owns_lock(), "upgrade_lock owns already the mutex");
-             if (m_mutex)
-             {
-                 m_owns = m_mutex->try_lock_upgrade_for(rel_time);
-             }
-             return m_owns;
-         }
-         template <class Clock, class Duration>
-         bool try_lock_until(const chrono::time_point<Clock, Duration>& abs_time)
-         {
-             AZ_Assert(m_mutex != nullptr, "You need mutex to lock it!");
-             AZ_Assert(!owns_lock(), "upgrade_lock owns already the mutex");
-             if (m_mutex)
-             {
-                 m_owns = m_mutex->try_lock_upgrade_until(abs_time);
-             }
-             return m_owns;
-         }*/
-
-        explicit operator bool() const
-        {
-            return owns_lock();
-        }
-
-        bool owns_lock() const
-        {
-            return m_owns;
-        }
-
-        friend class shared_lock<Mutex>;
-        friend class unique_lock<Mutex>;
-    };
-
-    template<typename Mutex>
-    void swap(upgrade_lock<Mutex>& lhs, upgrade_lock<Mutex>& rhs)
-    {
-        lhs.swap(rhs);
+        return 0;
     }
 
-    template<typename Mutex>
-    unique_lock<Mutex>::unique_lock(upgrade_lock<Mutex>&& other)
-        : m_mutex(other.m_mutex)
-        , m_owns(other.m_owns)
+    template<class Lockable1, class Lockable2, class Lockable3, class... LockableN>
+    int try_lock(Lockable1& lockable1, Lockable2& lockable2, Lockable3& lockable3, LockableN&... lockableN)
     {
-        if (m_owns)
+        int mutexWhichFailedToLockIndex = 0;
+        AZStd::unique_lock<Lockable1> firstLock(lockable1, try_to_lock);
+        if (firstLock.owns_lock())
         {
-            m_mutex->unlock_upgrade_and_lock();
-        }
-        other.release();
-    }
-
-    template <class Mutex>
-    class upgrade_to_unique_lock
-    {
-    private:
-        upgrade_lock<Mutex>* source;
-        unique_lock<Mutex> exclusive;
-
-    public:
-        typedef Mutex mutex_type;
-
-        explicit upgrade_to_unique_lock(upgrade_lock<Mutex>& mtx)
-            : source(&mtx)
-            , exclusive(AZStd::move(*source))
-        {
-        }
-
-        ~upgrade_to_unique_lock()
-        {
-            if (source)
+            mutexWhichFailedToLockIndex = AZStd::try_lock(lockable2, lockable3, lockableN...);
+            if (mutexWhichFailedToLockIndex == -1)
             {
-                *source = AZStd::move(upgrade_lock<Mutex>(AZStd::move(exclusive)));
+                firstLock.release();
+            }
+            else
+            {
+                // Must increment the mutexWhichFailedToLockIndex by 1 to take into account that lockable1 was not part of the try_lock call
+                ++mutexWhichFailedToLockIndex;
             }
         }
 
-        upgrade_to_unique_lock(upgrade_to_unique_lock<Mutex>&& other)
-            : source(other.source)
-            , exclusive(AZStd::move(other.exclusive))
-        {
-            other.source = 0;
-        }
+        return mutexWhichFailedToLockIndex;
+    }
 
-        upgrade_to_unique_lock& operator=(upgrade_to_unique_lock<Mutex>&& other)
-        {
-            upgrade_to_unique_lock temp(other);
-            swap(temp);
-            return *this;
-        }
+    template<class Lockable>
+    void lock(Lockable& lockable)
+    {
+        lockable.lock();
+    }
 
-        void swap(upgrade_to_unique_lock& other)
+    template<class Lockable1, class Lockable2>
+    void lock(Lockable1& lockable1, Lockable2& lockable2)
+    {
+        while (true)
         {
-            AZStd::swap(source, other.source);
-            exclusive.swap(other.exclusive);
-        }
+            {
+                AZStd::unique_lock<Lockable1> firstLock(lockable1);
+                if (lockable2.try_lock())
+                {
+                    firstLock.release();
+                    break;
+                }
+            }
+            // Yield the thread to allow other threads to unlock the two lockable mutexes
+            AZStd::this_thread::yield();
 
-        explicit operator bool() const
-        {
-            return owns_lock();
+            {
+                AZStd::unique_lock<Lockable2> secondLock(lockable2);
+                if (lockable1.try_lock())
+                {
+                    secondLock.release();
+                    break;
+                }
+            }
+            AZStd::this_thread::yield();
         }
+    }
 
-        bool owns_lock() const
+    template<class Lockable1, class Lockable2, class Lockable3, class... LockableN>
+    void lock_helper(int32_t mutexWhichFailedToLockIndex, Lockable1& lockable1, Lockable2& lockable2, Lockable3& lockable3, LockableN&... lockableN)
+    {
+        while (true)
         {
-            return exclusive.owns_lock();
+            switch (mutexWhichFailedToLockIndex)
+            {
+            case 0:
+            {
+                AZStd::unique_lock<Lockable1> firstLock(lockable1);
+                mutexWhichFailedToLockIndex = AZStd::try_lock(lockable2, lockable3, lockableN...);
+                if (mutexWhichFailedToLockIndex == -1)
+                {
+                    firstLock.release();
+                    return;
+                }
+
+                // Must increment the mutexhWhicFailedToLockIndex by 1 to take into account that lockable1 was not part of the try_lock call
+                ++mutexWhichFailedToLockIndex;
+            }
+            // Yield the thread to allow other threads to unlock the two lockable mutexes
+            AZStd::this_thread::yield();
+            break;
+            case 1:
+            {
+                // Attempt to lock the second lockable first
+                AZStd::unique_lock<Lockable2> secondLock(lockable2);
+                // Pass in the first lockable as the last parameter in order to detect if it has not been locked
+                constexpr int32_t firstLocklableIndex = 1 + sizeof...(lockableN);
+                mutexWhichFailedToLockIndex = AZStd::try_lock(lockable3, lockableN..., lockable1);
+                if (mutexWhichFailedToLockIndex == -1)
+                {
+                    secondLock.release();
+                    return;
+                }
+                mutexWhichFailedToLockIndex = (mutexWhichFailedToLockIndex == firstLocklableIndex) ? 0 : mutexWhichFailedToLockIndex + 2;
+            }
+            AZStd::this_thread::yield();
+            break;
+            default:
+                lock_helper(mutexWhichFailedToLockIndex - 2, lockable3, lockableN..., lockable1, lockable2);
+                return;
+            }
         }
-        Mutex* mutex() const
-        {
-            return exclusive.mutex();
-        }
-    };
+    }
+
+    template<class Lockable1, class Lockable2, class Lockable3, class... LockableN>
+    void lock(Lockable1& lockable1, Lockable2& lockable2, Lockable3& lockable3, LockableN&... lockableN)
+    {
+        int32_t mutexWhichFailedToLockIndex = 0; // Initialized to 0 to start with locking the first mutex
+        lock_helper(mutexWhichFailedToLockIndex, lockable1, lockable2, lockable3, lockableN...);
+    }
+
+    template<class Lockable>
+    void unlock(Lockable& lockable)
+    {
+        lockable.unlock();
+    }
+
+    template<class Lockable1, class Lockable2>
+    void unlock(Lockable1& lockable1, Lockable2& lockable2)
+    {
+        lockable1.unlock();
+        lockable2.unlock();
+    }
+
+    template<class Lockable1, class Lockable2, class Lockable3, class... LockableN>
+    void unlock(Lockable1& lockable1, Lockable2& lockable2, Lockable3& lockable3, LockableN&... lockableN)
+    {
+        lockable1.unlock();
+        lockable2.unlock();
+        unlock(lockable3, lockableN...);
+    }
 }
 
 #endif // AZSTD_LOCK_H

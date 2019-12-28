@@ -18,10 +18,11 @@
 
 #include <Components/Slots/Data/DataSlotLayoutComponent.h>
 
+#include <GraphCanvas/Components/NodePropertyDisplay/NodePropertyDisplay.h>
 #include <GraphCanvas/Components/Slots/SlotBus.h>
+#include <GraphCanvas/Editor/GraphModelBus.h>
 #include <GraphCanvas/GraphCanvasBus.h>
 #include <Components/Slots/Data/DataSlotConnectionPin.h>
-#include <Components/NodePropertyDisplay/NodePropertyDisplay.h>
 #include <Widgets/GraphCanvasLabel.h>
 
 namespace GraphCanvas
@@ -34,7 +35,6 @@ namespace GraphCanvas
         : m_connectionType(ConnectionType::CT_Invalid)
         , m_owner(owner)
         , m_nodePropertyDisplay(nullptr)
-        , m_layoutItem(nullptr)
     {
         setInstantInvalidatePropagation(true);
         setOrientation(Qt::Horizontal);
@@ -116,7 +116,7 @@ namespace GraphCanvas
         DataSlotRequestBus::EventResult(dataType, m_owner.GetEntityId(), &DataSlotRequests::GetDataTypeId);
 
         AZStd::string typeString;
-        DataSlotActionRequestBus::EventResult(typeString, GetSceneId(), &DataSlotActionRequests::GetTypeString, dataType);
+        GraphModelRequestBus::EventResult(typeString, GetSceneId(), &GraphModelRequests::GetDataTypeString, dataType);
 
         AZStd::string displayText = tooltip.GetDisplayString();
 
@@ -135,16 +135,6 @@ namespace GraphCanvas
         m_slotConnectionPin->setToolTip(displayText.c_str());
         m_slotText->setToolTip(displayText.c_str());
         m_nodePropertyDisplay->setToolTip(displayText.c_str());
-    }
-
-    void DataSlotLayout::OnConnectedTo(const AZ::EntityId&, const Endpoint&)
-    {
-        UpdateLayout();
-    }
-
-    void DataSlotLayout::OnDisconnectedFrom(const AZ::EntityId&, const Endpoint&)
-    {
-        UpdateLayout();
     }
 
     void DataSlotLayout::OnStyleChanged()
@@ -187,11 +177,21 @@ namespace GraphCanvas
         {
             m_nodePropertyDisplay->GetNodePropertyDisplay()->UpdateDisplay();
         }
+        if (m_slotConnectionPin != nullptr)
+        {
+            m_slotConnectionPin->RefreshStyle();
+        }
     }
 
     void DataSlotLayout::OnDataSlotTypeChanged(const DataSlotType& dataSlotType)
     {
         RecreatePropertyDisplay();
+    }
+
+    void DataSlotLayout::OnDisplayTypeChanged(const AZ::Uuid& dataType, const AZStd::vector<AZ::Uuid>& typeIds)
+    {
+        RecreatePropertyDisplay();
+        UpdateDisplay();
     }
 
     void DataSlotLayout::RecreatePropertyDisplay()
@@ -238,11 +238,11 @@ namespace GraphCanvas
 
             if (dataSlotType == DataSlotType::Value)
             {
-                NodePropertySourceRequestBus::EventResult(nodePropertyDisplay, sceneId, &NodePropertySourceRequests::CreateDataSlotPropertyDisplay, typeId, nodeId, m_owner.GetEntityId());
+                GraphModelRequestBus::EventResult(nodePropertyDisplay, sceneId, &GraphModelRequests::CreateDataSlotPropertyDisplay, typeId, nodeId, m_owner.GetEntityId());
             }
             else if (dataSlotType == DataSlotType::Reference)
             {
-                NodePropertySourceRequestBus::EventResult(nodePropertyDisplay, sceneId, &NodePropertySourceRequests::CreateDataSlotVariablePropertyDisplay, typeId, nodeId, m_owner.GetEntityId());
+                GraphModelRequestBus::EventResult(nodePropertyDisplay, sceneId, &GraphModelRequests::CreateDataSlotVariablePropertyDisplay, typeId, nodeId, m_owner.GetEntityId());
             }
 
             if (nodePropertyDisplay)
@@ -260,44 +260,57 @@ namespace GraphCanvas
 
     void DataSlotLayout::UpdateLayout()
     {
-        for (int i = count() - 1; i >= 0; --i)
+        // make sure the connection type or visible items have changed before redoing the layout
+        if (m_connectionType != m_atLastUpdate.connectionType || 
+            m_slotConnectionPin != m_atLastUpdate.slotConnectionPin ||
+            m_slotText != m_atLastUpdate.slotText ||  
+            m_nodePropertyDisplay != m_atLastUpdate.nodePropertyDisplay || 
+            m_spacer != m_atLastUpdate.spacer)
         {
-            removeAt(i);
+            for (int i = count() - 1; i >= 0; --i)
+            {
+                removeAt(i);
+            }
+
+            switch (m_connectionType)
+            {
+            case ConnectionType::CT_Input:
+                addItem(m_slotConnectionPin);
+                setAlignment(m_slotConnectionPin, Qt::AlignLeft);
+
+                addItem(m_slotText);
+                setAlignment(m_slotText, Qt::AlignLeft);
+
+                addItem(m_nodePropertyDisplay);
+                setAlignment(m_slotText, Qt::AlignLeft);
+
+                addItem(m_spacer);
+                setAlignment(m_spacer, Qt::AlignLeft);
+                break;
+            case ConnectionType::CT_Output:
+                addItem(m_spacer);
+                setAlignment(m_spacer, Qt::AlignRight);
+
+                addItem(m_slotText);
+                setAlignment(m_slotText, Qt::AlignRight);
+
+                addItem(m_slotConnectionPin);
+                setAlignment(m_slotConnectionPin, Qt::AlignRight);
+                break;
+            default:
+                addItem(m_slotConnectionPin);
+                addItem(m_slotText);
+                addItem(m_spacer);
+                break;
+            }
+            UpdateGeometry();
+
+            m_atLastUpdate.connectionType = m_connectionType;
+            m_atLastUpdate.slotConnectionPin = m_slotConnectionPin;
+            m_atLastUpdate.slotText = m_slotText;
+            m_atLastUpdate.nodePropertyDisplay = m_nodePropertyDisplay;
+            m_atLastUpdate.spacer = m_spacer;
         }
-
-        switch (m_connectionType)
-        {
-        case ConnectionType::CT_Input:
-            addItem(m_slotConnectionPin);
-            setAlignment(m_slotConnectionPin, Qt::AlignLeft);
-
-            addItem(m_slotText);
-            setAlignment(m_slotText, Qt::AlignLeft);
-
-            addItem(m_nodePropertyDisplay);
-            setAlignment(m_slotText, Qt::AlignLeft);
-
-            addItem(m_spacer);
-            setAlignment(m_spacer, Qt::AlignLeft);
-            break;
-        case ConnectionType::CT_Output:
-            addItem(m_spacer);
-            setAlignment(m_spacer, Qt::AlignRight);
-
-            addItem(m_slotText);
-            setAlignment(m_slotText, Qt::AlignRight);
-
-            addItem(m_slotConnectionPin);
-            setAlignment(m_slotConnectionPin, Qt::AlignRight);
-            break;
-        default:
-            addItem(m_slotConnectionPin);
-            addItem(m_slotText);
-            addItem(m_spacer);
-            break;
-        }
-
-        UpdateGeometry();
     }
 
     void DataSlotLayout::UpdateGeometry()

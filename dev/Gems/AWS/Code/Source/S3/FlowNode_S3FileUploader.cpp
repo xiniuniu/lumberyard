@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include <StdAfx.h>
+#include <AWS_precompiled.h>
 #pragma warning(push)
 #pragma warning(disable: 4819) // Invalid character not in default code page
 #include <S3/FlowNode_S3FileUploader.h>
@@ -117,7 +117,9 @@ namespace LmbrAWS
             else
             {
                 Aws::StringStream ss;
-                ss << strerror(errno);
+                char buf[1024];
+                azstrerror_s(buf, sizeof(buf), errno);
+                ss << buf;
                 ErrorNotify(pActInfo->pGraph, pActInfo->myID, ss.str().c_str());
             }
         }

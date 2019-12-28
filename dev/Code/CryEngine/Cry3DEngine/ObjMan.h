@@ -15,24 +15,26 @@
 #define CRYINCLUDE_CRY3DENGINE_OBJMAN_H
 #pragma once
 
-#include "CryEngineAPI.h"
 
 #include <AzCore/std/parallel/mutex.h>
 #include <AzCore/std/parallel/lock.h>
 
 #include "StatObj.h"
 #include "../RenderDll/Common/Shadow_Renderer.h"
+
+#ifdef LY_TERRAIN_LEGACY_RUNTIME
 #include "terrain_sector.h"
+#endif
+
 #include "StlUtils.h"
 #include "cbuffer.h"
 #include "CZBufferCuller.h"
 #include "PoolAllocator.h"
 #include "CCullThread.h"
+#include <StatObjBus.h>
 
 #include <map>
 #include <vector>
-
-#include "ObjManCullQueue.h"
 
 #define ENTITY_MAX_DIST_FACTOR 100
 #define MAX_VALID_OBJECT_VOLUME (10000000000.f)
@@ -45,6 +47,7 @@ struct ISystem;
 struct IDecalRenderNode;
 struct SCheckOcclusionJobData;
 struct SCheckOcclusionOutput;
+struct CVisArea;
 
 class CVegetation;
 
@@ -195,6 +198,18 @@ struct IObjManager
     virtual Vec3 GetSunColor() = 0;
     virtual void SetSunColor(const Vec3& color) = 0;
 
+    virtual Vec3 GetSunAnimColor() = 0;
+    virtual void SetSunAnimColor(const Vec3& color) = 0;
+
+    virtual float GetSunAnimSpeed() = 0;
+    virtual void SetSunAnimSpeed(float sunAnimSpeed) = 0;
+
+    virtual AZ::u8 GetSunAnimPhase() = 0;
+    virtual void SetSunAnimPhase(AZ::u8 sunAnimPhase) = 0;
+
+    virtual AZ::u8 GetSunAnimIndex() = 0;
+    virtual void SetSunAnimIndex(AZ::u8 sunAnimIndex) = 0;
+
     virtual float GetSSAOAmount() = 0;
     virtual void SetSSAOAmount(float amount) = 0;
 
@@ -221,8 +236,6 @@ struct IObjManager
     virtual void PrecacheStatObjMaterial(_smart_ptr<IMaterial> pMaterial, const float fEntDistance, IStatObj* pStatObj, bool bFullUpdate, bool bDrawNear) = 0;
     virtual void PrecacheCharacter(IRenderNode* pObj, const float fImportance, ICharacterInstance* pCharacter, _smart_ptr<IMaterial> pSlotMat, const Matrix34& matParent, const float fEntDistance, const float fScale, int nMaxDepth, bool bFullUpdate, bool bDrawNear, int nLod) = 0;
     virtual void PrecacheStatObj(IStatObj* pStatObj, int nLod, const Matrix34A& statObjMatrix, _smart_ptr<IMaterial> pMaterial, float fImportance, float fEntDistance, bool bFullUpdate, bool bHighPriority) = 0;
-
-    virtual NCullQueue::SCullQueue& CullQueue() = 0;
 
     virtual int GetLoadedObjectCount() = 0;
 
@@ -337,12 +350,17 @@ struct IObjManager
 class CObjManager
     : public Cry3DEngineBase
     , public IObjManager
+    , private StatInstGroupEventBus::Handler
 {
 public:
     enum
     {
         MaxPrecachePoints = 4,
     };
+    //! The maximum number of objects pending garbage collection before cleanup is forced
+    //! in the current frame instead of delayed until loading has completed.
+    //! This helps reduce spikes when cleaning up render objects.
+    static const size_t s_maxPendingGarbageObjects = 250;
 
 public:
     CObjManager();
@@ -447,6 +465,8 @@ private:
 
     virtual IStatObj* LoadFromCacheNoRef(IStatObj* pObject, bool bUseStreaming, unsigned long nLoadingFlags, const char* geomName, IStatObj::SSubObject** ppSubObject) override;
 
+    PodArray<PodArray<StatInstGroup> > m_lstStaticTypes;
+
 public:
 
     void GetLoadedStatObjArray(IStatObj** pObjectsArray, int& nCount);
@@ -456,7 +476,6 @@ public:
     virtual bool InternalDeleteObject(IStatObj* pObject) override;
 
     virtual PodArray<PodArray<StatInstGroup> >& GetListStaticTypes() override { return m_lstStaticTypes; }
-    PodArray<PodArray<StatInstGroup> > m_lstStaticTypes;
 
     void MakeShadowCastersList(CVisArea* pReceiverArea, const AABB& aabbReceiver,
         int dwAllowedTypes, int32 nRenderNodeFlags, Vec3 vLightPos, CDLight* pLight, ShadowMapFrustum* pFr, PodArray<struct SPlaneObject>* pShadowHull, const SRenderingPassInfo& passInfo);
@@ -478,10 +497,20 @@ public:
     virtual PodArray<SStreamAbleObject>& GetArrStreamableObjects() override { return m_arrStreamableObjects; }
     virtual PodArray<SObjManPrecacheCamera>& GetStreamPreCacheCameras() override { return m_vStreamPreCacheCameras; }
 
-    NCullQueue::SCullQueue& CullQueue() { return m_cullQueue; }
-
     virtual Vec3 GetSunColor() override { return m_vSunColor; }
     virtual void SetSunColor(const Vec3& color) override { m_vSunColor = color; }
+
+    Vec3 GetSunAnimColor() override { return m_sunAnimColor; }
+    void SetSunAnimColor(const Vec3& color) override { m_sunAnimColor = color; }
+
+    float GetSunAnimSpeed() override { return m_sunAnimSpeed; }
+    void SetSunAnimSpeed(float sunAnimSpeed) override { m_sunAnimSpeed = sunAnimSpeed; }
+
+    AZ::u8 GetSunAnimPhase() override { return m_sunAnimPhase; }
+    void SetSunAnimPhase(AZ::u8 sunAnimPhase) override { m_sunAnimPhase = sunAnimPhase; }
+
+    AZ::u8 GetSunAnimIndex() override { return m_sunAnimIndex; }
+    void SetSunAnimIndex(AZ::u8 sunAnimIndex) override { m_sunAnimIndex = sunAnimIndex; }
 
     virtual float GetSSAOAmount() override { return m_fSSAOAmount;  }
     virtual void SetSSAOAmount(float amount) override { m_fSSAOAmount = amount; }
@@ -702,7 +731,12 @@ public:
     static int m_nUpdateStreamingPrioriryRoundIdFast;
     static int s_nLastStreamingMemoryUsage;                 //For streaming tools in editor
 
-    Vec3                    m_vSunColor;                //
+    Vec3    m_vSunColor;    //Similar to CDLight's m_BaseColor
+    Vec3    m_sunAnimColor; //Similar to CDLight's m_Color
+    float   m_sunAnimSpeed;
+    AZ::u8  m_sunAnimPhase;
+    AZ::u8  m_sunAnimIndex;
+
     float                   m_fILMul;
     float                   m_fSSAOAmount;
     float                   m_fSSAOContrast;
@@ -738,14 +772,15 @@ public:
     bool m_bGarbageCollectionEnabled;
 
     PodArray<SStreamAbleObject> m_arrStreamableObjects;
-    NCullQueue::SCullQueue m_cullQueue;
     PodArray<COctreeNode*> m_arrStreamingNodeStack;
     PodArray<SObjManPrecachePoint> m_vStreamPreCachePointDefs;
     PodArray<SObjManPrecacheCamera> m_vStreamPreCacheCameras;
     int m_nNextPrecachePointId;
     bool m_bCameraPrecacheOverridden;
 
+#ifdef LY_TERRAIN_LEGACY_RUNTIME
     PodArray<CTerrainNode*> m_lstTmpCastingNodes;
+#endif
 
 #ifdef POOL_STATOBJ_ALLOCS
     stl::PoolAllocator<sizeof(CStatObj), stl::PSyncMultiThread, alignof(CStatObj)>* m_statObjPool;
@@ -762,6 +797,14 @@ private:
     // Always take this lock after m_loadLock if taking both
     AZStd::recursive_mutex m_garbageMutex;
     AZStd::vector<IStatObj*> m_checkForGarbage;
+
+private:
+    // StatInstGroupEventBus
+    AZStd::unordered_set<StatInstGroupId> m_usedIds;
+    StatInstGroupId GenerateStatInstGroupId() override;
+    void ReleaseStatInstGroupId(StatInstGroupId statInstGroupId) override;
+    void ReleaseStatInstGroupIdSet(const AZStd::unordered_set<StatInstGroupId>& statInstGroupIdSet) override;
+    void ReserveStatInstGroupIdRange(StatInstGroupId from, StatInstGroupId to) override;
 };
 
 

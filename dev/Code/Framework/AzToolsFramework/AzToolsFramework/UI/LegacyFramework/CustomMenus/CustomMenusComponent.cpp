@@ -10,7 +10,7 @@
 *
 */
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include <AzCore/Component/Component.h>
 #include <AzCore/Serialization/SerializeContext.h>
 #include <AzToolsFramework/UI/LegacyFramework/UIFrameworkAPI.h>
@@ -94,7 +94,7 @@ namespace LegacyFramework
     {
         auto action = new QAction(menuText, menuItem);
         menuItem->addAction(action);
-        QObject::connect(action, &QAction::triggered, [entryId, callback](bool)
+        QObject::connect(action, &QAction::triggered, action, [entryId, callback](bool)
             {
                 callback(entryId);
             });
@@ -146,7 +146,6 @@ namespace LegacyFramework
         {
             serialize->Class<CustomMenusComponent, AZ::Component>()
                 ->Version(1)
-                ->SerializerForEmptyClass()
             ;
         }
     }

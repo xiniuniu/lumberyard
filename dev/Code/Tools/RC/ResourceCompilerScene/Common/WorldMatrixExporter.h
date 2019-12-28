@@ -14,7 +14,7 @@
 
 #include <Cry_Matrix34.h>
 #include <AzCore/Math/Transform.h>
-#include <SceneAPI/SceneCore/Components/ExportingComponent.h>
+#include <SceneAPI/SceneCore/Components/RCExportingComponent.h>
 #include <SceneAPI/SceneCore/Containers/SceneGraph.h>
 
 namespace AZ
@@ -36,10 +36,10 @@ namespace AZ
         struct NodeExportContext;
 
         class WorldMatrixExporter
-            : public SceneAPI::SceneCore::ExportingComponent
+            : public SceneAPI::SceneCore::RCExportingComponent
         {
         public:
-            AZ_COMPONENT(WorldMatrixExporter, "{65A0914C-5953-405F-819B-0E6EB96938F1}", SceneAPI::SceneCore::ExportingComponent);
+            AZ_COMPONENT(WorldMatrixExporter, "{65A0914C-5953-405F-819B-0E6EB96938F1}", SceneAPI::SceneCore::RCExportingComponent);
 
             WorldMatrixExporter();
             ~WorldMatrixExporter() override = default;
@@ -50,11 +50,6 @@ namespace AZ
             SceneAPI::Events::ProcessingResult ProcessNode(NodeExportContext& context);
 
         protected:
-#if defined(AZ_COMPILER_MSVC) && AZ_COMPILER_MSVC <= 1800
-            // Workaround for VS2013 - Delete the copy constructor and make it private
-            // https://connect.microsoft.com/VisualStudio/feedback/details/800328/std-is-copy-constructible-is-broken
-            WorldMatrixExporter(const WorldMatrixExporter&) = delete;
-#endif
             using HierarchyStorageIterator = SceneAPI::Containers::SceneGraph::HierarchyStorageConstIterator;
 
             bool ConcatenateMatricesUpwards(Transform& transform, const HierarchyStorageIterator& nodeIterator, const SceneAPI::Containers::SceneGraph& graph) const;

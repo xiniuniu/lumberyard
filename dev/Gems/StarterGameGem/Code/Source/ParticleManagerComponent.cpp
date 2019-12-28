@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "StarterGameGem_precompiled.h"
 #include "ParticleManagerComponent.h"
 
 #include "StarterGameUtility.h"
@@ -51,7 +51,7 @@ namespace StarterGameGem
 		AZ::SerializeContext* serializeContext = azrtti_cast<AZ::SerializeContext*>(reflection);
 		if (serializeContext)
 		{
-			serializeContext->Class<ParticleManagerComponent>()
+			serializeContext->Class<ParticleManagerComponent, AZ::Component>()
 				->Version(1)
 				//->Field("Waypoints", &ParticleManagerComponent::m_waypoints)
 				//->Field("CurrentWaypoint", &ParticleManagerComponent::m_currentWaypoint)

@@ -14,8 +14,8 @@
 #include "StdAfx.h"
 #include "MannequinModelViewport.h"
 
-#include "../../CryEngine/CryEntitySystem/Components/ComponentRender.h"
-#include "../objects/EntityObject.h"
+#include "Components/IComponentRender.h"
+#include "../Objects/EntityObject.h"
 #include "Components/IComponentPhysics.h"
 #include "ICryMannequin.h"
 #include "IGameFramework.h"
@@ -149,7 +149,7 @@ namespace
 const float CMannequinModelViewport::s_maxTweenTime = 0.5f;
 
 CMannequinModelViewport::CMannequinModelViewport(EMannequinEditorMode editorMode, QWidget* parent)
-    : CModelViewport(GetUserOptionsRegKeyName(editorMode).toLatin1().data(), parent)
+    : CModelViewport(GetUserOptionsRegKeyName(editorMode).toUtf8().data(), parent)
     , m_locMode(LM_Translate)
     , m_selectedLocator(0xffffffff)
     , m_viewmode(eVM_Unknown)
@@ -588,7 +588,7 @@ void CMannequinModelViewport::mouseMoveEvent(QMouseEvent* event)
 
                 SetConstructionMatrix(COORDS_LOCAL, m34);
 
-                CMannequinDialog::GetCurrentInstance()->OnMoveLocator(m_editorMode, locator.m_refID, locator.m_name.toLatin1().data(), QuatT(locator.m_ArcBall.ObjectRotation, locator.m_ArcBall.sphere.center));
+                CMannequinDialog::GetCurrentInstance()->OnMoveLocator(m_editorMode, locator.m_refID, locator.m_name.toUtf8().data(), QuatT(locator.m_ArcBall.ObjectRotation, locator.m_ArcBall.sphere.center));
             }
         }
     }
@@ -620,7 +620,7 @@ void CMannequinModelViewport::mouseMoveEvent(QMouseEvent* event)
                     pos = mInvert * pos;
                     locator.m_ArcBall.sphere.center = pos;
 
-                    CMannequinDialog::GetCurrentInstance()->OnMoveLocator(m_editorMode, locator.m_refID, locator.m_name.toLatin1().data(), QuatT(locator.m_ArcBall.ObjectRotation, locator.m_ArcBall.sphere.center));
+                    CMannequinDialog::GetCurrentInstance()->OnMoveLocator(m_editorMode, locator.m_refID, locator.m_name.toUtf8().data(), QuatT(locator.m_ArcBall.ObjectRotation, locator.m_ArcBall.sphere.center));
                 }
             }
         }
@@ -947,7 +947,7 @@ void CMannequinModelViewport::OnRender()
                 {
                     if (pContexts->backgroundProps[i].entityID[m_editorMode] == pEntObject->GetEntityId())
                     {
-                        currentPropName = pContexts->backgroundProps[i].name.toLatin1().data();
+                        currentPropName = pContexts->backgroundProps[i].name.toUtf8().data();
                         break;
                     }
                 }
@@ -960,7 +960,7 @@ void CMannequinModelViewport::OnRender()
         }
 
         float colour[] = {0.0f, 1.0f, 1.0f, 1.0f};
-        renderer->DrawLabelEx(pos, 1.5f, colour, true, true, "%s\n%s", m_pHoverBaseObject->GetName(), currentPropName);
+        renderer->DrawLabelEx(pos, 1.5f, colour, true, true, "%s\n%s", m_pHoverBaseObject->GetName().toUtf8().constData(), currentPropName);
     }
 
     UpdateAnimation(m_playbackMultiplier * gEnv->pTimer->GetFrameTime());
@@ -975,13 +975,13 @@ void CMannequinModelViewport::OnRender()
         if (mv_showJointsValues)
         {
             QString bonename;
-            int32 idx = GetCharacterBase()->GetIDefaultSkeleton().GetJointIDByName(bonename.toLatin1().data());
+            int32 idx = GetCharacterBase()->GetIDefaultSkeleton().GetJointIDByName(bonename.toUtf8().data());
 
             if (idx >= 0)
             {
                 uint32 ypos = 600;
                 float color1[4] = {1, 1, 1, 1};
-                renderer->Draw2dLabel(12, ypos, 1.2f, color1, false, "bonename: %s %d", bonename, idx);
+                renderer->Draw2dLabel(12, ypos, 1.2f, color1, false, "bonename: %s %d", bonename.toUtf8().constData(), idx);
                 ypos += 10;
 
                 QuatT absQuat = QuatT(m_PhysicalLocation * GetCharacterBase()->GetISkeletonPose()->GetAbsJointByID(idx));
@@ -2002,7 +2002,7 @@ void CMannequinModelViewport::UpdateDebugParams()
     const uint32 numProps = pContexts->backgroundProps.size();
     for (uint32 i = 0; i < numProps; i++)
     {
-        m_pActionController->SetParam(pContexts->backgroundProps[i].name.toLatin1().data(), pContexts->backgroundProps[i].entityID[m_editorMode]);
+        m_pActionController->SetParam(pContexts->backgroundProps[i].name.toUtf8().data(), pContexts->backgroundProps[i].entityID[m_editorMode]);
     }
 }
 
@@ -2041,7 +2041,7 @@ void CMannequinModelViewport::LoadObject(const QString& fileName, float)
     m_AABB.max = Vec3(1.0f, 1.0f, 1.0f);
 
     //assert(m_pCharPanel_Animation);
-    if (IsPreviewableFileType(file.toLatin1().data()))
+    if (IsPreviewableFileType(file.toUtf8().data()))
     {
         m_pCharacterBase = 0;
         //  m_pAnimationSystem->ClearResources(0);
@@ -2051,17 +2051,17 @@ void CMannequinModelViewport::LoadObject(const QString& fileName, float)
         if (IsCGA)
         {
             CLogFile::WriteLine("Loading CGA Model...");
-            m_pCharacterBase = m_pAnimationSystem->CreateInstance(file.toLatin1().data(), CA_CharEditModel);
+            m_pCharacterBase = m_pAnimationSystem->CreateInstance(file.toUtf8().data(), CA_CharEditModel);
         }
 
         bool IsCDF = (0 == fileExt.compare("cdf", Qt::CaseInsensitive));
         if (IsCDF)
         {
             CLogFile::WriteLine("Importing Character Definitions...");
-            m_pCharacterBase = m_pAnimationSystem->CreateInstance(file.toLatin1().data(), CA_CharEditModel);
+            m_pCharacterBase = m_pAnimationSystem->CreateInstance(file.toUtf8().data(), CA_CharEditModel);
             if (m_pCharacterBase)
             {
-                m_pAnimationSystem->CreateDebugInstances(file.toLatin1().data());
+                m_pAnimationSystem->CreateDebugInstances(file.toUtf8().data());
             }
 
             /*      for (uint32 i=0; i<NUM_INSTANCE; i++)
@@ -2073,10 +2073,10 @@ void CMannequinModelViewport::LoadObject(const QString& fileName, float)
         if (IsSKEL || IsSKIN)
         {
             CLogFile::WriteLine("Loading Character Model...");
-            m_pCharacterBase = m_pAnimationSystem->CreateInstance(file.toLatin1().data(), CA_CharEditModel);
+            m_pCharacterBase = m_pAnimationSystem->CreateInstance(file.toUtf8().data(), CA_CharEditModel);
             if (m_pCharacterBase)
             {
-                m_pAnimationSystem->CreateDebugInstances(file.toLatin1().data());
+                m_pAnimationSystem->CreateDebugInstances(file.toUtf8().data());
             }
         }
 

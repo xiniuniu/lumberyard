@@ -1,5 +1,3 @@
-#pragma once
-
 /*
 * All or portions of this file Copyright (c) Amazon.com, Inc. or its affiliates or
 * its licensors.
@@ -12,9 +10,11 @@
 *
 */
 
-#include "FbxTimeWrapper.h"
-#include "FbxMeshWrapper.h"
-#include "FbxPropertyWrapper.h"
+#pragma once
+
+#include <SceneAPI/FbxSDKWrapper/FbxTimeWrapper.h>
+#include <SceneAPI/FbxSDKWrapper/FbxMeshWrapper.h>
+#include <SceneAPI/FbxSDKWrapper/FbxPropertyWrapper.h>
 #include <AzCore/Math/Transform.h>
 
 namespace AZ
@@ -46,6 +46,7 @@ namespace AZ
             virtual const std::shared_ptr<FbxMeshWrapper> GetMesh() const;
             virtual const std::shared_ptr<FbxPropertyWrapper> FindProperty(const char* name) const;
             virtual bool IsBone() const;
+            virtual bool IsMesh() const;
             virtual const char* GetName() const;
             virtual AZ::u64 GetUniqueId() const;
 
@@ -73,5 +74,5 @@ namespace AZ
 
             FbxNode* m_fbxNode;
         };
-    }
-}
+    } // namespace FbxSDKWrapper
+} // namespace AZ

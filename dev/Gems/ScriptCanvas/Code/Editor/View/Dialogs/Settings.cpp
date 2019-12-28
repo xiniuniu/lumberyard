@@ -12,14 +12,20 @@
 
 #include "precompiled.h"
 #include "Settings.h"
-
+// qtextformat.h(365): warning C4251: 'QTextFormat::d': class 'QSharedDataPointer<QTextFormatPrivate>' needs to have dll-interface to be used by clients of class 'QTextFormat'
+AZ_PUSH_DISABLE_WARNING(4251 4800, "-Wunknown-warning-option")
 #include <QLineEdit>
 #include <QPushButton>
 #include <QKeyEvent>
+AZ_POP_DISABLE_WARNING
 
 #include <AzCore/UserSettings/UserSettingsComponent.h>
 #include <AzCore/Component/ComponentApplicationBus.h>
 #include <AzToolsFramework/UI/PropertyEditor/ReflectedPropertyEditor.hxx>
+
+#include <GraphCanvas/Editor/AssetEditorBus.h>
+
+#include <Editor/GraphCanvas/GraphCanvasEditorNotificationBusId.h>
 
 #include "Editor/View/Dialogs/ui_Settings.h"
 
@@ -44,8 +50,9 @@ namespace ScriptCanvasEditor
         else
         {
             SetType(SettingsType::General);
-        }
-        
+        }        
+
+        m_revertOnClose = true;
     }
 
     void SettingsDialog::ConfigurePropertyEditor(AzToolsFramework::ReflectedPropertyEditor* editor)
@@ -60,6 +67,11 @@ namespace ScriptCanvasEditor
 
     SettingsDialog::~SettingsDialog()
     {
+        if (m_revertOnClose)
+        {
+            RevertSettings();
+        }
+
         ui->propertyEditor->ClearInstances();
     }
 
@@ -70,7 +82,9 @@ namespace ScriptCanvasEditor
 
     void SettingsDialog::OnOK()
     {
-        AZ::UserSettingsComponentRequestBus::Broadcast(&AZ::UserSettingsComponentRequests::Save);
+        m_revertOnClose = false;
+        AZ::UserSettingsOwnerRequestBus::Event(AZ::UserSettings::CT_LOCAL, &AZ::UserSettingsOwnerRequests::SaveSettings);
+        GraphCanvas::AssetEditorSettingsNotificationBus::Event(ScriptCanvasEditor::AssetEditorId, &GraphCanvas::AssetEditorSettingsNotifications::OnSettingsChanged);
         accept();
     }
 
@@ -97,44 +111,9 @@ namespace ScriptCanvasEditor
         }
     }
 
-    void SettingsDialog::keyPressEvent(QKeyEvent* event)
-    {
-        if (event->key() == Qt::Key_Escape)
-        {
-            OnCancel();
-            return;
-        }
-        else
-        if (event->key() == Qt::Key_Enter || event->key() == Qt::Key_Return)
-        {
-            OnOK();
-            return;
-        }
-    }
-
     void SettingsDialog::OnCancel()
-    {
-        if (m_settingsType == SettingsType::Graph || m_settingsType == SettingsType::All)
-        {
-            if (m_graphId.IsValid())
-            {
-                AZStd::intrusive_ptr<Settings> settings =
-                    AZ::UserSettings::CreateFind<Settings>(AZ::Crc32(m_graphId.ToString().c_str()),
-                        AZ::UserSettings::CT_LOCAL);
-                // Revert the stored copy, no changes will be stored.
-                *settings = m_originalSettings;
-            }
-        }
-
-        if (m_settingsType == SettingsType::General || m_settingsType == SettingsType::All)
-        {
-            // General properties
-            AZStd::intrusive_ptr<EditorSettings::PreviewSettings> previewSettings =
-                AZ::UserSettings::CreateFind<EditorSettings::PreviewSettings>(
-                    AZ_CRC("ScriptCanvasPreviewSettings", 0x1c5a2965), AZ::UserSettings::CT_LOCAL);
-            *previewSettings = m_originalPreviewSettings;
-        }
-
+    {        
+        RevertSettings();
         close();
     }
 
@@ -178,12 +157,12 @@ namespace ScriptCanvasEditor
     void SettingsDialog::SetupGeneralSettings(AZ::SerializeContext* context)
     {
         // General properties
-        AZStd::intrusive_ptr<EditorSettings::PreviewSettings> previewSettings = 
-            AZ::UserSettings::CreateFind<EditorSettings::PreviewSettings>(
+        AZStd::intrusive_ptr<EditorSettings::ScriptCanvasEditorSettings> previewSettings =
+            AZ::UserSettings::CreateFind<EditorSettings::ScriptCanvasEditorSettings>(
                 AZ_CRC("ScriptCanvasPreviewSettings", 0x1c5a2965), AZ::UserSettings::CT_LOCAL);
 
         // Store a copy to revert if needed.
-        m_originalPreviewSettings = *previewSettings;
+        m_originalEditorSettings = *previewSettings;
 
         ui->previewSettingsPropertyEditor->Setup(context, nullptr, false, 210);
         ui->previewSettingsPropertyEditor->AddInstance(previewSettings.get(), previewSettings->RTTI_GetType());
@@ -214,6 +193,33 @@ namespace ScriptCanvasEditor
             ui->propertyEditor->setDisabled(true);
         }
     }
+
+    void SettingsDialog::RevertSettings()
+    {
+        if (m_settingsType == SettingsType::Graph || m_settingsType == SettingsType::All)
+        {
+            if (m_graphId.IsValid())
+            {
+                AZStd::intrusive_ptr<Settings> settings =
+                    AZ::UserSettings::CreateFind<Settings>(AZ::Crc32(m_graphId.ToString().c_str()),
+                        AZ::UserSettings::CT_LOCAL);
+                // Revert the stored copy, no changes will be stored.
+                *settings = m_originalSettings;
+            }
+        }
+
+        if (m_settingsType == SettingsType::General || m_settingsType == SettingsType::All)
+        {
+            // General properties
+            AZStd::intrusive_ptr<EditorSettings::ScriptCanvasEditorSettings> previewSettings =
+                AZ::UserSettings::CreateFind<EditorSettings::ScriptCanvasEditorSettings>(
+                    AZ_CRC("ScriptCanvasPreviewSettings", 0x1c5a2965), AZ::UserSettings::CT_LOCAL);
+            *previewSettings = m_originalEditorSettings;
+        }
+
+        m_revertOnClose = false;
+    }
+
 
     #include <Editor/View/Dialogs/Settings.moc>
 }

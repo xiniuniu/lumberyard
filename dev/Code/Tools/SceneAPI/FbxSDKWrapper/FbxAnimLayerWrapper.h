@@ -1,5 +1,3 @@
-#pragma once
-
 /*
 * All or portions of this file Copyright (c) Amazon.com, Inc. or its affiliates or
 * its licensors.
@@ -12,21 +10,30 @@
 *
 */
 
-#include "fbxsdk.h"
+#pragma once
+
+#include <fbxsdk.h>
+#include <AzCore/std/smart_ptr/shared_ptr.h>
 
 namespace AZ
 {
     namespace FbxSDKWrapper
     {
+        class FbxAnimCurveNodeWrapper;
+
         class FbxAnimLayerWrapper
         {
             friend class FbxNodeWrapper;
         public:
             FbxAnimLayerWrapper(FbxAnimLayer* fbxAnimLayer);
             ~FbxAnimLayerWrapper() = default;
+            const char* GetName() const;
+            u32 GetCurveNodeCount() const ;
+            FbxAnimLayer* GetFbxLayer() const;
+            AZStd::shared_ptr<const FbxAnimCurveNodeWrapper> GetCurveNodeWrapper(u32 index) const;
 
         protected:
             FbxAnimLayer* m_fbxAnimLayer;
         };
-    }
-}
+    } // namespace FbxSDKWrapper
+} // namespace AZ

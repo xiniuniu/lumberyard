@@ -78,11 +78,11 @@ bool CVehiclePrototype::Init(IEditor* ie, CBaseObject* prev, const QString& file
     const XmlNodeRef& xmlDef = CVehicleData::GetXMLDef();
     if (xmlDef == 0)
     {
-        Warning("Loading definition file %s failed.. returning", VEHICLE_XML_DEF.toLatin1().data());
+        Warning("Loading definition file %s failed.. returning", VEHICLE_XML_DEF.toUtf8().data());
         return false;
     }
 
-    string fullPath = (VEHICLE_XML_PATH + name + ".xml").toLatin1().data();
+    string fullPath = (VEHICLE_XML_PATH + name + ".xml").toUtf8().data();
 
     // get entity name from xml
     XmlNodeRef vehicleXml = GetISystem()->LoadXmlFromFile(fullPath);
@@ -95,7 +95,7 @@ bool CVehiclePrototype::Init(IEditor* ie, CBaseObject* prev, const QString& file
 
     if (!vehicleXml->haveAttr("name"))
     {
-        Log("%s has no 'name' attribute [file %s], returning..", name, fullPath);
+        Log("%s has no 'name' attribute [file %s], returning..", name.toUtf8().constData(), fullPath);
         return false;
     }
 
@@ -111,7 +111,7 @@ bool CVehiclePrototype::Init(IEditor* ie, CBaseObject* prev, const QString& file
 
     if (!m_pVehicleData)
     {
-        Warning("VehicleXmlLoad for %s failed.", name);
+        Warning("VehicleXmlLoad for %s failed.", name.toUtf8().constData());
         return false;
     }
 
@@ -162,7 +162,7 @@ void CVehiclePrototype::OnObjectEvent(CBaseObject* node, int event)
 {
     if (event == CBaseObject::ON_DELETE)
     {
-        VeedLog("[CVehiclePrototype]: ON_DELETE for %s", node->GetName());
+        VeedLog("[CVehiclePrototype]: ON_DELETE for %s", node->GetName().toUtf8().constData());
         // when child deleted, remove its variable
         if (IVeedObject* pVO = IVeedObject::GetVeedObject(node))
         {
@@ -171,7 +171,7 @@ void CVehiclePrototype::OnObjectEvent(CBaseObject* node, int event)
                 if (GetVariable())
                 {
                     bool del = GetVariable()->DeleteVariable(pVO->GetVariable(), true);
-                    VeedLog("[CVehiclePrototype] deleting var for %s: %i", node->GetName(), del);
+                    VeedLog("[CVehiclePrototype] deleting var for %s: %i", node->GetName().toUtf8().constData(), del);
                 }
                 pVO->SetVariable(0);
             }
@@ -208,7 +208,7 @@ void CVehiclePrototype::Done()
     for (int i = nChildCount - 1; i >= 0; --i)
     {
         CBaseObject* pChild = GetChild(i);
-        VeedLog("[CVehiclePrototype]: deleting %s", pChild->GetName());
+        VeedLog("[CVehiclePrototype]: deleting %s", pChild->GetName().toUtf8().constData());
 
         GetIEditor()->DeleteObject(pChild);
     }
@@ -394,7 +394,7 @@ void CVehiclePrototype::Serialize(CObjectArchive& ar)
     else
     {
         // saving
-        xmlNode->setAttr("veedVehicleName", m_name.toLatin1().data());
+        xmlNode->setAttr("veedVehicleName", m_name.toUtf8().data());
     }
 }
 

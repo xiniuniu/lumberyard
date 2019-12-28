@@ -30,7 +30,7 @@
 #include "Material/MaterialManager.h"
 #include "AssetBrowser/AssetBrowserDialog.h"
 
-namespace AssetBrowser
+namespace AssetMaterialItemInternal
 {
     const char* kMaterialImageFilename = "Editor/UI/Icons/asset_material.png";
     const char* kMaterialPreviewBackTexture = "Editor/Materials/Stripes.dds";
@@ -47,7 +47,7 @@ CAssetMaterialItem::CAssetMaterialItem()
 
     if (s_uncachedMaterialThumbBmp.isNull())
     {
-        s_uncachedMaterialThumbBmp.load(AssetBrowser::kMaterialImageFilename);
+        s_uncachedMaterialThumbBmp.load(AssetMaterialItemInternal::kMaterialImageFilename);
     }
 
     m_pUncachedThumbBmp = &s_uncachedMaterialThumbBmp;
@@ -118,7 +118,7 @@ void CAssetMaterialItem::LoadMaterial()
     if (!m_pMaterial)
     {
         QString fullPath = m_strRelativePath + m_strFilename;
-        m_pMaterial = GetIEditor()->GetMaterialManager()->LoadMaterial(fullPath.toLatin1().data(), false);
+        m_pMaterial = GetIEditor()->GetMaterialManager()->LoadMaterial(fullPath.toUtf8().data(), false);
     }
 }
 
@@ -161,9 +161,9 @@ void CAssetMaterialItem::OnBeginPreview(QWidget* hQuickPreviewWnd)
         s_pPreviewCtrl = new CPreviewModelCtrl(hQuickPreviewWnd);
         s_pPreviewCtrl->SetGrid(false);
         s_pPreviewCtrl->SetAxis(false);
-        s_pPreviewCtrl->SetBackgroundTexture(AssetBrowser::kMaterialPreviewBackTexture);
+        s_pPreviewCtrl->SetBackgroundTexture(AssetMaterialItemInternal::kMaterialPreviewBackTexture);
         s_pPreviewCtrl->SetClearColor(ColorF(0, 0, 0));
-        s_pPreviewCtrl->LoadFile(AssetBrowser::kMaterialPreviewModelFile);
+        s_pPreviewCtrl->LoadFile(AssetMaterialItemInternal::kMaterialPreviewModelFile);
 
         hQuickPreviewWnd->layout()->addWidget(s_pPreviewCtrl);
         s_pPreviewCtrl->show();
@@ -199,9 +199,9 @@ bool CAssetMaterialItem::Render(QWidget* hRenderWindow, const QRect& rstViewport
         s_pPreviewCtrl = new CPreviewModelCtrl(hRenderWindow);
         s_pPreviewCtrl->SetGrid(false);
         s_pPreviewCtrl->SetAxis(false);
-        s_pPreviewCtrl->SetBackgroundTexture(AssetBrowser::kMaterialPreviewBackTexture);
+        s_pPreviewCtrl->SetBackgroundTexture(AssetMaterialItemInternal::kMaterialPreviewBackTexture);
         s_pPreviewCtrl->SetClearColor(ColorF(0, 0, 0));
-        s_pPreviewCtrl->LoadFile(AssetBrowser::kMaterialPreviewModelFile);
+        s_pPreviewCtrl->LoadFile(AssetMaterialItemInternal::kMaterialPreviewModelFile);
         s_pPreviewCtrl->show();
     }
     else
@@ -249,9 +249,9 @@ void CAssetMaterialItem::ToXML(XmlNodeRef& node) const
 {
     node->setTag("Material");
     QString fileName = m_strRelativePath + m_strFilename;
-    node->setAttr("fileName", fileName.toLatin1().data());
+    node->setAttr("fileName", fileName.toUtf8().data());
     node->setAttr("filesize", m_nFileSize);
-    node->setAttr("dccFilename", m_strDccFilename.toLatin1().data());
+    node->setAttr("dccFilename", m_strDccFilename.toUtf8().data());
 }
 
 void CAssetMaterialItem::FromXML(const XmlNodeRef& node)

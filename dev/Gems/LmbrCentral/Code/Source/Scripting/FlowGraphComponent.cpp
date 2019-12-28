@@ -9,9 +9,8 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 #include "FlowGraphComponent.h"
-#include <FlowSystem/FlowData.h>
 
 #include <IXml.h>
 #include <FlowGraphInformation.h>

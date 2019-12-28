@@ -25,6 +25,7 @@
 #include <QApplication>
 #include <AzToolsFramework/Entity/EditorEntityContextBus.h>
 #include <AzToolsFramework/Thumbnails/ThumbnailerBus.h>
+#include <AzCore/std/string/string.h>
 
 class QMenu;
 
@@ -47,6 +48,7 @@ class CEditorFileMonitor;
 class AzAssetWindow;
 class AzAssetBrowserRequestHandler;
 class AssetEditorRequestsHandler;
+class CAlembicCompiler;
 
 namespace Editor
 {
@@ -82,6 +84,8 @@ class CEditorImpl
     : public IEditor
     , protected AzToolsFramework::EditorEntityContextNotificationBus::Handler
 {
+    Q_DECLARE_TR_FUNCTIONS(CEditorImpl)
+
 public:
     CEditorImpl();
     ~CEditorImpl();
@@ -99,6 +103,7 @@ public:
     CEditorCommandManager* GetCommandManager() { return m_pCommandManager; };
     ICommandManager* GetICommandManager() { return m_pCommandManager; }
     void ExecuteCommand(const char* sCommand, ...);
+    void ExecuteCommand(const QString& command);
     void SetDocument(CCryEditDoc* pDoc);
     CCryEditDoc* GetDocument() const;
     void SetModifiedFlag(bool modified = true);
@@ -113,7 +118,8 @@ public:
     IGame*      GetGame();
     I3DEngine*  Get3DEngine();
     IRenderer*  GetRenderer();
-    void WriteToConsole(const char* pszString) { CLogFile::WriteLine(pszString); };
+    void WriteToConsole(const char* string) { CLogFile::WriteLine(string); };
+    void WriteToConsole(const QString& string) { CLogFile::WriteLine(string); };
     // Change the message in the status bar
     void SetStatusText(const QString& pszString);
     virtual IMainStatusBar* GetMainStatusBar() override;
@@ -137,9 +143,11 @@ public:
     QString GetLevelDataFolder();
     QString GetSearchPath(EEditorPathName path);
     QString GetResolvedUserFolder();
+    QString GetProjectName() override;
     bool ExecuteConsoleApp(const QString& CommandLine, QString& OutputText, bool bNoTimeOut = false, bool bShowWindow = false);
     virtual bool IsInGameMode() override;
     virtual void SetInGameMode(bool inGame) override;
+    virtual bool IsInSimulationMode() override;
     virtual bool IsInTestMode() override;
     virtual bool IsInPreviewMode() override;
     virtual bool IsInConsolewMode() override;
@@ -320,6 +328,7 @@ public:
     void RecordUndo(IUndoObject* obj);
     bool FlushUndo(bool isShowMessage = false);
     bool ClearLastUndoSteps(int steps);
+    bool ClearRedoStack();
     //! Retrieve current animation context.
     CAnimationContext* GetAnimation();
     CTrackViewSequenceManager* GetSequenceManager() override;
@@ -344,8 +353,6 @@ public:
     bool IsSourceControlAvailable() override;
     //! Only returns true if source control is both available AND currently connected and functioning
     bool IsSourceControlConnected() override;
-    //! Retrieve interface to the source control.
-    IAssetTagging* GetAssetTagging();
     //! Setup Material Editor mode
     void SetMatEditMode(bool bIsMatEditMode);
     CFlowGraphManager* GetFlowGraphManager() { return m_pFlowGraphManager; };
@@ -384,9 +391,12 @@ public:
     // Console federation helper
     virtual void LaunchAWSConsole(QString destUrl) override;
 
-    virtual bool ToProjectConfigurator(const char* msg, const char* caption, const char* location) override;
+    virtual bool ToProjectConfigurator(const QString& msg, const QString& caption, const QString& location) override;
 
+#ifdef DEPRECATED_QML_SUPPORT
     virtual QQmlEngine* GetQMLEngine() const;
+#endif // #ifdef DEPRECATED_QML_SUPPORT
+
     void UnloadPlugins(bool shuttingDown = false) override;
     void LoadPlugins() override;
 
@@ -397,13 +407,15 @@ public:
     bool IsLegacyUIEnabled() override;
     void SetLegacyUIEnabled(bool enabled) override;
 
+    bool IsNewViewportInteractionModelEnabled() const override;
+
 protected:
 
     //////////////////////////////////////////////////////////////////////////
     // EditorEntityContextNotificationBus implementation
     void OnStartPlayInEditor() override;
     //////////////////////////////////////////////////////////////////////////
-
+    AZStd::string LoadProjectIdFromProjectData();
     void InitMetrics();
 
     void DetectVersion();
@@ -471,6 +483,7 @@ protected:
     CToolBoxManager* m_pToolBoxManager;
     CEntityPrototypeManager* m_pEntityManager;
     CMaterialManager* m_pMaterialManager;
+    CAlembicCompiler* m_pAlembicCompiler;
     IEditorParticleManager* m_particleManager;
     IEditorParticleUtils* m_particleEditorUtils;
     CMusicManager* m_pMusicManager;
@@ -485,8 +498,6 @@ protected:
     CErrorsDlg* m_pErrorsDlg;
     //! Source control interface.
     ISourceControl* m_pSourceControl;
-    //! AssetTagging provider interface
-    IAssetTagging* m_pAssetTagging;
     CFlowGraphManager* m_pFlowGraphManager;
 
     CSelectionTreeManager* m_pSelectionTreeManager;
@@ -531,7 +542,7 @@ protected:
     AssetDatabase::AssetDatabaseLocationListener* m_pAssetDatabaseLocationListener;
     AzAssetBrowserRequestHandler* m_pAssetBrowserRequestHandler;
     AssetEditorRequestsHandler* m_assetEditorRequestsHandler;
-    AZStd::vector<AZStd::unique_ptr<AzToolsFramework::Thumbnailer::ThumbnailerRendererRequestsBus::Handler>> m_thumbnailRenderers;
+    AZStd::vector<AZStd::unique_ptr<AzToolsFramework::Thumbnailer::ThumbnailerRendererRequestBus::Handler>> m_thumbnailRenderers;
 
     IAssetBrowser* m_pAssetBrowser; // Vladimir@Conffx
     IImageUtil* m_pImageUtil;  // Vladimir@conffx
@@ -541,5 +552,6 @@ protected:
     static const char* m_crashLogFileName;
 
     bool m_isLegacyUIEnabled;
+    bool m_isNewViewportInteractionModelEnabled = false;
 };
 

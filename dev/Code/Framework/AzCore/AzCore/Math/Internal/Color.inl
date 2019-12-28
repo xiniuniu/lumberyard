@@ -16,8 +16,9 @@ namespace AZ
     AZ_MATH_FORCE_INLINE Color::Color(const VectorFloat& x)                                                                         { Set(x); }
     AZ_MATH_FORCE_INLINE Color::Color(const VectorFloat& x, const VectorFloat& y, const VectorFloat& z, const VectorFloat& w)       { Set(x, y, z, w); }
 
-    AZ_MATH_FORCE_INLINE const Color Color::CreateZero()            { return Color(0.0f); }
-    AZ_MATH_FORCE_INLINE const Color Color::CreateOne()         { return Color(1.0f); }
+    AZ_MATH_FORCE_INLINE const Color Color::CreateZero()                                                                            { return Color(0.0f); }
+    AZ_MATH_FORCE_INLINE const Color Color::CreateOne()                                                                             { return Color(1.0f); }
+    AZ_MATH_FORCE_INLINE const Color Color::CreateFromRgba(u8 r, u8 g, u8 b, u8 a)                                                  { return Color(r,g,b,a); }
     AZ_MATH_FORCE_INLINE const Color Color::CreateFromFloat4(const float* values)
     {
         Color result;
@@ -82,6 +83,57 @@ namespace AZ
     AZ_MATH_FORCE_INLINE Vector3 Color::GetAsVector3() const { return m_color.GetAsVector3(); }
     AZ_MATH_FORCE_INLINE Vector4 Color::GetAsVector4() const { return m_color; }
 
+    AZ_MATH_FORCE_INLINE void Color::SetFromHSVRadians(float hueRadians, float saturation, float value)
+    {
+        float alpha = GetA();
+
+        // Saturation and value outside of [0-1] are invalid, so clamp them to valid values.
+        saturation = GetClamp(saturation, 0.0f, 1.0f);
+        value = GetClamp(value, 0.0f, 1.0f);
+
+        hueRadians = fmodf(hueRadians, AZ::Constants::TwoPi);
+        if (hueRadians < 0)
+        {
+            hueRadians += AZ::Constants::TwoPi;
+        }
+
+        // https://en.wikipedia.org/wiki/HSL_and_HSV#Converting_to_RGB
+        float hue = fmodf(hueRadians / AZ::DegToRad(60.0f), 6.0f);
+        const int hueSexant = static_cast<int>(hue);
+        const float hueSexantRemainder = hue - hueSexant;
+
+        const float offColor = value * (1.0f - saturation);
+        const float fallingColor = value * (1.0f - (saturation * hueSexantRemainder));
+        const float risingColor = value * (1.0f - (saturation * (1.0f - hueSexantRemainder)));
+
+        switch (hueSexant)
+        {
+        case 0:
+            Set(value, risingColor, offColor, alpha);
+            break;
+        case 1:
+            Set(fallingColor, value, offColor, alpha);
+            break;
+        case 2:
+            Set(offColor, value, risingColor, alpha);
+            break;
+        case 3:
+            Set(offColor, fallingColor, value, alpha);
+            break;
+        case 4:
+            Set(risingColor, offColor, value, alpha);
+            break;
+        case 5:
+            Set(value, offColor, fallingColor, alpha);
+            break;
+        default:
+            AZ_Assert(true,
+                "SetFromHSV has generated invalid data from these parameters : H %.5f, S %.5f, V %.5f.",
+                hueRadians,
+                saturation,
+                value);
+        }
+    }
 
     AZ_MATH_FORCE_INLINE bool Color::IsClose(const Color& v, const VectorFloat& tolerance) const
     {
@@ -89,8 +141,8 @@ namespace AZ
     }
 
     AZ_MATH_FORCE_INLINE bool Color::IsZero(const VectorFloat& tolerance) const
-    { 
-        return IsClose(CreateZero(), tolerance); 
+    {
+        return IsClose(CreateZero(), tolerance);
     }
 
     AZ_MATH_FORCE_INLINE bool Color::operator==(const Color& rhs) const
@@ -107,7 +159,7 @@ namespace AZ
     AZ_MATH_FORCE_INLINE u32 Color::ToU32()  const { return CreateU32(GetR8(), GetG8(), GetB8(), GetA8()); }
 
     // Color from u32 => 0xAABBGGRR (COLREF format)
-    AZ_MATH_FORCE_INLINE void Color::FromU32(u32 c) 
+    AZ_MATH_FORCE_INLINE void Color::FromU32(u32 c)
     {
         SetA(static_cast<VectorFloat>(static_cast<float>(c >> 24) * (1.0f / 255.0f)));
         SetB(static_cast<VectorFloat>(static_cast<float>((c >> 16) & 0xff) * (1.0f / 255.0f)));
@@ -154,6 +206,11 @@ namespace AZ
     AZ_MATH_FORCE_INLINE bool Color::IsLessEqualThan(const Color& rhs) const    { return (GetR() <= rhs.GetR()) && (GetG() <= rhs.GetG()) && (GetB() <= rhs.GetB()) && (GetA() <= rhs.GetA()); }
     AZ_MATH_FORCE_INLINE bool Color::IsGreaterThan(const Color& rhs) const      { return (GetR() > rhs.GetR()) && (GetG() > rhs.GetG()) && (GetB() > rhs.GetB()) && (GetA() > rhs.GetA()); }
     AZ_MATH_FORCE_INLINE bool Color::IsGreaterEqualThan(const Color& rhs) const { return (GetR() >= rhs.GetR()) && (GetG() >= rhs.GetG()) && (GetB() >= rhs.GetB()) && (GetA() >= rhs.GetA()); }
+
+    AZ_MATH_FORCE_INLINE const Color Color::Lerp(const Color& dest, const VectorFloat& t) const
+    {
+        return Color(m_color.Lerp(dest.m_color, t));
+    }
 
     AZ_MATH_FORCE_INLINE const VectorFloat Color::Dot(const Color& rhs) const
     {

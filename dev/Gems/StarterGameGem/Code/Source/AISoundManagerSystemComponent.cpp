@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "StarterGameGem_precompiled.h"
 #include "AISoundManagerSystemComponent.h"
 
 #include "StarterGameUtility.h"
@@ -58,7 +58,6 @@ namespace StarterGameGem
         {
             serializeContext->Class<AISoundManagerSystemComponent, AZ::Component>()
                 ->Version(1)
-                ->SerializerForEmptyClass()
                 ;
 
             if (AZ::EditContext* editContext = serializeContext->GetEditContext())

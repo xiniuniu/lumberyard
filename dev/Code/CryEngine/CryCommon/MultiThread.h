@@ -11,19 +11,51 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#ifndef CRYINCLUDE_CRYCOMMON_MULTITHREAD_H
-#define CRYINCLUDE_CRYCOMMON_MULTITHREAD_H
 #pragma once
 
 #if defined(APPLE) || defined(LINUX)
 #include <sched.h>
 #endif
 
+#include <AzCore/std/parallel/mutex.h>
+
 #include "CryAssert.h"
+
+// Section dictionary
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define MULTITHREAD_H_SECTION_TRAITS 1
+#define MULTITHREAD_H_SECTION_DEFINE_CRYINTERLOCKEXCHANGE 2
+#define MULTITHREAD_H_SECTION_IMPLEMENT_CRYSPINLOCK 3
+#define MULTITHREAD_H_SECTION_IMPLEMENT_CRYINTERLOCKEDADD 4
+#define MULTITHREAD_H_SECTION_IMPLEMENT_CRYINTERLOCKEDADDSIZE 5
+#define MULTITHREAD_H_SECTION_CRYINTERLOCKEDFLUSHSLIST_PT1 6
+#define MULTITHREAD_H_SECTION_CRYINTERLOCKEDFLUSHSLIST_PT2 7
+#define MULTITHREAD_H_SECTION_IMPLEMENT_CRYINTERLOCKEDCOMPAREEXCHANGE64 8
+#endif
 
 #define THREAD_NAME_LENGTH_MAX 64
 
 #define WRITE_LOCK_VAL (1 << 16)
+
+// Traits
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION MULTITHREAD_H_SECTION_TRAITS
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/MultiThread_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/MultiThread_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/MultiThread_h_salem.inl"
+    #endif
+#else
+#define MULTITHREAD_H_TRAIT_SLOCKFREESINGLELINKEDLISTENTRY_ATTRIBUTE_ALIGN_16 0
+#if defined(WIN64)
+#define MULTITHREAD_H_TRAIT_SLOCKFREESINGLELINKEDLISTENTRY_MSALIGN_16 1
+#endif
+#if defined(APPLE) || defined(LINUX)
+#define MULTITHREAD_H_TRAIT_USE_SALTED_LINKEDLISTHEADER 1
+#endif
+#endif
 
 //as PowerPC operates via cache line reservation, lock variables should reside ion their own cache line
 template <class T>
@@ -99,6 +131,16 @@ void   CryEnterCriticalSection(void* cs);
 bool   CryTryCriticalSection(void* cs);
 void   CryLeaveCriticalSection(void* cs);
 
+#if defined(AZ_RESTRICTED_PLATFORM)
+    #define AZ_RESTRICTED_SECTION MULTITHREAD_H_SECTION_DEFINE_CRYINTERLOCKEXCHANGE
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/MultiThread_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/MultiThread_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/MultiThread_h_salem.inl"
+    #endif
+#endif
 
 ILINE void CrySpinLock(volatile int* pLock, int checkVal, int setVal)
 {
@@ -131,7 +173,19 @@ Spin:
     }
 # endif //!__GNUC__
 #else // !_CPU_X86
-# if   defined(APPLE) || defined(LINUX)
+# if defined(AZ_RESTRICTED_PLATFORM)
+#  define AZ_RESTRICTED_SECTION MULTITHREAD_H_SECTION_IMPLEMENT_CRYSPINLOCK
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/MultiThread_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/MultiThread_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/MultiThread_h_salem.inl"
+    #endif
+# endif
+# if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#  undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+# elif defined(APPLE) || defined(LINUX)
     //    register int val;
     //  __asm__ __volatile__ (
     //      "0:     mov %[checkVal], %%eax\n"
@@ -229,6 +283,19 @@ ILINE void CryInterlockedAdd(volatile int* pVal, int iAdd)
     // NOTE: The code below will fail on 64bit architectures!
 #if defined(_WIN64)
     _InterlockedExchangeAdd((volatile LONG*)pVal, iAdd);
+#define AZ_RESTRICTED_SECTION_IMPLEMENTED
+#elif defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION MULTITHREAD_H_SECTION_IMPLEMENT_CRYINTERLOCKEDADD
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/MultiThread_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/MultiThread_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/MultiThread_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#undef AZ_RESTRICTED_SECTION_IMPLEMENTED
 #elif defined(APPLE) || defined(LINUX)
     CryInterlockedExchangeAdd((volatile LONG*)pVal, iAdd);
 #elif defined(APPLE)
@@ -245,7 +312,20 @@ ILINE void CryInterlockedAddSize(volatile size_t* pVal, ptrdiff_t iAdd)
 #if defined(PLATFORM_64BIT)
 #if defined(_WIN64)
     _InterlockedExchangeAdd64((volatile __int64*)pVal, iAdd);
-#elif defined(WIN32) || defined(DURANGO)
+#define AZ_RESTRICTED_SECTION_IMPLEMENTED
+#elif defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION MULTITHREAD_H_SECTION_IMPLEMENT_CRYINTERLOCKEDADDSIZE
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/MultiThread_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/MultiThread_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/MultiThread_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#elif defined(WIN32)
     InterlockedExchangeAdd64((volatile LONG64*)pVal, iAdd);
 #elif defined(APPLE) || defined(LINUX)
     (void)__sync_fetch_and_add((int64_t*)pVal, (int64_t)iAdd);
@@ -274,7 +354,7 @@ ILINE void CryInterlockedAddSize(volatile size_t* pVal, ptrdiff_t iAdd)
 
 //TODO somehow get their real size on WIN (without including windows.h...)
 //NOTE: The sizes are verifyed at compile-time in the implementation functions, but this is still ugly
-#if defined(WIN64) || defined(DURANGO)
+#if MULTITHREAD_H_TRAIT_SLOCKFREESINGLELINKEDLISTENTRY_MSALIGN_16
 _MS_ALIGN(16)
 #elif defined(WIN32)
 _MS_ALIGN(8)
@@ -283,14 +363,16 @@ struct SLockFreeSingleLinkedListEntry
 {
     SLockFreeSingleLinkedListEntry* volatile pNext;
 }
-#if defined(LINUX32)
+#if MULTITHREAD_H_TRAIT_SLOCKFREESINGLELINKEDLISTENTRY_ATTRIBUTE_ALIGN_16
+__attribute__ ((aligned(16)))
+#elif defined(LINUX32)
 _ALIGN(8)
 #elif defined(APPLE) || defined(LINUX64)
 _ALIGN(16)
 #endif
 ;
 
-#if defined(WIN64) || defined(DURANGO)
+#if MULTITHREAD_H_TRAIT_SLOCKFREESINGLELINKEDLISTENTRY_MSALIGN_16
 _MS_ALIGN(16)
 #elif defined(WIN32)
 _MS_ALIGN(8)
@@ -303,7 +385,7 @@ struct SLockFreeSingleLinkedListHeader
     // so _InterlockedCompareExchange128 is not implemented on arm64 platforms,
     // and we have to use a mutex to ensure thread safety.
     AZStd::mutex mutex;
-#elif defined(APPLE) || defined(LINUX) || defined(ORBIS)
+#elif MULTITHREAD_H_TRAIT_USE_SALTED_LINKEDLISTHEADER
     // If pointers 32bit, salt should be as well.  Otherwise we get 4 bytes of padding between pNext and salt and CAS operations fail
 #if defined(PLATFORM_64BIT)
     volatile uint64 salt;
@@ -312,7 +394,9 @@ struct SLockFreeSingleLinkedListHeader
 #endif
 #endif
 }
-#if   defined(LINUX32)
+#if MULTITHREAD_H_TRAIT_SLOCKFREESINGLELINKEDLISTENTRY_ATTRIBUTE_ALIGN_16
+__attribute__ ((aligned(16)))
+#elif defined(LINUX32)
 _ALIGN(8)
 #elif defined(APPLE) || defined(LINUX64)
 _ALIGN(16)
@@ -346,21 +430,39 @@ ILINE void CryReadLock(volatile int* rw, bool yield)
     {
         if (yield)
         {
-#   if !defined(ANDROID) && !defined(IOS) && !defined(APPLETV)
+#   if !defined(ANDROID) && !defined(IOS) && !defined(APPLETV) && !defined(MULTITHREAD_H_TRAIT_NO_MM_PAUSE)
             _mm_pause();
 #   endif
 
             if (!(++loops & 0x7F))
             {
                 // give other threads with other prio right to run
-#if   defined (LINUX)
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION MULTITHREAD_H_SECTION_CRYINTERLOCKEDFLUSHSLIST_PT1
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/MultiThread_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/MultiThread_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/MultiThread_h_salem.inl"
+    #endif
+#elif defined (LINUX)
                 usleep(1);
 #endif
             }
             else if (!(loops & 0x3F))
             {
                 // give threads with same prio chance to run
-#if   defined (LINUX)
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION MULTITHREAD_H_SECTION_CRYINTERLOCKEDFLUSHSLIST_PT2
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/MultiThread_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/MultiThread_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/MultiThread_h_salem.inl"
+    #endif
+#elif defined (LINUX)
                 sched_yield();
 #endif
             }
@@ -517,7 +619,21 @@ ILINE int64 CryInterlockedExchange64(volatile int64* addr, int64 exchange)
 ILINE int64 CryInterlockedCompareExchange64(volatile int64* addr, int64 exchange, int64 compare)
 {
     // forward to system call
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION MULTITHREAD_H_SECTION_IMPLEMENT_CRYINTERLOCKEDCOMPAREEXCHANGE64
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/MultiThread_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/MultiThread_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/MultiThread_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#else
     return _InterlockedCompareExchange64((volatile int64*)addr, exchange, compare);
+#endif
 }
 #endif
 
@@ -538,6 +654,3 @@ ILINE void JobSpinLock(volatile int* pLock, int checkVal, int setVal) { SpinLock
 
 ILINE void JobAtomicAdd(volatile int* pVal, int iAdd) { CryInterlockedAdd(pVal, iAdd); }
 ILINE void JobAtomicAdd(volatile unsigned int* pVal, int iAdd) { CryInterlockedAdd((volatile int*)pVal, iAdd); }
-
-
-#endif // CRYINCLUDE_CRYCOMMON_MULTITHREAD_H

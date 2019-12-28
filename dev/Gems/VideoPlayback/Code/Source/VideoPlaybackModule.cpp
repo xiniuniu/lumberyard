@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "VideoPlayback_precompiled.h"
 #include <FlowSystem/Nodes/FlowBaseNode.h>
 #include <platform_impl.h>
 
@@ -18,6 +18,7 @@
 #include "VideoPlaybackGameComponent.h"
 
 #include <IGem.h>
+#include <VideoPlayback_Traits_Platform.h>
 
 namespace AZ
 {
@@ -32,11 +33,13 @@ namespace AZ
             VideoPlaybackModule()
                 : CryHooksModule()
             {
+#if AZ_TRAIT_VIDEOPLAYBACK_ENABLE_DECODER
                 // Push results of [MyComponent]::CreateDescriptor() into m_descriptors here.
                 m_descriptors.insert(m_descriptors.end(), {
                     VideoPlaybackSystemComponent::CreateDescriptor(),
                     VideoPlaybackGameComponent::CreateDescriptor(),
                 });
+#endif
             }
 
             /**

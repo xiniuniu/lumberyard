@@ -58,8 +58,23 @@ namespace AZ
     public:
         using MutexType = AZStd::recursive_mutex;
 
-        /// Called after writing deserialized data to a SliceAsset instance.
-        virtual void OnWriteDataToSliceAssetEnd(AZ::SliceComponent& /*sliceAsset*/) {}
+        /// Called after a slice is loaded from serialized data.
+        /// This event can be used to "fix up" a loaded slice before it is used.
+        /// If you wish to "fix up" entities, use OnSliceEntitiesLoaded instead.
+        virtual void OnWriteDataToSliceAssetEnd(AZ::SliceComponent& /*slice*/) {}
+
+        /// Called each time a slice loads entities from serialized data.
+        /// This event can be used to "fix up" loaded entities before they are used anywhere else.
+        /// Note that this event may be sent multiple times from a single slice:
+        /// - for entities that are "new" to a slice, this event is sent as soon as the slice is loaded.
+        /// - for "instanced" entities, this event is sent while the slice is being instantiated.
+        virtual void OnSliceEntitiesLoaded(const AZStd::vector<AZ::Entity*>& /*entities*/) {}
+
+        //! Fired at the very beginning of a slice push transaction
+        virtual void OnBeginSlicePush(const AZ::Data::AssetId& /*sliceAssetId*/) {}
+
+        //! Fired at the very end of a slice push transaction
+        virtual void OnEndSlicePush(const AZ::Data::AssetId& /*originalSliceAssetId*/, const AZ::Data::AssetId& /*finalSliceAssetId*/) {}
     };
     using SliceAssetSerializationNotificationBus = AZ::EBus<SliceAssetSerializationNotifications>;
 

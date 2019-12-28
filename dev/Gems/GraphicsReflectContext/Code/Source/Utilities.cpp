@@ -33,10 +33,10 @@ namespace GraphicsReflectContext
 
             string localizedToast;
             wstring wideToast;
-            gEnv->pSystem->GetLocalizationManager()->LocalizeString(localizedClipName.to_string().c_str(), localizedToast);
+            LocalizationManagerRequestBus::Broadcast(&LocalizationManagerRequestBus::Events::LocalizeString_s, localizedClipName.data(), localizedToast, false);
             Unicode::Convert(wideToast, localizedToast);
 
-            IPlatformOS::IClipCaptureOS::SClipTextInfo clipTextInfo(clipName.to_string().c_str(), wideToast.c_str(), metadata.to_string().c_str());
+            IPlatformOS::IClipCaptureOS::SClipTextInfo clipTextInfo(clipName.data(), wideToast.c_str(), metadata.data());
 
             success = pClipCapture->RecordClip(clipTextInfo, span);
         }
@@ -54,11 +54,11 @@ namespace GraphicsReflectContext
             ->Method("ClipCapture",
                 &Utilities::ClipCapture,
                 { {
-                    { "DurationBefore",    "Record this many seconds from before the capture was triggered",   AZ::BehaviorMakeDefaultValue(20.0f) },
-                    { "DurationAfter",     "Record this many seconds after the capture is triggered",          AZ::BehaviorMakeDefaultValue(10.0f) },
-                    { "ClipName",          "Usage details are platform-specific",                              AZ::BehaviorMakeDefaultValue(AZStd::string_view()) },
-                    { "LocalizedClipName", "Usage details are platform-specific",                              AZ::BehaviorMakeDefaultValue(AZStd::string_view()) },
-                    { "Metadata",          "Optional. Use it for instance to tag clips",                       AZ::BehaviorMakeDefaultValue(AZStd::string_view()) },
+                    { "DurationBefore",    "Record this many seconds from before the capture was triggered",   behaviorContext->MakeDefaultValue(20.0f) },
+                    { "DurationAfter",     "Record this many seconds after the capture is triggered",          behaviorContext->MakeDefaultValue(10.0f) },
+                    { "ClipName",          "Usage details are platform-specific",                              behaviorContext->MakeDefaultValue(AZStd::string_view()) },
+                    { "LocalizedClipName", "Usage details are platform-specific",                              behaviorContext->MakeDefaultValue(AZStd::string_view()) },
+                    { "Metadata",          "Optional. Use it for instance to tag clips",                       behaviorContext->MakeDefaultValue(AZStd::string_view()) },
                 } } )
             ->Attribute(AZ::Script::Attributes::ToolTip, "Allows capturing video clips on consoles while the game is running and save them locally or in the cloud")
         ;

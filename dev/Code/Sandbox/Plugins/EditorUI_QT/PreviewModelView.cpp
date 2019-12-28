@@ -10,7 +10,7 @@
 *
 */
 
-#include "Stdafx.h"
+#include "stdafx.h"
 #include <EditorDefs.h>
 
 //AZCore
@@ -43,7 +43,7 @@
 
 
 CPreviewModelView::CPreviewModelView(QWidget* parent)
-    : QViewport(parent)
+    : QViewport(parent, QViewport::StartupMode_Manual) // Manual since we need to set WA_DontCreateNativeAncestors before QViewport::Startup() creates the internal native window and propagates
     , m_Flags(0)
     , m_GridColor(150, 150, 150, 40)
     , m_BackgroundColor(0.5f, 0.5f, 0.5f)
@@ -54,6 +54,12 @@ CPreviewModelView::CPreviewModelView(QWidget* parent)
     , m_PostUpdateCallback(nullptr)
     , m_ContextMenuCallback(nullptr)
 {
+#ifdef Q_OS_MACOS
+    // Don't propagate the nativeness up, as dockwidgets on macOS don't like it
+    setAttribute(Qt::WA_DontCreateNativeAncestors);
+#endif
+    Startup();
+
     //////////////////////////////////////////////////////////
     //QViewport
     AddConsumer(this);
@@ -190,8 +196,8 @@ void CPreviewModelView::ImportModel()
     x.typeName = Prop::GetPropertyTypeToResourceType(ePropertyModel);
 
     QString currPath = m_ModelFilename.toLower();
-    dll_string selected = GetIEditor()->GetResourceSelectorHost()->SelectResource(x, currPath.toLatin1().data());
-    LoadModelFile(selected.c_str());
+    QString selected = GetIEditor()->GetResourceSelectorHost()->SelectResource(x, currPath);
+    LoadModelFile(selected);
 }
 
 void CPreviewModelView::SetPostUpdateCallback(PostUpdateCallback callback)
@@ -357,7 +363,7 @@ void CPreviewModelView::LoadModelFile(const QString& modelFile)
                 CRY_ASSERT(GetIEditor()->GetSystem());
                 CRY_ASSERT(GetIEditor()->GetSystem()->GetIAnimationSystem());
                 // Load CGA animated object.
-                m_pCharacterModel = GetIEditor()->GetSystem()->GetIAnimationSystem()->CreateInstance(modelFile.toLatin1().data());
+                m_pCharacterModel = GetIEditor()->GetSystem()->GetIAnimationSystem()->CreateInstance(modelFile.toUtf8().data());
                 if (m_pCharacterModel)
                 {
                     m_pCharacterModel->AddRef();
@@ -365,7 +371,7 @@ void CPreviewModelView::LoadModelFile(const QString& modelFile)
                 else
                 {
                     CRY_ASSERT(GetIEditor()->GetLogFile());
-                    sprintf(buffer, "Loading of CGA animated object %s failed.", modelFile.toLatin1().data());
+                    sprintf(buffer, "Loading of CGA animated object %s failed.", modelFile.toUtf8().data());
                     GetIEditor()->GetLogFile()->Warning(buffer);
                 }
             }
@@ -374,7 +380,7 @@ void CPreviewModelView::LoadModelFile(const QString& modelFile)
                 CRY_ASSERT(GetIEditor()->GetSystem());
                 CRY_ASSERT(GetIEditor()->GetSystem()->GetIAnimationSystem());
                 // Load CGA animated object.
-                m_pCharacterModel = GetIEditor()->GetSystem()->GetIAnimationSystem()->CreateInstance(modelFile.toLatin1().data(), CA_PreviewMode | CA_CharEditModel);
+                m_pCharacterModel = GetIEditor()->GetSystem()->GetIAnimationSystem()->CreateInstance(modelFile.toUtf8().data(), CA_PreviewMode | CA_CharEditModel);
                 if (m_pCharacterModel)
                 {
                     m_pCharacterModel->AddRef();
@@ -382,7 +388,7 @@ void CPreviewModelView::LoadModelFile(const QString& modelFile)
                 else
                 {
                     CRY_ASSERT(GetIEditor()->GetLogFile());
-                    sprintf(buffer, "Loading of CGA animated object %s failed.", modelFile.toLatin1().data());
+                    sprintf(buffer, "Loading of CGA animated object %s failed.", modelFile.toUtf8().data());
                     GetIEditor()->GetLogFile()->Warning(buffer);
                 }
             }
@@ -390,7 +396,7 @@ void CPreviewModelView::LoadModelFile(const QString& modelFile)
             {
                 CRY_ASSERT(GetIEditor()->Get3DEngine());
                 // Load object.
-                m_pStaticModel = GetIEditor()->Get3DEngine()->LoadStatObjUnsafeManualRef(modelFile.toLatin1().data(), nullptr, nullptr, false);
+                m_pStaticModel = GetIEditor()->Get3DEngine()->LoadStatObjUnsafeManualRef(modelFile.toUtf8().data(), nullptr, nullptr, false);
                 if (m_pStaticModel)
                 {
                     m_pStaticModel->AddRef();
@@ -398,14 +404,14 @@ void CPreviewModelView::LoadModelFile(const QString& modelFile)
                 else
                 {
                     CRY_ASSERT(GetIEditor()->GetLogFile());
-                    sprintf(buffer, "Loading of geometry object %s failed.", modelFile.toLatin1().data());
+                    sprintf(buffer, "Loading of geometry object %s failed.", modelFile.toUtf8().data());
                     GetIEditor()->GetLogFile()->Warning(buffer);
                 }
             }
             else
             {
                 CRY_ASSERT(GetIEditor()->GetLogFile());
-                sprintf(buffer, "Unknown model file (%s) attempting to be loaded.", modelFile.toLatin1().data());
+                sprintf(buffer, "Unknown model file (%s) attempting to be loaded.", modelFile.toUtf8().data());
                 GetIEditor()->GetLogFile()->Warning(buffer);
             }
 

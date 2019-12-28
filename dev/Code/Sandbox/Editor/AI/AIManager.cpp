@@ -16,7 +16,7 @@
 
 #include "MainWindow.h"
 
-#include "AIGoalLibrary.h"
+#include "AiGoalLibrary.h"
 #include "AiGoal.h"
 #include "AiBehaviorLibrary.h"
 
@@ -122,9 +122,12 @@ void CAIManager::LoadNavigationEditorSettings()
     m_enableNavigationContinuousUpdate = gSettings.bNavigationContinuousUpdate;
     m_enableDebugDisplay = gSettings.bNavigationDebugDisplay;
 
-    if (NavigationAgentTypeID debugAgentTypeID = m_aiSystem->GetNavigationSystem()->GetAgentTypeID(gSettings.navigationDebugAgentType))
+    if (m_aiSystem)
     {
-        m_aiSystem->GetNavigationSystem()->SetDebugDisplayAgentType(debugAgentTypeID);
+        if (NavigationAgentTypeID debugAgentTypeID = m_aiSystem->GetNavigationSystem()->GetAgentTypeID(gSettings.navigationDebugAgentType))
+        {
+            m_aiSystem->GetNavigationSystem()->SetDebugDisplayAgentType(debugAgentTypeID);
+        }
     }
 
     if (gSettings.bVisualizeNavigationAccessibility)
@@ -255,7 +258,7 @@ void CAIManager::LoadActionGraphs()
             filename += pAction->GetName();
             filename += ".xml";
             m_pFlowGraph->SetName("");
-            m_pFlowGraph->Load(filename.toLatin1().data());
+            m_pFlowGraph->Load(filename.toUtf8().data());
         }
     }
 }
@@ -288,7 +291,7 @@ void CAIManager::SaveAndReloadActionGraphs()
 
     if (!actionName.isEmpty())
     {
-        IAIAction* pAction = GetAISystem()->GetAIActionManager()->GetAIAction(actionName.toLatin1().data());
+        IAIAction* pAction = GetAISystem()->GetAIActionManager()->GetAIAction(actionName.toUtf8().data());
         if (pAction)
         {
             CFlowGraphManager* pManager = GetIEditor()->GetFlowGraphManager();
@@ -318,7 +321,7 @@ void CAIManager::SaveActionGraphs()
         CFlowGraph* m_pFlowGraph = GetIEditor()->GetFlowGraphManager()->FindGraphForAction(pAction);
         if (m_pFlowGraph->IsModified())
         {
-            m_pFlowGraph->Save((m_pFlowGraph->GetName() + QStringLiteral(".xml")).toLatin1().data());
+            m_pFlowGraph->Save((m_pFlowGraph->GetName() + QStringLiteral(".xml")).toUtf8().data());
             pAction->Invalidate();
         }
     }
@@ -475,7 +478,8 @@ bool CAIManager::NewAction(QString& filename, QWidget* container)
     filename = newFileName.toLower();
 
     // check if file exists.
-    FILE* file = fopen(filename.toLatin1().data(), "rb");
+    FILE* file = nullptr;
+    azfopen(&file, filename.toUtf8().data(), "rb");
     if (file)
     {
         fclose(file);
@@ -497,7 +501,7 @@ bool CAIManager::NewAction(QString& filename, QWidget* container)
     pGraph->UnselectAll();
     pGraph->ConnectPorts(pStartNode, &pStartNode->GetOutputs()->at(1), pPosNode, &pPosNode->GetInputs()->at(0), false);
 
-    bool r = pGraph->Save(filename.toLatin1().data());
+    bool r = pGraph->Save(filename.toUtf8().data());
 
     delete pGraph;
 
@@ -743,6 +747,11 @@ CSOParamBase* CAIManager::LoadTemplateParams(XmlNodeRef root) const
 
 void CAIManager::OnEnterGameMode(bool inGame)
 {
+    if (!m_aiSystem)
+    {
+        return;
+    }
+
     if (inGame)
     {
         SaveNavigationEditorSettings();
@@ -843,6 +852,11 @@ size_t CAIManager::GetNavigationAgentTypeCount() const
 
 const char* CAIManager::GetNavigationAgentTypeName(size_t i) const
 {
+    if (!m_aiSystem)
+    {
+        return nullptr;
+    }
+
     const NavigationAgentTypeID id = m_aiSystem->GetNavigationSystem()->GetAgentTypeID(i);
     if (id)
     {
@@ -854,8 +868,11 @@ const char* CAIManager::GetNavigationAgentTypeName(size_t i) const
 
 void CAIManager::SetNavigationDebugDisplayAgentType(size_t i) const
 {
-    const NavigationAgentTypeID id = m_aiSystem->GetNavigationSystem()->GetAgentTypeID(i);
-    m_aiSystem->GetNavigationSystem()->SetDebugDisplayAgentType(id);
+    if (m_aiSystem)
+    {
+        const NavigationAgentTypeID id = m_aiSystem->GetNavigationSystem()->GetAgentTypeID(i);
+        m_aiSystem->GetNavigationSystem()->SetDebugDisplayAgentType(id);
+    }
 }
 
 void CAIManager::EnableNavigationDebugDisplay(bool enable)

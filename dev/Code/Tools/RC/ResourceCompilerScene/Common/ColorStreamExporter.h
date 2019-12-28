@@ -12,7 +12,7 @@
 
 #pragma once
 
-#include <SceneAPI/SceneCore/Components/ExportingComponent.h>
+#include <SceneAPI/SceneCore/Components/RCExportingComponent.h>
 
 namespace AZ
 {
@@ -21,10 +21,10 @@ namespace AZ
         struct MeshNodeExportContext;
 
         class ColorStreamExporter
-            : public SceneAPI::SceneCore::ExportingComponent
+            : public SceneAPI::SceneCore::RCExportingComponent
         {
         public:
-            AZ_COMPONENT(ColorStreamExporter, "{912F9D7B-55C1-4871-A3BE-6C63B27E6B49}", SceneAPI::SceneCore::ExportingComponent);
+            AZ_COMPONENT(ColorStreamExporter, "{912F9D7B-55C1-4871-A3BE-6C63B27E6B49}", SceneAPI::SceneCore::RCExportingComponent);
 
             ColorStreamExporter();
             ~ColorStreamExporter() override = default;
@@ -32,13 +32,6 @@ namespace AZ
             static void Reflect(ReflectContext* context);
 
             SceneAPI::Events::ProcessingResult CopyVertexColorStream(MeshNodeExportContext& context) const;
-
-        protected:
-#if defined(AZ_COMPILER_MSVC) && AZ_COMPILER_MSVC <= 1800
-            // Workaround for VS2013 - Delete the copy constructor and make it private
-            // https://connect.microsoft.com/VisualStudio/feedback/details/800328/std-is-copy-constructible-is-broken
-            ColorStreamExporter(const ColorStreamExporter&) = delete;
-#endif
         };
     } // namespace RC
 } // namespace AZ

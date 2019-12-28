@@ -12,7 +12,7 @@
 #include "UtilitiesUnitTests.h"
 
 #include <AzToolsFramework/AssetDatabase/AssetDatabaseConnection.h>
-#include "native/utilities/AssetUtils.h"
+#include "native/utilities/assetUtils.h"
 #include "native/utilities/ByteArrayStream.h"
 #include <AzCore/std/parallel/thread.h>
 #include <AzFramework/Asset/AssetSystemComponent.h>
@@ -49,6 +49,28 @@ namespace AssetProcessor
         windows_remote_ip = 127.0.0.7                                                       \r\n\
         remote_port = 45645                                                                 \r\n\
         assetProcessor_branch_token = 0xDD814240";
+
+    // simple utility class to make sure threads join and don't cause asserts
+    // if the unit test exits early.
+    class AutoThreadJoiner final
+    {
+        public:
+        explicit AutoThreadJoiner(AZStd::thread* ownershipTransferThread)
+        {
+            m_threadToOwn = ownershipTransferThread;
+        }
+
+        ~AutoThreadJoiner()
+        {
+            if (m_threadToOwn)
+            {
+                m_threadToOwn->join();
+                delete m_threadToOwn;
+            }
+        }
+
+        AZStd::thread* m_threadToOwn;
+    };
 }
 
 REGISTER_UNIT_TEST(UtilitiesUnitTests)
@@ -63,17 +85,30 @@ void UtilitiesUnitTests::StartTest()
     UNIT_TEST_EXPECT_TRUE(NormalizeFilePath("a/b\\c\\d/E.txt") == "a/b/c/d/E.txt");
 
     // do not erase full path
+#if defined(AZ_PLATFORM_WINDOWS)
+    UNIT_TEST_EXPECT_TRUE(NormalizeFilePath("c:\\a/b\\c\\d/E.txt") == "C:/a/b/c/d/E.txt");
+#else
     UNIT_TEST_EXPECT_TRUE(NormalizeFilePath("c:\\a/b\\c\\d/E.txt") == "c:/a/b/c/d/E.txt");
+#endif // defined(AZ_PLATFORM_WINDOWS)
 
 
     // same tests but for directories:
+#if defined(AZ_PLATFORM_WINDOWS)
+    UNIT_TEST_EXPECT_TRUE(NormalizeDirectoryPath("c:\\a/b\\c\\d") == "C:/a/b/c/d");
+#else
     UNIT_TEST_EXPECT_TRUE(NormalizeDirectoryPath("c:\\a/b\\c\\d") == "c:/a/b/c/d");
+#endif // defined(AZ_PLATFORM_WINDOWS)
 
     UNIT_TEST_EXPECT_TRUE(NormalizeDirectoryPath("a/b\\c\\d") == "a/b/c/d");
 
     // directories automatically chop slashes:
+#if defined(AZ_PLATFORM_WINDOWS)
+    UNIT_TEST_EXPECT_TRUE(NormalizeDirectoryPath("c:\\a/b\\c\\d\\") == "C:/a/b/c/d");
+    UNIT_TEST_EXPECT_TRUE(NormalizeDirectoryPath("c:\\a/b\\c\\d//") == "C:/a/b/c/d");
+#else
     UNIT_TEST_EXPECT_TRUE(NormalizeDirectoryPath("c:\\a/b\\c\\d\\") == "c:/a/b/c/d");
     UNIT_TEST_EXPECT_TRUE(NormalizeDirectoryPath("c:\\a/b\\c\\d//") == "c:/a/b/c/d");
+#endif // defined(AZ_PLATFORM_WINDOWS)
 
     QTemporaryDir tempdir;
     QDir dir(tempdir.path());
@@ -112,12 +147,20 @@ void UtilitiesUnitTests::StartTest()
 
 
     //-----------------------Test CopyFileWithTimeout---------------------
+
+    QString outputFileName(dir.filePath("test1.txt"));
+    
     QFile inputFile(fileName);
     inputFile.open(QFile::WriteOnly);
-    QString outputFileName(dir.filePath("test1.txt"));
     QFile outputFile(outputFileName);
     outputFile.open(QFile::WriteOnly);
-    //Trying to copy when the output file is open for reading
+
+#if defined(AZ_PLATFORM_WINDOWS)
+    // this test is intentionally disabled on other platforms
+    // because in general on other platforms its actually possible to delete and move
+    // files out of the way even if they are currently opened for writing by a different
+    // handle.
+    //Trying to copy when the output file is open for reading should fail.
     {
         UnitTestUtils::AssertAbsorber absorb;
         UNIT_TEST_EXPECT_FALSE(CopyFileWithTimeout(fileName, outputFileName, 1));
@@ -126,16 +169,20 @@ void UtilitiesUnitTests::StartTest()
         UNIT_TEST_EXPECT_FALSE(MoveFileWithTimeout(fileName, outputFileName, 1));
         UNIT_TEST_EXPECT_TRUE(absorb.m_numWarningsAbsorbed == 4);
     }
+#endif // AZ_PLATFORM_WINDOWS ONLY
+
     inputFile.close();
     outputFile.close();
+
     //Trying to copy when the output file is not open
     UNIT_TEST_EXPECT_TRUE(CopyFileWithTimeout(fileName, outputFileName, 1));
     UNIT_TEST_EXPECT_TRUE(CopyFileWithTimeout(fileName, outputFileName, -1));//invalid timeout time
     // Trying to move when the output file is not open
     UNIT_TEST_EXPECT_TRUE(MoveFileWithTimeout(fileName, outputFileName, 1));
     UNIT_TEST_EXPECT_TRUE(MoveFileWithTimeout(outputFileName, fileName, 1));
-    volatile bool setupDone = false;
-    AZStd::thread unitTestFileThread = AZStd::thread(
+
+    AZStd::atomic_bool setupDone{ false };
+    AssetProcessor::AutoThreadJoiner joiner(new AZStd::thread(
         [&]()
         {
             //opening file
@@ -144,23 +191,26 @@ void UtilitiesUnitTests::StartTest()
             AZStd::this_thread::sleep_for(AZStd::chrono::milliseconds(1000));
             //closing file
             outputFile.close();
-        });
+        }));
 
-    while (!setupDone)
+    while (!setupDone.load())
     {
         QThread::msleep(1);
     }
+
+    UNIT_TEST_EXPECT_TRUE(outputFile.isOpen());
 
     //Trying to copy when the output file is open,but will close before the timeout inputted
     {
         UnitTestUtils::AssertAbsorber absorb;
         UNIT_TEST_EXPECT_TRUE(CopyFileWithTimeout(fileName, outputFileName, 3));
+#if defined(AZ_PLATFORM_WINDOWS)
+        // only windows has an issue with moving files out that are in use.
+        // other platforms do so without issue.
         UNIT_TEST_EXPECT_TRUE(absorb.m_numWarningsAbsorbed > 0);
+#endif // windows platform.
     }
-
-    unitTestFileThread.join();
-
-
+  
     // ------------- Test CheckCanLock --------------
     {
         QTemporaryDir lockTestTempDir;
@@ -172,10 +222,23 @@ void UtilitiesUnitTests::StartTest()
         CreateDummyFile(lockTestFileName);
         UNIT_TEST_EXPECT_TRUE(AssetUtilities::CheckCanLock(lockTestFileName));
 
+#if defined(AZ_PLATFORM_WINDOWS)
+        // on windows, opening a file for reading locks it
+        // but on other platforms, this is not the case.
         QFile lockTestFile(lockTestFileName);
         lockTestFile.open(QFile::ReadOnly);
+#else // AZ_PLATFORM_WINDOWS
+        int handle = open(lockTestFileName.toUtf8().constData(), O_RDONLY | O_EXLOCK | O_NONBLOCK);       
+#endif
         UNIT_TEST_EXPECT_FALSE(AssetUtilities::CheckCanLock(lockTestFileName));
+#if defined(AZ_PLATFORM_WINDOWS)
         lockTestFile.close();
+#else
+        if (handle != -1)
+        {
+            close(handle);
+        }
+#endif // windows/other platforms ifdef 
     }
 
     // ----------------- TEST BOOTSTRAP SCANNER ----------------
@@ -286,14 +349,14 @@ void UtilitiesUnitTests::StartTest()
             "a.bcd"
         };
         {
-            AssetUtilities::FilePatternMatcher extensionWildcardTest(AssetBuilderSDK::AssetBuilderPattern("*.cfg", AssetBuilderSDK::AssetBuilderPattern::Wildcard));
+            AssetBuilderSDK::FilePatternMatcher extensionWildcardTest(AssetBuilderSDK::AssetBuilderPattern("*.cfg", AssetBuilderSDK::AssetBuilderPattern::Wildcard));
             UNIT_TEST_EXPECT_TRUE(extensionWildcardTest.MatchesPath(AZStd::string("foo.cfg")));
             UNIT_TEST_EXPECT_TRUE(extensionWildcardTest.MatchesPath(AZStd::string("abcd/foo.cfg")));
             UNIT_TEST_EXPECT_FALSE(extensionWildcardTest.MatchesPath(AZStd::string("abcd/foo.cfd")));
         }
 
         {
-            AssetUtilities::FilePatternMatcher prefixWildcardTest(AssetBuilderSDK::AssetBuilderPattern("abf*.llm", AssetBuilderSDK::AssetBuilderPattern::Wildcard));
+            AssetBuilderSDK::FilePatternMatcher prefixWildcardTest(AssetBuilderSDK::AssetBuilderPattern("abf*.llm", AssetBuilderSDK::AssetBuilderPattern::Wildcard));
             UNIT_TEST_EXPECT_TRUE(prefixWildcardTest.MatchesPath(AZStd::string("abf.llm")));
             UNIT_TEST_EXPECT_TRUE(prefixWildcardTest.MatchesPath(AZStd::string("abf12345.llm")));
             UNIT_TEST_EXPECT_FALSE(prefixWildcardTest.MatchesPath(AZStd::string("foo/abf12345.llm")));
@@ -302,7 +365,7 @@ void UtilitiesUnitTests::StartTest()
         }
 
         {
-            AssetUtilities::FilePatternMatcher extensionPrefixWildcardTest(AssetBuilderSDK::AssetBuilderPattern("sdf.c*", AssetBuilderSDK::AssetBuilderPattern::Wildcard));
+            AssetBuilderSDK::FilePatternMatcher extensionPrefixWildcardTest(AssetBuilderSDK::AssetBuilderPattern("sdf.c*", AssetBuilderSDK::AssetBuilderPattern::Wildcard));
             UNIT_TEST_EXPECT_TRUE(extensionPrefixWildcardTest.MatchesPath(AZStd::string("sdf.cpp")));
             UNIT_TEST_EXPECT_TRUE(extensionPrefixWildcardTest.MatchesPath(AZStd::string("sdf.cxx")));
             UNIT_TEST_EXPECT_TRUE(extensionPrefixWildcardTest.MatchesPath(AZStd::string("sdf.c")));
@@ -314,7 +377,7 @@ void UtilitiesUnitTests::StartTest()
         }
 
         {
-            AssetUtilities::FilePatternMatcher prefixExtensionPrefixWildcardTest(AssetBuilderSDK::AssetBuilderPattern("s*.c*", AssetBuilderSDK::AssetBuilderPattern::Wildcard));
+            AssetBuilderSDK::FilePatternMatcher prefixExtensionPrefixWildcardTest(AssetBuilderSDK::AssetBuilderPattern("s*.c*", AssetBuilderSDK::AssetBuilderPattern::Wildcard));
             UNIT_TEST_EXPECT_TRUE(prefixExtensionPrefixWildcardTest.MatchesPath(AZStd::string("sdf.cpp")));
             UNIT_TEST_EXPECT_TRUE(prefixExtensionPrefixWildcardTest.MatchesPath(AZStd::string("sdf.cxx")));
             UNIT_TEST_EXPECT_FALSE(prefixExtensionPrefixWildcardTest.MatchesPath(AZStd::string("abcd/sdf.cpp")));
@@ -324,7 +387,7 @@ void UtilitiesUnitTests::StartTest()
         }
 
         {
-            AssetUtilities::FilePatternMatcher fixedNameTest(AssetBuilderSDK::AssetBuilderPattern("a.bcd", AssetBuilderSDK::AssetBuilderPattern::Wildcard));
+            AssetBuilderSDK::FilePatternMatcher fixedNameTest(AssetBuilderSDK::AssetBuilderPattern("a.bcd", AssetBuilderSDK::AssetBuilderPattern::Wildcard));
             UNIT_TEST_EXPECT_TRUE(fixedNameTest.MatchesPath(AZStd::string("a.bcd")));
             UNIT_TEST_EXPECT_FALSE(fixedNameTest.MatchesPath(AZStd::string("foo\\a.bcd")));
             UNIT_TEST_EXPECT_FALSE(fixedNameTest.MatchesPath(AZStd::string("foo/a.bcd")));
@@ -334,7 +397,7 @@ void UtilitiesUnitTests::StartTest()
         }
 
         {
-            AssetUtilities::FilePatternMatcher midMatchExtensionPrefixTest(AssetBuilderSDK::AssetBuilderPattern("s*f.c*", AssetBuilderSDK::AssetBuilderPattern::Wildcard));
+            AssetBuilderSDK::FilePatternMatcher midMatchExtensionPrefixTest(AssetBuilderSDK::AssetBuilderPattern("s*f.c*", AssetBuilderSDK::AssetBuilderPattern::Wildcard));
             UNIT_TEST_EXPECT_TRUE(midMatchExtensionPrefixTest.MatchesPath(AZStd::string("sdf.cpp")));
             UNIT_TEST_EXPECT_TRUE(midMatchExtensionPrefixTest.MatchesPath(AZStd::string("sef.cxx")));
             UNIT_TEST_EXPECT_TRUE(midMatchExtensionPrefixTest.MatchesPath(AZStd::string("sf.c")));
@@ -346,7 +409,7 @@ void UtilitiesUnitTests::StartTest()
         }
 
         {
-            AssetUtilities::FilePatternMatcher subFolderExtensionWildcardTest(AssetBuilderSDK::AssetBuilderPattern("abcd/*.cfg", AssetBuilderSDK::AssetBuilderPattern::Wildcard));
+            AssetBuilderSDK::FilePatternMatcher subFolderExtensionWildcardTest(AssetBuilderSDK::AssetBuilderPattern("abcd/*.cfg", AssetBuilderSDK::AssetBuilderPattern::Wildcard));
             UNIT_TEST_EXPECT_TRUE(subFolderExtensionWildcardTest.MatchesPath(AZStd::string("abcd/sdf.cfg")));
             UNIT_TEST_EXPECT_FALSE(subFolderExtensionWildcardTest.MatchesPath(AZStd::string("c://abcd/sdf.cfg")));
             UNIT_TEST_EXPECT_FALSE(subFolderExtensionWildcardTest.MatchesPath(AZStd::string("sdf.cfg")));
@@ -355,7 +418,7 @@ void UtilitiesUnitTests::StartTest()
         }
 
         {
-            AssetUtilities::FilePatternMatcher subFolderPatternTest(AssetBuilderSDK::AssetBuilderPattern(".*\\/savebackup\\/.*", AssetBuilderSDK::AssetBuilderPattern::Regex));
+            AssetBuilderSDK::FilePatternMatcher subFolderPatternTest(AssetBuilderSDK::AssetBuilderPattern(".*\\/savebackup\\/.*", AssetBuilderSDK::AssetBuilderPattern::Regex));
             UNIT_TEST_EXPECT_TRUE(subFolderPatternTest.MatchesPath(AZStd::string("abcd/savebackup/sdf.cfg")));
             UNIT_TEST_EXPECT_FALSE(subFolderPatternTest.MatchesPath(AZStd::string("abcd/savebackup")));
             UNIT_TEST_EXPECT_FALSE(subFolderPatternTest.MatchesPath(AZStd::string("savebackup/sdf.cfg")));
@@ -366,11 +429,9 @@ void UtilitiesUnitTests::StartTest()
         }
 
         {
-            // Specific test that will cause AZStd::regex to crash evven though std::regex finds it as a valid pattern.
-            // Until this is fixed, keep the #define USE_STL_REXEG_FILEPATTERN in AssetUtils.h
-            AssetUtilities::FilePatternMatcher subFolderPatternTest(AssetBuilderSDK::AssetBuilderPattern(".*\\/Presets\\/GeomCache\\/.*", AssetBuilderSDK::AssetBuilderPattern::Regex));
+            AssetBuilderSDK::FilePatternMatcher subFolderPatternTest(AssetBuilderSDK::AssetBuilderPattern(".*\\/Presets\\/GeomCache\\/.*", AssetBuilderSDK::AssetBuilderPattern::Regex));
             UNIT_TEST_EXPECT_TRUE(subFolderPatternTest.MatchesPath(AZStd::string("something/Presets/GeomCache/sdf.cfg")));
-            UNIT_TEST_EXPECT_FALSE(subFolderPatternTest.MatchesPath(AZStd::string("Presets/GeomCache/sdf.cfg"))); // should not match becuase it demands that there is a slash
+            UNIT_TEST_EXPECT_FALSE(subFolderPatternTest.MatchesPath(AZStd::string("Presets/GeomCache/sdf.cfg"))); // should not match because it demands that there is a slash
             UNIT_TEST_EXPECT_FALSE(subFolderPatternTest.MatchesPath(AZStd::string("abcd/savebackup")));
             UNIT_TEST_EXPECT_FALSE(subFolderPatternTest.MatchesPath(AZStd::string("savebackup/sdf.cfg")));
             UNIT_TEST_EXPECT_FALSE(subFolderPatternTest.MatchesPath(AZStd::string("c://abcd/sdf.cfg")));

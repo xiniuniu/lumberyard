@@ -53,6 +53,7 @@ enum AmazonToolbarVersions
     ORIGINAL_TOOLBAR_VERSION = 1,
     TOOLBARS_WITH_PLAY_GAME = 2,
     TOOLBARS_WITH_PERSISTENT_VISIBILITY = 3,
+    TOOLBARS_WITH_DEPLOY = 4,
 
     //TOOLBAR_VERSION = 1
     TOOLBAR_VERSION = TOOLBARS_WITH_PERSISTENT_VISIBILITY
@@ -205,8 +206,30 @@ void ToolbarManager::LoadToolbars()
     m_toolbars = loadedToolbarList.toolbars;
     m_loadedVersion = loadedToolbarList.version;
     qDebug() << "Loaded toolbars:" << m_toolbars.size();
+
+    // Load the defaults which were saved by the previous version
+    // If no defaults are found, the effect is to re-add all commands in the current standard toolbars which are no
+    // longer present in the edited version (i.e. result = the set union of edited and current default)
+    QMap<QString, AmazonToolbar> previousStandardToolbars;
+    if (m_loadedVersion < TOOLBAR_VERSION)
+    {
+        m_settings.beginGroup("Defaults");
+        QVariant defaultsValue = m_settings.value(QString::number(m_loadedVersion));
+        if (defaultsValue.isValid())
+        {
+            InternalAmazonToolbarList oldDefaults = defaultsValue.value<InternalAmazonToolbarList>();
+
+            for (AmazonToolbar& oldDefault : oldDefaults.toolbars)
+            {
+                previousStandardToolbars[oldDefault.GetName()] = oldDefault;
+            }
+        }
+        m_settings.endGroup();
+    }
+
     m_settings.endGroup();
-    SanitizeToolbars();
+
+    SanitizeToolbars(previousStandardToolbars);
     InstantiateToolbars();
 }
 
@@ -220,7 +243,7 @@ static bool operator!=(const AmazonToolbar& t1, const AmazonToolbar& t2)
     return !operator==(t1, t2);
 }
 
-void ToolbarManager::SanitizeToolbars()
+void ToolbarManager::SanitizeToolbars(const QMap<QString, AmazonToolbar>& oldStandard)
 {
     // All standard toolbars must be present
     auto stdToolbars = m_standardToolbars;
@@ -242,33 +265,53 @@ void ToolbarManager::SanitizeToolbars()
         auto customToolbarReference = toolbarSet.find(stdToolbar.GetName());
         if (customToolbarReference == toolbarSet.end())
         {
+            // An untouched standard toolbar or a user-created one
+            newToolbars.push_back(stdToolbar);
+        }
+        else if (customToolbarReference.value().IsSame(stdToolbar))
+        {
+            // Edge case of previous versions where all toolbars were saved regardless of dirtiness
+            // If we're replacing the Toolbar and haven't changed whether or not it's hidden by default since
+            // last load, ensure we respect whether or not the user had previously toggled it
+            if (stdToolbar.IsShowByDefault() == customToolbarReference.value().IsShowByDefault())
+            {
+                stdToolbar.SetShowToggled(customToolbarReference.value().IsShowToggled());
+            }
             newToolbars.push_back(stdToolbar);
         }
         else
         {
-            // to be sneaky and ensure that default toolbars are laid out as intended,
-            // we check if the toolbar we loaded is the same as a previous version of the standard toolbar.
-            // If it is, we just use the standard one as is (because it might have newer actions
-            // added after the user saved the previous version)
-            if (customToolbarReference.value().IsOlderVersionOf(stdToolbar, m_loadedVersion))
+            AmazonToolbar& newToolbar = customToolbarReference.value();
+
+            // make sure to add any actions added since the last time the user saved this toolbar
+            if (oldStandard.contains(stdToolbar.GetName()))
             {
-                // If we're replacing the Toolbar and haven't changed whether or not it's hidden by default since
-                // last load, ensure we respect whether or not the user had previously toggled it
-                if (stdToolbar.IsShowByDefault() == customToolbarReference.value().IsShowByDefault())
+                QVector<int> newCommands = stdToolbar.ActionIds();
+                QVector<int> previous = oldStandard[stdToolbar.GetName()].ActionIds();
+                QVector<int> custom = newToolbar.ActionIds();
+
+                // If the new layout removed some, we want to remove those if present in the edited layout
+                for (int previousCommand : previous)
                 {
-                    stdToolbar.SetShowToggled(customToolbarReference.value().IsShowToggled());
+                    if (!newCommands.contains(previousCommand))
+                    {
+                        custom.remove(previousCommand);
+                    }
                 }
-                newToolbars.push_back(stdToolbar);
-            }
-            else
-            {
-                AmazonToolbar& newToolbar = customToolbarReference.value();
 
-                // make sure to add any actions added since the last time the user saved this toolbar
-                newToolbar.AddActionsFromNewerVersion(stdToolbar, m_loadedVersion);
-
-                newToolbars.push_back(newToolbar);
+                // We only want commands that weren't in the old default version and which aren't already in the
+                // customized toolbar.
+                // We just append them here, but it might be possible to attempt to preserve the ordering...
+                for (int command : newCommands)
+                {
+                    if (!previous.contains(command) && !custom.contains(command))
+                    {
+                        custom.push_back(command);
+                    }
+                }
             }
+
+            newToolbars.push_back(newToolbar);
 
             toolbarSet.remove(stdToolbar.GetName());
         }
@@ -277,7 +320,7 @@ void ToolbarManager::SanitizeToolbars()
     // go through and add in all of the left over toolbars, in the same order now
     for (const AmazonToolbar& existingToolbar : m_toolbars)
     {
-        if (toolbarSet.contains(existingToolbar.GetName()))
+        if (!newToolbars.contains(existingToolbar.GetName()))
         {
             newToolbars.push_back(existingToolbar);
         }
@@ -298,44 +341,6 @@ void ToolbarManager::SanitizeToolbars()
     {
         return t.GetName().isEmpty() || (removeSubstanceToolbar && t.GetName() == SUBSTANCE_TOOLBAR_NAME);
     }), m_toolbars.end());
-}
-
-bool AmazonToolbar::IsOlderVersionOf(const AmazonToolbar& referenceToolbar, int versionNumber)
-{
-    int index = 0;
-    for (auto actionData : referenceToolbar.m_actions)
-    {
-        if (actionData.toolbarVersionAdded <= versionNumber)
-        {
-            // make sure we don't go out of bounds
-            if (index >= m_actions.size())
-            {
-                return false;
-            }
-
-            if (actionData.actionId != m_actions[index].actionId)
-            {
-                return false;
-            }
-
-            index++;
-        }
-    }
-
-    return true;
-}
-
-void AmazonToolbar::AddActionsFromNewerVersion(const AmazonToolbar& referenceToolbar, int versionNumber)
-{
-    for (auto actionData : referenceToolbar.m_actions)
-    {
-        if (actionData.toolbarVersionAdded > versionNumber)
-        {
-            // new toolbar items should be visible when added to older customized toolbars
-            // so instead, push to the front
-            m_actions.push_front({ actionData.actionId, actionData.toolbarVersionAdded });
-        }
-    }
 }
 
 void ToolbarManager::SaveToolbar(EditableQToolBar* toolbar)
@@ -418,6 +423,16 @@ void ToolbarManager::InitializeStandardToolbars()
         }
 
         std::copy(std::begin(macroToolbars), std::end(macroToolbars), std::back_inserter(m_standardToolbars));
+
+        // Save that default state to future versions can reason about updating modified standard toolbars
+        m_settings.beginGroup(TOOLBAR_SETTINGS_KEY);
+        m_settings.beginGroup("Defaults");
+
+        InternalAmazonToolbarList savedToolbars = { TOOLBAR_VERSION, m_standardToolbars };
+        m_settings.setValue(QString::number(TOOLBAR_VERSION), QVariant::fromValue<InternalAmazonToolbarList>(savedToolbars));
+
+        m_settings.endGroup();
+        m_settings.endGroup();
     }
 }
 
@@ -467,28 +482,38 @@ bool ToolbarManager::IsDirty(const AmazonToolbar& toolbar) const
 
 bool ToolbarManager::IsGemEnabled(const QString& uuid, const QString& version) const
 {
-    const auto gemId = AZ::Uuid::CreateString(uuid.toLatin1().data());
-    return GetISystem()->GetGemManager()->IsGemEnabled(gemId, { version.toLatin1().data() });
+    const auto gemId = AZ::Uuid::CreateString(uuid.toUtf8().data());
+    return GetISystem()->GetGemManager()->IsGemEnabled(gemId, { version.toUtf8().data() });
 }
 
 AmazonToolbar ToolbarManager::GetEditModeToolbar() const
 {
-    const bool applyHoverEffect = true;
-    AmazonToolbar t = AmazonToolbar("EditMode", QObject::tr("EditMode Toolbar"), applyHoverEffect);
+    AmazonToolbar t = AmazonToolbar("EditMode", QObject::tr("Edit Mode Toolbar"));
     t.AddAction(ID_TOOLBAR_WIDGET_UNDO, ORIGINAL_TOOLBAR_VERSION);
     t.AddAction(ID_TOOLBAR_WIDGET_REDO, ORIGINAL_TOOLBAR_VERSION);
+
+    if (!GetIEditor()->IsNewViewportInteractionModelEnabled())
+    {
+        t.AddAction(ID_TOOLBAR_SEPARATOR, ORIGINAL_TOOLBAR_VERSION);
+        t.AddAction(ID_EDITTOOL_LINK, ORIGINAL_TOOLBAR_VERSION);
+        t.AddAction(ID_EDITTOOL_UNLINK, ORIGINAL_TOOLBAR_VERSION);
+    }
+
     t.AddAction(ID_TOOLBAR_SEPARATOR, ORIGINAL_TOOLBAR_VERSION);
-    t.AddAction(ID_EDITTOOL_LINK, ORIGINAL_TOOLBAR_VERSION);
-    t.AddAction(ID_EDITTOOL_UNLINK, ORIGINAL_TOOLBAR_VERSION);
-    t.AddAction(ID_TOOLBAR_SEPARATOR, ORIGINAL_TOOLBAR_VERSION);
-    t.AddAction(ID_TOOLBAR_WIDGET_SELECTION_MASK, ORIGINAL_TOOLBAR_VERSION);
-    t.AddAction(ID_EDITMODE_SELECT, ORIGINAL_TOOLBAR_VERSION);
+
+    if (!GetIEditor()->IsNewViewportInteractionModelEnabled())
+    {
+        t.AddAction(ID_TOOLBAR_WIDGET_SELECTION_MASK, ORIGINAL_TOOLBAR_VERSION);
+        t.AddAction(ID_EDITMODE_SELECT, ORIGINAL_TOOLBAR_VERSION);
+    }
+
     t.AddAction(ID_EDITMODE_MOVE, ORIGINAL_TOOLBAR_VERSION);
     t.AddAction(ID_EDITMODE_ROTATE, ORIGINAL_TOOLBAR_VERSION);
     t.AddAction(ID_EDITMODE_SCALE, ORIGINAL_TOOLBAR_VERSION);
     t.AddAction(ID_EDITMODE_SELECTAREA, ORIGINAL_TOOLBAR_VERSION);
 
     t.AddAction(ID_VIEW_SWITCHTOGAME, TOOLBARS_WITH_PLAY_GAME);
+    t.AddAction(ID_VIEW_DEPLOY, TOOLBARS_WITH_DEPLOY);
 
     t.AddAction(ID_TOOLBAR_SEPARATOR, ORIGINAL_TOOLBAR_VERSION);
     t.AddAction(ID_TOOLBAR_WIDGET_REF_COORD, ORIGINAL_TOOLBAR_VERSION);
@@ -501,6 +526,7 @@ AmazonToolbar ToolbarManager::GetEditModeToolbar() const
     t.AddAction(ID_TOOLBAR_WIDGET_SNAP_GRID, ORIGINAL_TOOLBAR_VERSION);
     t.AddAction(ID_TOOLBAR_WIDGET_SNAP_ANGLE, ORIGINAL_TOOLBAR_VERSION);
     t.AddAction(ID_RULER, ORIGINAL_TOOLBAR_VERSION);
+
     if (GetIEditor()->IsLegacyUIEnabled())
     {
         t.AddAction(ID_TOOLBAR_SEPARATOR, ORIGINAL_TOOLBAR_VERSION);
@@ -508,25 +534,30 @@ AmazonToolbar ToolbarManager::GetEditModeToolbar() const
         t.AddAction(ID_SELECTION_DELETE, ORIGINAL_TOOLBAR_VERSION);
         t.AddAction(ID_SELECTION_SAVE, ORIGINAL_TOOLBAR_VERSION);
         t.AddAction(ID_SELECTION_LOAD, ORIGINAL_TOOLBAR_VERSION);
+
+        t.AddAction(ID_TOOLBAR_SEPARATOR, ORIGINAL_TOOLBAR_VERSION);
+        t.AddAction(ID_TOOLBAR_WIDGET_LAYER_SELECT, ORIGINAL_TOOLBAR_VERSION);
     }
-    t.AddAction(ID_TOOLBAR_SEPARATOR, ORIGINAL_TOOLBAR_VERSION);
-    t.AddAction(ID_TOOLBAR_WIDGET_LAYER_SELECT, ORIGINAL_TOOLBAR_VERSION);
 
     return t;
 }
-        
+
 AmazonToolbar ToolbarManager::GetObjectToolbar() const
 {
-    const bool applyHoverEffect = true;
-    AmazonToolbar t = AmazonToolbar("Object", QObject::tr("Object Toolbar"), applyHoverEffect);
+    AmazonToolbar t = AmazonToolbar("Object", QObject::tr("Object Toolbar"));
     t.AddAction(ID_GOTO_SELECTED, ORIGINAL_TOOLBAR_VERSION);
     t.AddAction(ID_OBJECTMODIFY_ALIGN, ORIGINAL_TOOLBAR_VERSION);
     t.AddAction(ID_OBJECTMODIFY_ALIGNTOGRID, ORIGINAL_TOOLBAR_VERSION);
     t.AddAction(ID_OBJECTMODIFY_SETHEIGHT, ORIGINAL_TOOLBAR_VERSION);
     t.AddAction(ID_MODIFY_ALIGNOBJTOSURF, ORIGINAL_TOOLBAR_VERSION);
-    t.AddAction(ID_TOOLBAR_SEPARATOR, ORIGINAL_TOOLBAR_VERSION);
-    t.AddAction(ID_EDIT_FREEZE, ORIGINAL_TOOLBAR_VERSION);
-    t.AddAction(ID_EDIT_UNFREEZEALL, ORIGINAL_TOOLBAR_VERSION);
+
+    if (!GetIEditor()->IsNewViewportInteractionModelEnabled())
+    {
+        t.AddAction(ID_TOOLBAR_SEPARATOR, ORIGINAL_TOOLBAR_VERSION);
+        t.AddAction(ID_EDIT_FREEZE, ORIGINAL_TOOLBAR_VERSION);
+        t.AddAction(ID_EDIT_UNFREEZEALL, ORIGINAL_TOOLBAR_VERSION);
+    }
+
     t.AddAction(ID_OBJECTMODIFY_VERTEXSNAPPING, ORIGINAL_TOOLBAR_VERSION);
     t.AddAction(ID_EDIT_PHYS_RESET, ORIGINAL_TOOLBAR_VERSION);
     t.AddAction(ID_EDIT_PHYS_GET, ORIGINAL_TOOLBAR_VERSION);
@@ -534,13 +565,21 @@ AmazonToolbar ToolbarManager::GetObjectToolbar() const
 
     return t;
 }
-    
+
 AmazonToolbar ToolbarManager::GetEditorsToolbar() const
 {
-    const bool applyHoverEffect = true;
-    AmazonToolbar t = AmazonToolbar("Editors", QObject::tr("Editors Toolbar"), applyHoverEffect);
-    t.AddAction(ID_OPEN_LAYER_EDITOR, ORIGINAL_TOOLBAR_VERSION);
-    t.AddAction(ID_OPEN_MATERIAL_EDITOR, ORIGINAL_TOOLBAR_VERSION);
+    AmazonToolbar t = AmazonToolbar("Editors", QObject::tr("Editors Toolbar"));
+
+    if (GetIEditor()->IsLegacyUIEnabled())
+    {
+        t.AddAction(ID_OPEN_LAYER_EDITOR, ORIGINAL_TOOLBAR_VERSION);
+    }
+
+    if (!GetIEditor()->IsNewViewportInteractionModelEnabled())
+    {
+        t.AddAction(ID_OPEN_MATERIAL_EDITOR, ORIGINAL_TOOLBAR_VERSION);
+    }
+
     t.AddAction(ID_OPEN_CHARACTER_TOOL, ORIGINAL_TOOLBAR_VERSION);
     t.AddAction(ID_OPEN_MANNEQUIN_EDITOR, ORIGINAL_TOOLBAR_VERSION);
     AZ::EBusReduceResult<bool, AZStd::logical_or<bool>> emfxEnabled(false);
@@ -553,10 +592,22 @@ AmazonToolbar ToolbarManager::GetEditorsToolbar() const
     }
     t.AddAction(ID_OPEN_FLOWGRAPH, ORIGINAL_TOOLBAR_VERSION);
     t.AddAction(ID_OPEN_AIDEBUGGER, ORIGINAL_TOOLBAR_VERSION);
-    t.AddAction(ID_OPEN_TRACKVIEW, ORIGINAL_TOOLBAR_VERSION);
+
+    if (!GetIEditor()->IsNewViewportInteractionModelEnabled())
+    {
+        t.AddAction(ID_OPEN_TRACKVIEW, ORIGINAL_TOOLBAR_VERSION);
+    }
+
     t.AddAction(ID_OPEN_AUDIO_CONTROLS_BROWSER, ORIGINAL_TOOLBAR_VERSION);
-    t.AddAction(ID_OPEN_TERRAIN_EDITOR, ORIGINAL_TOOLBAR_VERSION);
-    t.AddAction(ID_OPEN_TERRAINTEXTURE_EDITOR, ORIGINAL_TOOLBAR_VERSION);
+
+#ifdef LY_TERRAIN_EDITOR
+    if (!GetIEditor()->IsNewViewportInteractionModelEnabled())
+    {
+        t.AddAction(ID_OPEN_TERRAIN_EDITOR, ORIGINAL_TOOLBAR_VERSION);
+        t.AddAction(ID_OPEN_TERRAINTEXTURE_EDITOR, ORIGINAL_TOOLBAR_VERSION);
+    }
+#endif // #ifdef LY_TERRAIN_EDITOR
+
     t.AddAction(ID_PARTICLE_EDITOR, ORIGINAL_TOOLBAR_VERSION);
     t.AddAction(ID_TERRAIN_TIMEOFDAYBUTTON, ORIGINAL_TOOLBAR_VERSION);
     t.AddAction(ID_GENERATORS_LIGHTING, ORIGINAL_TOOLBAR_VERSION);
@@ -565,14 +616,14 @@ AmazonToolbar ToolbarManager::GetEditorsToolbar() const
 
     return t;
 }
-        
+
 AmazonToolbar ToolbarManager::GetSubstanceToolbar() const
 {
     AmazonToolbar t = AmazonToolbar("Substance", QObject::tr("Substance Toolbar"));
     t.AddAction(ID_OPEN_SUBSTANCE_EDITOR, ORIGINAL_TOOLBAR_VERSION);
     return t;
 }
-        
+
 AmazonToolbar ToolbarManager::GetMiscToolbar() const
 {
     AmazonToolbar t = AmazonToolbar("Misc", QObject::tr("Misc Toolbar"));
@@ -678,13 +729,6 @@ void ToolbarManager::InstantiateToolbars()
 void ToolbarManager::InstantiateToolbar(int index)
 {
     AmazonToolbar& t = m_toolbars[index];
-
-    // Set up all of the hover effects on the standard toolbars
-    if (!IsCustomToolbar(t.GetName()))
-    {
-        t.SetApplyHoverEffect(true);
-    }
-
     t.InstantiateToolbar(m_mainWindow, this); // Create the QToolbar
 }
 
@@ -776,7 +820,7 @@ bool ToolbarManager::IsCustomToolbar(const QString& toolbarName) const
             return false;
         }
     }
-    
+
     return true;
 }
 
@@ -963,7 +1007,7 @@ EditableQToolBar::EditableQToolBar(const QString& title, ToolbarManager* manager
 {
     setAcceptDrops(true);
 
-    connect(this, &QToolBar::orientationChanged, [this](Qt::Orientation orientation)
+    connect(this, &QToolBar::orientationChanged, this, [this](Qt::Orientation orientation)
     {
         for (const auto widget : findChildren<QWidget*>())
             layout()->setAlignment(widget, orientation == Qt::Horizontal ? Qt::AlignVCenter : Qt::AlignHCenter);
@@ -1224,10 +1268,9 @@ void EditableQToolBar::dragLeaveEvent(QDragLeaveEvent* ev)
     }
 }
 
-AmazonToolbar::AmazonToolbar(const QString& name, const QString& translatedName, bool applyHoverEffect)
+AmazonToolbar::AmazonToolbar(const QString& name, const QString& translatedName)
     : m_name(name)
     , m_translatedName(translatedName)
-    , m_applyHoverEffect(applyHoverEffect)
 {
 }
 
@@ -1248,7 +1291,7 @@ const bool AmazonToolbar::IsSame(const AmazonToolbar& other) const
         return false;
     }
 
-    bool actionListsSame = std::equal(m_actions.cbegin(), m_actions.cend(), other.m_actions.cbegin(), [](const ActionData& l, const ActionData& r) { return l.actionId == r.actionId; });
+    bool actionListsSame = AZStd::equal(m_actions.cbegin(), m_actions.cend(), other.m_actions.cbegin());
     if (!actionListsSame)
     {
         return false;
@@ -1271,15 +1314,14 @@ void AmazonToolbar::InstantiateToolbar(QMainWindow* mainWindow, ToolbarManager* 
     // So hide if we're hidden by default XOR we've toggled the default visibility
     if ((!m_showByDefault) ^ m_showToggled)
     {
+#ifdef AZ_PLATFORM_MAC
+        // on macOS, initially hidden tool bars result in a white rectangle when
+        // attaching a previously detached toolbar LY-66320
+        m_toolbar->show();
+        QMetaObject::invokeMethod(m_toolbar, "hide", Qt::QueuedConnection);
+#else
         m_toolbar->hide();
-    }
-
-    // Our standard toolbar icons, when hovered on, get a white color effect.
-    // But for this to work we need .pngs that look good with this effect, so this only works with the standard toolbars
-    // and looks very ugly for other toolbars, including toolbars loaded from XML (which just show a white rectangle)
-    if (m_applyHoverEffect)
-    {
-        m_toolbar->setProperty("IconsHaveHoverEffect", true);
+#endif
     }
 
     ActionManager* actionManager = manager->GetActionManager();
@@ -1322,12 +1364,5 @@ void AmazonToolbar::SetName(const QString& name, const QString& translatedName)
         m_toolbar->setWindowTitle(translatedName);
     }
 }
-
-void AmazonToolbar::SetApplyHoverEffect(bool applyHoverEffect)
-{
-    m_applyHoverEffect = applyHoverEffect;
-    Q_ASSERT(m_toolbar == nullptr); // this must be called before the toolbar is instantiated
-}
-
 
 #include <ToolbarManager.moc>

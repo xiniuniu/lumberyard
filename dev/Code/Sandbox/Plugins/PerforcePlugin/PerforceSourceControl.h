@@ -19,10 +19,9 @@
 #include "Include/IEditorClassFactory.h"
 
 #include "p4/clientapi.h"
+#include "p4/enviro.h"
 #include "p4/errornum.h"
 #include "Include/ISourceControl.h"
-
-#include <QPixmap>
 
 class CMyClientUser
     : public ClientUser
@@ -30,46 +29,11 @@ class CMyClientUser
 public:
     CMyClientUser()
     {
-        m_initDesc = "Automatic.";
-        strcpy(m_desc, m_initDesc);
         Init();
     }
-    void HandleError(Error* e);
-    void OutputStat(StrDict* varList);
-    void Edit(FileSys* f1, Error* e);
-    void OutputInfo(char level, const char* data);
     void Init();
-    void PreCreateFileName(const char* file);
-    void InputData(StrBuf* buf, Error* e);
 
     Error m_e;
-    char m_action[64];
-    char m_headAction[64];
-    char m_otherAction[64];
-    char m_clientHasLatestRev[64];
-    char m_desc[1024];
-    char m_file[MAX_PATH];
-    char m_findedFile[MAX_PATH];
-    char m_depotFile[MAX_PATH];
-    char m_movedFile[MAX_PATH];
-    char m_otherUser[USERNAME_LENGTH];
-    char m_lockedBy[USERNAME_LENGTH];
-    QString m_clientRoot;
-    QString m_clientName;
-    QString m_clientHost;
-    QString m_currentDirectory;
-    bool m_bIsClientUnknown;
-
-    const char* m_initDesc;
-    bool m_bIsSetup;
-    bool m_bIsPreCreateFile;
-    bool m_bIsCreatingChangelist;
-    QString m_output;
-    QString m_input;
-
-    int64 m_nFileHeadRev;
-    int64 m_nFileHaveRev;
-    ESccLockStatus m_lockStatus;
 };
 
 class CMyClientApi
@@ -95,19 +59,12 @@ public:
     void Init();
     bool CheckConnectionAndNotifyListeners();
 
-    bool CheckOut(const char* filename, int nFlags, char* changelistId = NULL);
-    bool UndoCheckOut(const char* filename, int nFlags);
-    bool Rename(const char* filename, const char* newfilename, const char* desc, int nFlags);
-    bool GetLatestVersion(const char* filename, int nFlags);
-
     virtual void SetSourceControlState(SourceControlState state) override;
     virtual ConnectivityState GetConnectivityState() override;
 
     virtual void ShowSettings() override;
 
     bool Run(const char* func, int nArgs, char* argv[], bool bOnlyFatal = false);
-    uint32 GetFileAttributesAndFileName(const char* filename, char* FullFileName);
-    bool IsFolder(const char* filename, char* FullFileName);
 
     // from IClassDesc
     virtual ESystemClassID SystemClassID() { return ESYSTEM_CLASS_SCM_PROVIDER; };
@@ -138,13 +95,6 @@ public:
 
 
 protected:
-    bool IsFileManageable(const char* sFilename, bool bCheckFatal = true);
-    bool IsFileExistsInDatabase(const char* sFilename);
-    bool IsFileCheckedOutByUser(const char* sFilename, bool* isByAnotherUser = 0, bool* isForAdd = 0, bool* isForMove = 0);
-    bool IsFileLatestVersion(const char* sFilename);
-    void ConvertFileNameCS(char* sDst, const char* sSrcFilename);
-    bool FindFile(char* clientFile, const char* folder, const char* file);
-    bool FindDir(char* clientFile, const char* folder, const char* dir);
     bool IsSomeTimePassed();
 
     static const char* GetErrorByGenericCode(int nGeneric);
@@ -160,12 +110,12 @@ private:
     bool m_configurationInvalid;
 
     DWORD m_dwLastAccessTime;
-    QPixmap m_p4Icon;
-    QPixmap m_p4ErrorIcon;
 
     ULONG m_ref;
     uint m_nextHandle;
 
     bool m_lastWorkOfflineResult;
     bool m_lastWorkOfflineBecauseOfConnectionLossResult;
+
+    bool m_clientInitialized;
 };

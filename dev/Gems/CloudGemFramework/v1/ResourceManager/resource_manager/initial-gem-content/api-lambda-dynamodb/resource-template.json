@@ -88,8 +88,11 @@
             "Type": "Custom::AccessControl"
         }, 
         "Table": {
-            "Type": "AWS::DynamoDB::Table",
+            "Type": "Custom::DynamoDBTable",
             "Properties": {
+                "ServiceToken": {
+                    "Ref": "ProjectResourceHandler"
+                },
                 "AttributeDefinitions": [
                     {
                         "AttributeName": "Key",
@@ -152,14 +155,23 @@
             }, 
             "Metadata": {
                 "CloudCanvas": {
-                    "Permissions": {
-                        "AbstractRole": "Player",
-                        "Action": "execute-api:Invoke",
-                        "ResourceSuffix": [
-                            "/api/GET/example/data",
-                            "/api/PUT/example/data"
-                        ]
-                    }
+                    "Permissions": [
+                        {
+                            "AbstractRole": "Player",
+                            "Action": "execute-api:Invoke",
+                            "ResourceSuffix": [
+                                "/api/GET/example/data",
+                                "/api/PUT/example/data"
+                            ]
+                        },
+                        {
+                            "AbstractRole": "AuthenticatedPlayer",
+                            "Action": "execute-api:Invoke",
+                            "ResourceSuffix": [
+                                "/api/GET/example/data/authenticated"
+                            ]
+                        }
+                    ]
                 }
             }, 
             "Type": "Custom::ServiceApi"
@@ -190,13 +202,21 @@
                         ]
                     }
                 }, 
-                "Handler": "service.dispatch", 
+                "Handler": "cgf_lambda_service.dispatch", 
                 "Role": {
                     "Fn::GetAtt": [
                         "ServiceLambdaConfiguration", 
                         "Role"
                     ]
-                }, 
+                },
+                "Environment": {
+                    "Variables": {
+                        "Fn::GetAtt": [
+                            "ServiceLambdaConfiguration",
+                            "CCSettings"
+                        ]
+                    }
+                },
                 "Runtime": {
                     "Fn::GetAtt": [
                         "ServiceLambdaConfiguration", 

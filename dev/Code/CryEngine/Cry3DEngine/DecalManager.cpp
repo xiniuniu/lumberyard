@@ -22,7 +22,11 @@
 #include <IStatObj.h>
 #include "ObjMan.h"
 #include "MatMan.h"
+
+#ifdef LY_TERRAIN_LEGACY_RUNTIME
 #include "terrain.h"
+#endif
+
 #include "RenderMeshMerger.h"
 #include "RenderMeshUtils.h"
 #include "VisAreas.h"
@@ -729,6 +733,7 @@ bool CDecalManager::Spawn(CryEngineDecalInfo DecalInfo, CDecal* pCallerManagedDe
     }
     else
     {
+#ifdef LY_TERRAIN_LEGACY_RUNTIME
         CTerrain* pTerrain = GetTerrain();
         if (!DecalInfo.preventDecalOnGround && DecalInfo.fSize > (fWrapMinSize * 2.f) && !DecalInfo.ownerInfo.pRenderNode &&
             (DecalInfo.vPos.z - pTerrain->GetBilinearZ(DecalInfo.vPos.x, DecalInfo.vPos.y)) < DecalInfo.fSize && !DecalInfo.bDeferred)
@@ -752,6 +757,14 @@ bool CDecalManager::Spawn(CryEngineDecalInfo DecalInfo, CDecal* pCallerManagedDe
                 }
             }
         }
+#else
+        if (!DecalInfo.preventDecalOnGround && DecalInfo.fSize > (fWrapMinSize * 2.f) && !DecalInfo.ownerInfo.pRenderNode &&
+            (DecalInfo.vPos.z - 0.0f) < DecalInfo.fSize && !DecalInfo.bDeferred)
+        {
+            newDecal.m_eDecalType = eDecalType_WS_OnTheGround;
+            return false; //Treat it as if there's a hole.
+        }
+#endif //#ifdef LY_TERRAIN_LEGACY_RUNTIME
         else
         {
             newDecal.m_eDecalType = eDecalType_WS_SimpleQuad;
@@ -1326,7 +1339,7 @@ void CDecalManager::FillBigDecalIndices(IRenderMesh* pRM, Vec3 vPos, float fRadi
                             hwvec3 triBBoxMin2 = HWVMin(meshBBoxMin, v2);
 
                             meshBBoxMax = HWVMax(triBBoxMax1, triBBoxMax2);
-                            meshBBoxMax = HWVMin(triBBoxMin1, triBBoxMin2);
+                            meshBBoxMin = HWVMin(triBBoxMin1, triBBoxMin2);
 
                             usedTriangles++;
                         }
@@ -1450,7 +1463,7 @@ void CDecalManager::FillBigDecalIndices(IRenderMesh* pRM, Vec3 vPos, float fRadi
                             hwvec3 triBBoxMin2 = HWVMin(meshBBoxMin, v2);
 
                             meshBBoxMax = HWVMax(triBBoxMax1, triBBoxMax2);
-                            meshBBoxMax = HWVMin(triBBoxMin1, triBBoxMin2);
+                            meshBBoxMin = HWVMin(triBBoxMin1, triBBoxMin2);
 
                             usedTriangles++;
                         }
@@ -1485,7 +1498,7 @@ void CDecalManager::FillBigDecalIndices(IRenderMesh* pRM, Vec3 vPos, float fRadi
                         hwvec3 triBBoxMin2 = HWVMin(meshBBoxMin, v2);
 
                         meshBBoxMax = HWVMax(triBBoxMax1, triBBoxMax2);
-                        meshBBoxMax = HWVMin(triBBoxMin1, triBBoxMin2);
+                        meshBBoxMin = HWVMin(triBBoxMin1, triBBoxMin2);
 
                         //                      triBBoxMax = HWVMax(triBBoxMax, v2);
                         //                      triBBoxMin = HWVMin(triBBoxMin, v2);

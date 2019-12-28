@@ -18,23 +18,8 @@ def build(bld):
         vs_filter               = 'AZ Framework/TestSuites',
         file_list               = 'azcoretestdll.waf_files',
         platforms               = ['win', 'darwin'],
-        configurations          = ['test_all'],
+        configurations          = ['all'],
+        test_only               = True,
         use                     = ['AzTest', 'AzCore'],
         msvc_cxxflags           = ['/W4'],
-        clang_cxxflags          = ['-Wall', '-Werror'],
     )
-
-    bld.CryEngineSharedLibrary(
-        # Settings
-        target                  = 'AzCoreTests',
-        vs_filter               = 'AZ Framework/TestSuites',
-        file_list               = 'azcoretests.waf_files',
-        platforms               = ['win', 'darwin'],
-        configurations          = ['test_all'],
-        use                     = ['AzTest', 'AzCore', 'BENCHMARK'],
-        win_lib                 = ['shlwapi'],
-        msvc_cxxflags           = ['/W4'],
-        clang_cxxflags          = ['-Wall', '-Werror'],
-    )
-
-

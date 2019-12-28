@@ -57,14 +57,14 @@ AWSDeploymentModel::AWSDeploymentModel(AWSResourceManager* resourceManager)
 
 AWSResourceManager::ExecuteAsyncCallback AWSDeploymentModel::CreateCallback(const char* sucessMessage = nullptr)
 {
-    return [this, sucessMessage](const QString& key, const QVariant& value)
+    return [sucessMessage](const QString& key, const QVariant& value)
     {
         if (key == "error")
         {
             // TODO: move this to UI
             QMessageBox msgBox(QMessageBox::Critical,
                 tr("Cloud Canvas Resource Manager"),
-                tr(value.toString().toLatin1().data()),
+                tr(value.toString().toUtf8().data()),
                 QMessageBox::Ok,
                 Q_NULLPTR,
                 Qt::Popup);
@@ -165,7 +165,7 @@ void AWSDeploymentModel::ProcessOutputDeploymentList(const QVariant& value)
             }
             break;
         }
-    }    
+    }
     // UpdateItems does the begin/end stuff that is necessary, but the view currently depends on the modelReset signal to refresh itself.
     beginResetModel();
     UpdateItems(list);

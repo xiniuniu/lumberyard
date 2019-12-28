@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 
 #include "LmbrCentralEditor.h"
 
@@ -23,6 +23,7 @@
 #include "Audio/EditorAudioAreaEnvironmentComponent.h"
 #include "Audio/EditorAudioEnvironmentComponent.h"
 #include "Audio/EditorAudioListenerComponent.h"
+#include "Audio/EditorAudioMultiPositionComponent.h"
 #include "Audio/EditorAudioPreloadComponent.h"
 #include "Audio/EditorAudioRtpcComponent.h"
 #include "Audio/EditorAudioSwitchComponent.h"
@@ -51,6 +52,7 @@
 #include "Animation/EditorMannequinComponent.h"
 #include "Scripting/EditorLookAtComponent.h"
 #include "Scripting/EditorRandomTimedSpawnerComponent.h"
+#include "Scripting/EditorSpawnerComponent.h"
 #include "Scripting/EditorTagComponent.h"
 #include "Scripting/EditorTriggerAreaComponent.h"
 
@@ -59,6 +61,7 @@
 #include "Shape/EditorCylinderShapeComponent.h"
 #include "Shape/EditorCapsuleShapeComponent.h"
 #include "Shape/EditorSplineComponent.h"
+#include "Shape/EditorTubeShapeComponent.h"
 #include "Shape/EditorPolygonPrismShapeComponent.h"
 #include "Editor/EditorCommentComponent.h"
 
@@ -77,6 +80,7 @@ namespace LmbrCentral
             EditorAudioAreaEnvironmentComponent::CreateDescriptor(),
             EditorAudioEnvironmentComponent::CreateDescriptor(),
             EditorAudioListenerComponent::CreateDescriptor(),
+            EditorAudioMultiPositionComponent::CreateDescriptor(),
             EditorAudioPreloadComponent::CreateDescriptor(),
             EditorAudioRtpcComponent::CreateDescriptor(),
             EditorAudioSwitchComponent::CreateDescriptor(),
@@ -100,6 +104,7 @@ namespace LmbrCentral
             EditorMannequinScopeComponent::CreateDescriptor(),
             EditorMannequinComponent::CreateDescriptor(),
             EditorSphereShapeComponent::CreateDescriptor(),
+            EditorTubeShapeComponent::CreateDescriptor(),
             EditorRigidPhysicsComponent::CreateDescriptor(),
             EditorStaticPhysicsComponent::CreateDescriptor(),
             EditorWindVolumeComponent::CreateDescriptor(),
@@ -117,6 +122,7 @@ namespace LmbrCentral
             EditorFogVolumeComponent::CreateDescriptor(),
             EditorRandomTimedSpawnerComponent::CreateDescriptor(),
             EditorGeometryCacheComponent::CreateDescriptor(),
+            EditorSpawnerComponent::CreateDescriptor(),
             #ifdef METRICS_SYSTEM_COMPONENT_ENABLED
                 LyEditorMetrics::LyEditorMetricsSystemComponent::CreateDescriptor(),
             #endif // #ifdef METRICS_SYSTEM_COMPONENT_ENABLED
@@ -130,6 +136,8 @@ namespace LmbrCentral
             typeIds.emplace_back(descriptor->GetUuid());
         }
         EBUS_EVENT(AzFramework::MetricsPlainTextNameRegistrationBus, RegisterForNameSending, typeIds);
+
+        EditorMeshBus::Handler::BusConnect();
     }
 
     LmbrCentralEditorModule::~LmbrCentralEditorModule()
@@ -146,6 +154,11 @@ namespace LmbrCentral
         requiredComponents.push_back(azrtti_typeid<AzToolsFramework::Components::EditorSelectionAccentSystemComponent>());
 
         return requiredComponents;
+    }
+
+    bool LmbrCentralEditorModule::AddMeshComponentWithAssetId(const AZ::EntityId& targetEntity, const AZ::Uuid& meshAssetId)
+    {
+        return AddMeshComponentWithMesh(targetEntity, meshAssetId);
     }
 } // namespace LmbrCentral
 

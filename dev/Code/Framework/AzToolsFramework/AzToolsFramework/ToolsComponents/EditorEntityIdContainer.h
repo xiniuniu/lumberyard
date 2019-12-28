@@ -18,6 +18,8 @@
 #include <AzCore/RTTI/RTTI.h>
 #include <AzCore/Component/EntityId.h>
 
+class QString;
+
 namespace AZ
 {
     struct ClassDataReflection;
@@ -33,7 +35,7 @@ namespace AzToolsFramework
         AZ_RTTI(EditorEntityIdContainer, "{22F4C72A-8ADD-49B3-884C-30C7F254AAC6}");
         AZ_CLASS_ALLOCATOR(EditorEntityIdContainer, AZ::SystemAllocator, 0);
 
-        static QString GetMimeType() { return "editor/entityidlist"; }
+        static const QString& GetMimeType();
 
         AZStd::vector< AZ::EntityId > m_entityIds;
 

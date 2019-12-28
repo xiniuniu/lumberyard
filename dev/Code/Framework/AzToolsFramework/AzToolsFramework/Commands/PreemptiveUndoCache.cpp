@@ -9,11 +9,11 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "stdafx.h"
+#include "StdAfx.h"
 
 #include <AzCore/Component/ComponentApplicationBus.h>
 #include <AzCore/Debug/Profiler.h>
-#include <AzCore/Serialization/objectstream.h>
+#include <AzCore/Serialization/ObjectStream.h>
 #include <AzCore/Serialization/Utils.h>
 #include <AzCore/IO/GenericStreams.h>
 #include <AzCore/IO/ByteContainerStream.h>
@@ -153,6 +153,11 @@ namespace AzToolsFramework
                 entityId, pEnt->GetName().c_str(),
                 oldData.size(), newData.size());
         }
+
+        // Clear out newly generated data and
+        // replace with original data to ensure debug mode has the same data as profile/release in the event of the consistency check failing.
+        m_EntityStateMap[entityId].clear();
+        m_EntityStateMap[entityId] = oldData;
 #endif // ENABLE_UNDOCACHE_CONSISTENCY_CHECKS
     }
 

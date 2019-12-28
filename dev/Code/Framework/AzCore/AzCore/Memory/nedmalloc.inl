@@ -54,7 +54,7 @@ DEALINGS IN THE SOFTWARE.
 #define EXTSPEC /*extern*/
 #endif
 
-#if defined(_MSC_VER) && _MSC_VER >= 1400
+#if defined(_MSC_VER)
 #define MALLOCATTR __declspec(restrict)
 #endif
 #ifdef __GNUC__
@@ -169,7 +169,7 @@ namespace nedalloc
 // End if nedmalloc.h
 //////////////////////////////////////////////////////////////////////////
 
-#if defined(AZ_PLATFORM_WINDOWS) || defined(AZ_PLATFORM_X360) // ACCEPTED_USE
+#if defined(AZ_PLATFORM_WINDOWS)
     #include <malloc.h>
 #endif
 //#define MSPACES 1
@@ -224,7 +224,7 @@ namespace nedalloc
 #endif
 
 
-#if defined(AZ_PLATFORM_WINDOWS) || defined(AZ_PLATFORM_X360) // ACCEPTED_USE
+#if defined(AZ_PLATFORM_WINDOWS)
  #define TLSVAR         DWORD
  #define TLSALLOC(k)    (*(k) = TlsAlloc(), TLS_OUT_OF_INDEXES == *(k))
  #define TLSFREE(k)     (!TlsFree(k))
@@ -599,6 +599,13 @@ namespace nedalloc
             tc->freeInCache -= blksize;
             assert((long) tc->freeInCache >= 0);
         }
+#if defined(DEBUG) && 0
+        if (!(tc->mallocs & 0xfff))
+        {
+            printf("*** threadcache=%u, mallocs=%u (%f), free=%u (%f), freeInCache=%u\n", (unsigned int) tc->threadid, tc->mallocs,
+                (float) tc->successes / tc->mallocs, tc->frees, (float) tc->successes / tc->frees, (unsigned int) tc->freeInCache);
+        }
+#endif
 #ifdef FULLSANITYCHECKS
         tcfullsanitycheck(tc);
 #endif

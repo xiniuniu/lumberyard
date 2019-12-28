@@ -1,4 +1,15 @@
-#include "stdafx.h"
+/*
+* All or portions of this file Copyright (c) Amazon.com, Inc. or its affiliates, or 
+* a third party where indicated.
+*
+* For complete copyright and license terms please see the LICENSE at the root of this
+* distribution (the "License"). All use of this software is governed by the License,  
+* or, if provided, by the license below or the license accompanying this file. Do not
+* remove or modify any license notices. This file is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  
+*
+*/
+#include "StdAfx.h"
 
 #include "Clipboard.h"
 #include "ReflectedPropertyCtrl.h"
@@ -17,49 +28,6 @@
 #include <QScrollArea>
 #include <QScrollBar>
 
-template<typename T>
-T nextNiceNumberBelow(T number);
-
-template<typename T>
-T nextNiceNumberAbove(T number)
-{
-    if (number == 0)
-    {
-        return 0;
-    }
-    if (number < 0)
-    {
-        return -nextNiceNumberBelow(-number);
-    }
-
-    // number = 8000
-    auto l = log10(number);   // 3.90
-    AZ::s64 i = l;            // 3
-    int f = pow(10, l - i);   // 10^0.9 = 8
-    f = f < 2 ? 2 : f < 5 ? 5 : 10; // f -> 10
-    return pow(10, i) * f;
-}
-
-template<typename T>
-T nextNiceNumberBelow(T number)
-{
-    if (number == 0)
-    {
-        return 0;
-    }
-    if (number < 0)
-    {
-        return -nextNiceNumberAbove(-number);
-    }
-
-    // number = 8000
-    auto l = log10(number);   // 3.90
-    AZ::s64 i = l;            // 3
-    int f = pow(10, l - i);   // 10^0.9 = 8
-    f = f > 5 ? 5 : f > 2 ? 2 : 1;  // f -> 5
-    return pow(10, i) * f;
-}
-
 ReflectedPropertyControl::ReflectedPropertyControl(QWidget *parent /*= nullptr*/, Qt::WindowFlags windowFlags /*= Qt::WindowFlags()*/)
     : QWidget(parent, windowFlags)
     , AzToolsFramework::IPropertyEditorNotify()
@@ -77,6 +45,7 @@ ReflectedPropertyControl::ReflectedPropertyControl(QWidget *parent /*= nullptr*/
     , m_sortProperties(false)
     , m_bSendCallbackOnNonModified(true)
     , m_initialized(false)
+    , m_isTwoColumnSection(false)
 {
     EBUS_EVENT_RESULT(m_serializeContext, AZ::ComponentApplicationBus, GetSerializeContext);
     AZ_Assert(m_serializeContext, "Serialization context not available");
@@ -110,7 +79,6 @@ void ReflectedPropertyControl::Setup(bool showScrollbars /*= true*/, int labelWi
     if (!m_initialized)
     {
         m_editor->Setup(m_serializeContext, this, showScrollbars, labelWidth);
-        m_editor->SetSelectionEnabled(true);
         m_initialized = true;
     }
 }
@@ -147,8 +115,15 @@ ReflectedPropertyItem* ReflectedPropertyControl::AddVarBlock(CVarBlock *varBlock
     //filter list based on search string
     if (!m_filterString.isEmpty())
     {
-        auto it = std::copy_if(variables.begin(), variables.end(), variables.begin(), [this](IVariable *var){return QString(var->GetName()).toLower().contains(m_filterString); });
-        variables.resize(std::distance(variables.begin(), it));  // shrink container to new size
+        AZStd::vector<IVariable*> newVariables;
+        for (IVariable* var : variables)
+        {
+            if (QString(var->GetName()).toLower().contains(m_filterString))
+            {
+                newVariables.emplace_back(var);
+            }
+        }
+        variables.swap(newVariables);
     }
 
     //sorting if needed.  sort first when grouping to make grouping easier
@@ -263,7 +238,7 @@ void ReflectedPropertyControl::CreateItems(XmlNodeRef node, CVarBlockPtr& outBlo
             if (!strTipCVar.isEmpty())
             {
                 strTipCVar.replace("*", child->getTag());
-                if (ICVar* pCVar = gEnv->pConsole->GetCVar(strTipCVar.toLatin1().data()))
+                if (ICVar* pCVar = gEnv->pConsole->GetCVar(strTipCVar.toUtf8().data()))
                 {
                     if (!strDescription.isEmpty())
                     {
@@ -307,10 +282,10 @@ void ReflectedPropertyControl::CreateItems(XmlNodeRef node, CVarBlockPtr& outBlo
 
             void* pUserData = reinterpret_cast<void*>((i << 16) | k);
 
-            if (!_stricmp(type, "int"))
+            if (!azstricmp(type, "int"))
             {
                 CSmartVariable<int> intVar;
-                AddVariable(group, intVar, child->getTag(), humanReadableName.toLatin1().data(), strDescription.toLatin1().data(), func, pUserData);
+                AddVariable(group, intVar, child->getTag(), humanReadableName.toUtf8().data(), strDescription.toUtf8().data(), func, pUserData);
                 int nValue(0);
                 if (child->getAttr("value", nValue))
                 {
@@ -322,26 +297,11 @@ void ReflectedPropertyControl::CreateItems(XmlNodeRef node, CVarBlockPtr& outBlo
                 {
                     intVar->SetLimits(nMin, nMax);
                 }
-                else
-                {
-                    float nMin, nMax, nStep;
-                    bool bSoftMin, bSoftMax;
-                    intVar->GetLimits(nMin, nMax, nStep, bSoftMin, bSoftMax);
-                    if (nValue > nMax && !bSoftMax)
-                    {
-                        nMax = nextNiceNumberAbove(nValue);
-                        intVar->SetLimits(nMin, nMax, 0.0, false, false);
-                    }
-                    if (nValue < nMin && !bSoftMin)
-                    {
-                        intVar->SetLimits(nextNiceNumberAbove(nValue), nMax, 0.0, false, false);
-                    }
-                }
             }
-            else if (!stricmp(type, "float"))
+            else if (!azstricmp(type, "float"))
             {
                 CSmartVariable<float> floatVar;
-                AddVariable(group, floatVar, child->getTag(), humanReadableName.toLatin1().data(), strDescription.toLatin1().data(), func, pUserData);
+                AddVariable(group, floatVar, child->getTag(), humanReadableName.toUtf8().data(), strDescription.toUtf8().data(), func, pUserData);
                 float fValue(0.0f);
                 if (child->getAttr("value", fValue))
                 {
@@ -353,66 +313,51 @@ void ReflectedPropertyControl::CreateItems(XmlNodeRef node, CVarBlockPtr& outBlo
                 {
                     floatVar->SetLimits(fMin, fMax);
                 }
-                else
-                {
-                    float fMin, fMax, nStep;
-                    bool bSoftMin, bSoftMax;
-                    floatVar->GetLimits(fMin, fMax, nStep, bSoftMin, bSoftMax);
-                    if (fValue > fMax && !bSoftMax)
-                    {
-                        fMax = nextNiceNumberAbove(fValue);
-                        floatVar->SetLimits(fMin, fMax, 0.0, false, false);
-                    }
-                    if (fValue < fMin && !bSoftMin)
-                    {
-                        floatVar->SetLimits(nextNiceNumberAbove(fValue), fMax, 0.0, false, false);
-                    }
-                }
             }
-            else if (!stricmp(type, "vector"))
+            else if (!azstricmp(type, "vector"))
             {
                 CSmartVariable<Vec3> vec3Var;
-                AddVariable(group, vec3Var, child->getTag(), humanReadableName.toLatin1().data(), strDescription.toLatin1().data(), func, pUserData);
+                AddVariable(group, vec3Var, child->getTag(), humanReadableName.toUtf8().data(), strDescription.toUtf8().data(), func, pUserData);
                 Vec3 vValue(0, 0, 0);
                 if (child->getAttr("value", vValue))
                 {
                     vec3Var->Set(vValue);
                 }
             }
-            else if (!stricmp(type, "bool"))
+            else if (!azstricmp(type, "bool"))
             {
                 CSmartVariable<bool> bVar;
-                AddVariable(group, bVar, child->getTag(), humanReadableName.toLatin1().data(), strDescription.toLatin1().data(), func, pUserData);
+                AddVariable(group, bVar, child->getTag(), humanReadableName.toUtf8().data(), strDescription.toUtf8().data(), func, pUserData);
                 bool bValue(false);
                 if (child->getAttr("value", bValue))
                 {
                     bVar->Set(bValue);
                 }
             }
-            else if (!stricmp(type, "texture"))
+            else if (!azstricmp(type, "texture"))
             {
                 CSmartVariable<QString> textureVar;
-                AddVariable(group, textureVar, child->getTag(), humanReadableName.toLatin1().data(), strDescription.toLatin1().data(), func, pUserData, IVariable::DT_TEXTURE);
+                AddVariable(group, textureVar, child->getTag(), humanReadableName.toUtf8().data(), strDescription.toUtf8().data(), func, pUserData, IVariable::DT_TEXTURE);
                 const char* textureName;
                 if (child->getAttr("value", &textureName))
                 {
                     textureVar->Set(textureName);
                 }
             }
-            else if (!stricmp(type, "material"))
+            else if (!azstricmp(type, "material"))
             {
                 CSmartVariable<QString> materialVar;
-                AddVariable(group, materialVar, child->getTag(), humanReadableName.toLatin1().data(), strDescription.toLatin1().data(), func, pUserData, IVariable::DT_MATERIAL);
+                AddVariable(group, materialVar, child->getTag(), humanReadableName.toUtf8().data(), strDescription.toUtf8().data(), func, pUserData, IVariable::DT_MATERIAL);
                 const char* materialName;
                 if (child->getAttr("value", &materialName))
                 {
                     materialVar->Set(materialName);
                 }
             }
-            else if (!stricmp(type, "color"))
+            else if (!azstricmp(type, "color"))
             {
                 CSmartVariable<Vec3> colorVar;
-                AddVariable(group, colorVar, child->getTag(), humanReadableName.toLatin1().data(), strDescription.toLatin1().data(), func, pUserData, IVariable::DT_COLOR);
+                AddVariable(group, colorVar, child->getTag(), humanReadableName.toUtf8().data(), strDescription.toUtf8().data(), func, pUserData, IVariable::DT_COLOR);
                 ColorB color;
                 if (child->getAttr("value", color))
                 {
@@ -463,8 +408,8 @@ void ReflectedPropertyControl::UpdateVarBlock(ReflectedPropertyItem* pPropertyIt
         {
             const QString pPropertyVariableName = pChild->GetVariable()->GetName();
 
-            IVariable* pTargetVariable = pTargetContainer->FindVariable(pPropertyVariableName.toLatin1().data());
-            IVariable* pSourceVariable = pSourceContainer->FindVariable(pPropertyVariableName.toLatin1().data());
+            IVariable* pTargetVariable = pTargetContainer->FindVariable(pPropertyVariableName.toUtf8().data());
+            IVariable* pSourceVariable = pSourceContainer->FindVariable(pPropertyVariableName.toUtf8().data());
 
             if (pSourceVariable && pTargetVariable)
             {
@@ -492,6 +437,7 @@ int ReflectedPropertyControl::GetContentHeight() const
 {
     return m_editor->GetContentHeight();
 }
+
 
 void ReflectedPropertyControl::AddCustomPopupMenuPopup(const QString& text, const Functor1<int>& handler, const QStringList& items)
 {
@@ -593,6 +539,11 @@ void ReflectedPropertyControl::AfterPropertyModified(AzToolsFramework::InstanceD
 }
 
 
+void ReflectedPropertyControl::SetIsTwoColumnCtrlSection(bool isSection)
+{
+    m_isTwoColumnSection = isSection;
+}
+
 void ReflectedPropertyControl::RequestPropertyContextMenu(AzToolsFramework::InstanceDataNode* pNode, const QPoint& pos)
 {
     if (!pNode)
@@ -601,9 +552,6 @@ void ReflectedPropertyControl::RequestPropertyContextMenu(AzToolsFramework::Inst
     CReflectedVar *pReflectedVar = GetReflectedVarFromCallbackInstance(pNode);
     ReflectedPropertyItem *pItem = m_root->findItem(pReflectedVar);
     AZ_Assert(pItem, "No item found in Context Menu callback");
-
-    if (GetSelectedItems().isEmpty())
-        m_editor->SelectInstance(pNode);
 
     CClipboard clipboard(nullptr);
 
@@ -614,11 +562,23 @@ void ReflectedPropertyControl::RequestPropertyContextMenu(AzToolsFramework::Inst
     const int ePPA_CustomItemBase = 10; // reserved from 10 to 99
     const int ePPA_CustomPopupBase = 100; // reserved from 100 to x*100+100 where x is size of m_customPopupMenuPopups
 
-    menu.addAction(tr("Copy"), [&]() { OnCopy(false); });
-    menu.addAction(tr("Copy Recursively"), [&]() { OnCopy(true); });
-    menu.addAction(tr("Copy All"), [&]() { OnCopyAll(); });
-    menu.addSeparator();
-    menu.addAction(tr("Paste"), [&]() { OnPaste(); })->setEnabled(!clipboard.IsEmpty());
+    menu.addAction(tr("Copy"), [&]() { OnCopy({ pItem }, false); });
+    menu.addAction(tr("Copy Recursively"), [&]() { OnCopy({ pItem }, true); });
+    if (m_isTwoColumnSection)
+    {
+        // For a two-column control, OnCopyAll will only copy all for this section
+            // Emit a signal to the two-column control if we want to copy all sections
+        menu.addAction(tr("Copy Section"), [&]() { OnCopyAll(); });
+        menu.addAction(tr("Copy All"), [&]() { emit CopyAllSections(); });
+        menu.addSeparator();
+        menu.addAction(tr("Paste"), [&]() { emit PasteAllSections(); })->setEnabled(!clipboard.IsEmpty());
+    }
+    else
+    {
+        menu.addAction(tr("Copy All"), [&]() { OnCopyAll(); });
+        menu.addSeparator();
+        menu.addAction(tr("Paste"), [&]() { OnPaste(); })->setEnabled(!clipboard.IsEmpty());
+    }
 
 
     if (!m_customPopupMenuItems.empty() || !m_customPopupMenuPopups.empty())
@@ -661,6 +621,11 @@ void ReflectedPropertyControl::RequestPropertyContextMenu(AzToolsFramework::Inst
         const int option = res % ePPA_CustomPopupBase;
         m_customPopupMenuPopups[menuid].m_callback(option);
     }
+}
+void ReflectedPropertyControl::SetSelChangeCallback(SelChangeCallback callback)
+{
+    m_selChangeFunc = callback;
+    m_editor->SetSelectionEnabled(true);
 }
 
 void ReflectedPropertyControl::PropertySelectionChanged(AzToolsFramework::InstanceDataNode *pNode, bool selected)
@@ -712,17 +677,18 @@ AzToolsFramework::PropertyRowWidget* ReflectedPropertyControl::FindPropertyRowWi
 }
 
 
-void ReflectedPropertyControl::OnItemChange(ReflectedPropertyItem *item)
+void ReflectedPropertyControl::OnItemChange(ReflectedPropertyItem *item, bool deferCallbacks)
 {
     if (!item->IsModified() || !m_bSendCallbackOnNonModified)
         return;
 
-    // variable updates/changes can trigger widgets being shown/hidden; better to delay triggering the update
+    // variable updates/changes can trigger widgets being shown/hidden; allow a delay triggering the update
     // callback until after the current event queue is processed, so that we aren't changing other widgets
     // as a ton of them are still being created.
+    Qt::ConnectionType connectionType = deferCallbacks ? Qt::QueuedConnection : Qt::DirectConnection;
     if (m_updateVarFunc != 0 && m_bEnableCallback)
     {
-        QMetaObject::invokeMethod(this, "DoUpdateCallback", Qt::QueuedConnection, Q_ARG(IVariable*, item->GetVariable()));
+        QMetaObject::invokeMethod(this, "DoUpdateCallback", connectionType, Q_ARG(IVariable*, item->GetVariable()));
     }
     if (m_updateObjectFunc != 0 && m_bEnableCallback)
     {
@@ -730,15 +696,21 @@ void ReflectedPropertyControl::OnItemChange(ReflectedPropertyItem *item)
         // EntityObject registers callback and some derived objects want to register their own callback. the normal UpdateCallback
         // can only be registered for item at a time so the original authors added a 2nd callback function, so we ported it this way.
         // This can probably get cleaned up to only on callback function with multiple receivers.
-        QMetaObject::invokeMethod(this, "DoUpdateObjectCallback", Qt::QueuedConnection, Q_ARG(IVariable*, item->GetVariable()));
+        QMetaObject::invokeMethod(this, "DoUpdateObjectCallback", connectionType, Q_ARG(IVariable*, item->GetVariable()));
     }
 }
 
 
 void ReflectedPropertyControl::DoUpdateCallback(IVariable *var)
 {
-    if (m_updateVarFunc == 0)
+    // guard against element containing the IVariable being removed during a deferred callback
+    const bool variableStillExists = FindVariable(var);
+    AZ_Assert(variableStillExists, "This variable and the item containing it were destroyed during a deferred callback. Change to non-deferred callback.");
+
+    if (m_updateVarFunc == 0 || !variableStillExists)
+    {
         return;
+    }
 
     QScopedValueRollback<bool> rb(m_bEnableCallback, false);
     m_updateVarFunc(var);
@@ -746,8 +718,14 @@ void ReflectedPropertyControl::DoUpdateCallback(IVariable *var)
 
 void ReflectedPropertyControl::DoUpdateObjectCallback(IVariable *var)
 {
-    if (m_updateObjectFunc == 0)
+    // guard against element containing the IVariable being removed during a deferred callback
+    const bool variableStillExists = FindVariable(var);
+    AZ_Assert(variableStillExists, "This variable and the item containing it were destroyed during a deferred callback. Change to non-deferred callback.");
+
+    if (m_updateVarFunc == 0 || !variableStillExists)
+    {
         return;
+    }
 
     QScopedValueRollback<bool> rb(m_bEnableCallback, false);
     m_updateObjectFunc(var);
@@ -818,14 +796,13 @@ QVector<ReflectedPropertyItem*> ReflectedPropertyControl::GetSelectedItems()
     return item == nullptr ? QVector<ReflectedPropertyItem*>() : QVector<ReflectedPropertyItem*>{item};
 }
 
-void ReflectedPropertyControl::OnCopy(bool bRecursively)
+void ReflectedPropertyControl::OnCopy(QVector<ReflectedPropertyItem*> itemsToCopy, bool bRecursively)
 {
-    auto selection = GetSelectedItems();
-    if (!selection.isEmpty())
+    if (!itemsToCopy.isEmpty())
     {
         CClipboard clipboard(nullptr);
         auto rootNode = XmlHelpers::CreateXmlNode("PropertyCtrl");
-        for (auto item : selection)
+        for (auto item : itemsToCopy)
         {
             CopyItem(rootNode, item, bRecursively);
         }
@@ -839,33 +816,18 @@ void ReflectedPropertyControl::OnCopyAll()
     {
         CClipboard clipboard(nullptr);
         auto rootNode = XmlHelpers::CreateXmlNode("PropertyCtrl");
-        for (int i = 0; i < m_root->GetChildCount(); i++)
-        {
-            CopyItem(rootNode, m_root->GetChild(i), true);
-        }
+        OnCopyAll(rootNode);
         clipboard.Put(rootNode);
     }
 }
 
-void ReflectedPropertyControl::SetValuesFromNode(XmlNodeRef rootNode)
+void ReflectedPropertyControl::OnCopyAll(XmlNodeRef rootNode)
 {
-    if (!rootNode || !rootNode->isTag("PropertyCtrl"))
+    if (m_root)
     {
-        return;
-    }
-
-    for (int i = 0; i < rootNode->getChildCount(); ++i)
-    {
-        XmlNodeRef node = rootNode->getChild(i);
-        QString value;
-        QString name;
-        node->getAttr("Name", name);
-        node->getAttr("Value", value);
-        auto pItem = m_root->FindItemByFullName(name);
-        if (pItem)
+        for (int i = 0; i < m_root->GetChildCount(); i++)
         {
-            pItem->SetValue(value);
-            OnItemChange(pItem);
+            CopyItem(rootNode, m_root->GetChild(i), true);
         }
     }
 }
@@ -878,6 +840,32 @@ void ReflectedPropertyControl::OnPaste()
 
     XmlNodeRef rootNode = clipboard.Get();
     SetValuesFromNode(rootNode);
+}
+
+void ReflectedPropertyControl::SetValuesFromNode(XmlNodeRef rootNode)
+{
+    if (!rootNode || !rootNode->isTag("PropertyCtrl"))
+    {
+        return;
+    }
+
+    for (int i = 0; i < rootNode->getChildCount(); i++)
+    {
+        XmlNodeRef node = rootNode->getChild(i);
+        QString value;
+        QString name;
+        node->getAttr("Name", name);
+        node->getAttr("Value", value);
+        auto pItem = m_root->FindItemByFullName(name);
+        if (pItem)
+        {
+            pItem->SetValue(value);
+            // process callbacks immediately. In some cases, like the MaterialEditor the changing
+            // the value of one item will change the properties available in this control
+            // which needs to happen before we paste other values.
+            OnItemChange(pItem, false);
+        }
+    }
 }
 
 void ReflectedPropertyControl::CopyItem(XmlNodeRef rootNode, ReflectedPropertyItem* pItem, bool bRecursively)
@@ -893,7 +881,6 @@ void ReflectedPropertyControl::CopyItem(XmlNodeRef rootNode, ReflectedPropertyIt
         }
     }
 }
-
 
 void ReflectedPropertyControl::ReloadValues()
 {
@@ -921,6 +908,11 @@ void ReflectedPropertyControl::ClearUndoCallback()
 bool ReflectedPropertyControl::FindVariable(IVariable *categoryItem) const
 {
     assert(m_root);
+    if (!m_root)
+    {
+        return false;
+    }
+
     ReflectedPropertyItem *pItem = m_root->findItem(categoryItem);
     return pItem != nullptr;
 }
@@ -1045,6 +1037,10 @@ void TwoColumnPropertyControl::AddVarBlock(CVarBlock *varBlock, const char *szCa
         {
             leftLayout->addWidget(ctrl);
         }
+
+        ctrl->GetControl()->SetIsTwoColumnCtrlSection(true);
+        connect(ctrl->GetControl(), &ReflectedPropertyControl::CopyAllSections, this, &TwoColumnPropertyControl::OnCopyAll);
+        connect(ctrl->GetControl(), &ReflectedPropertyControl::PasteAllSections, this, &TwoColumnPropertyControl::OnPaste);
     }
 
     leftLayout->addStretch(1);
@@ -1180,7 +1176,7 @@ void TwoColumnPropertyControl::SetSavedStateKey(const QString &key)
 {
     for (int i = 0; i < m_controlList.count(); ++i)
     {
-        m_controlList[i]->GetControl()->SetSavedStateKey(AZ::Crc32((key + QString::number(i)).toLatin1().data()));
+        m_controlList[i]->GetControl()->SetSavedStateKey(AZ::Crc32((key + QString::number(i)).toUtf8().data()));
     }
 }
 
@@ -1208,6 +1204,29 @@ void TwoColumnPropertyControl::ReloadItems()
     }
 }
 
+void TwoColumnPropertyControl::OnCopyAll()
+{
+    CClipboard clipboard(nullptr);
+    auto rootNode = XmlHelpers::CreateXmlNode("PropertyCtrl");
+    for (auto ctrl : m_controlList)
+    {
+        ctrl->GetControl()->OnCopyAll(rootNode);
+    }
+    clipboard.Put(rootNode);
+}
+
+void TwoColumnPropertyControl::OnPaste()
+{
+    CClipboard clipboard(nullptr);
+
+    CUndo undo("Paste Properties");
+
+    XmlNodeRef rootNode = clipboard.Get();
+    for (auto ctrl : m_controlList)
+    {
+        ctrl->GetControl()->SetValuesFromNode(rootNode);
+    }
+}
 
 
 PropertyCard::PropertyCard(QWidget* parent /*= nullptr*/)

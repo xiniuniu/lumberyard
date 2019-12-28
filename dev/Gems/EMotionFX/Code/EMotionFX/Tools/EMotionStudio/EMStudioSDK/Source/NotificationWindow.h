@@ -13,6 +13,7 @@
 #pragma once
 
 #include "EMStudioConfig.h"
+#include <MCore/Source/MemoryManager.h>
 #include <QToolButton>
 #include <QWidget>
 #include <QTimer>
@@ -37,6 +38,7 @@ namespace EMStudio
 
     public:
         NotificationWindow(QWidget* parent, EType type, const QString& Message);
+        ~NotificationWindow();
 
     protected:
         void paintEvent(QPaintEvent* event) override;

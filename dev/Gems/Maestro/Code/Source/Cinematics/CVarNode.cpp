@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "StdAfx.h"
+#include "Maestro_precompiled.h"
 #include <AzCore/Serialization/SerializeContext.h>
 
 #include "CVarNode.h"
@@ -121,7 +121,7 @@ void CAnimCVarNode::SetName(const char* name)
 //////////////////////////////////////////////////////////////////////////
 void CAnimCVarNode::Animate(SAnimContext& ec)
 {
-    if (ec.bResetting)
+    if (ec.resetting)
     {
         return;
     }

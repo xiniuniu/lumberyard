@@ -19,6 +19,16 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#ifndef __cplusplus
+    #ifndef max
+    #define max(a,b)            (((a) > (b)) ? (a) : (b))
+    #endif
+
+    #ifndef min
+    #define min(a,b)            (((a) < (b)) ? (a) : (b))
+    #endif
+#endif //__cplusplus
+
 typedef enum
 {
     LANG_DEFAULT,// Depends on the HLSL shader model.
@@ -257,6 +267,11 @@ typedef enum _SHADER_VARIABLE_TYPE
     SVT_APPEND_STRUCTURED_BUFFER     = 50,
     SVT_CONSUME_STRUCTURED_BUFFER    = 51,
 
+    // Partial precision types    
+    SVT_FLOAT10                      = 53,
+    SVT_FLOAT16                      = 54,
+    
+
     SVT_FORCE_DWORD                  = 0x7fffffff
 } SHADER_VARIABLE_TYPE;
 
@@ -428,6 +443,10 @@ typedef struct
     TextureSamplerInfo textureSamplerInfo;    // HLSLCC_FLAG_COMBINE_TEXTURE_SAMPLERS fills this out
 } Shader;
 
+// NOTE: HLSLCC flags are specified by command line when executing this cross compiler.
+//       If these flags change, the command line switch '-flags=XXX' must change as well.
+//       Lumberyard composes the command line in file 'dev\Code\CryEngine\RenderDll\Common\Shaders\RemoteCompiler.cpp'
+
 /*HLSL constant buffers are treated as default-block unform arrays by default. This is done
   to support versions of GLSL which lack ARB_uniform_buffer_object functionality.
   Setting this flag causes each one to have its own uniform block.
@@ -468,6 +487,11 @@ static const unsigned int HLSLCC_FLAG_DISABLE_EXPLICIT_LOCATIONS = 0x400;
 
 //If set, global uniforms are not stored in a struct.
 static const unsigned int HLSLCC_FLAG_DISABLE_GLOBALS_STRUCT = 0x800;
+
+// If set, HLSL DX9 lower precision qualifiers (e.g half) will be transformed to DX11 style (e.g min16float)
+// before compiling. Necessary to preserve precision information. If not, FXC just silently transform
+// everything to full precision (e.g float32).
+static const unsigned int HLSLCC_FLAG_HALF_FLOAT_TRANSFORM = 0x40000;
 
 #ifdef __cplusplus
 extern "C" {

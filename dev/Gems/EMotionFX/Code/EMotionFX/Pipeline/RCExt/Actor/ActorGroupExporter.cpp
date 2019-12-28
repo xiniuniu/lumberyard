@@ -9,12 +9,13 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include <AzFramework/StringFunc/StringFunc.h>
 
 #include <EMotionFX/Source/Actor.h>
 #include <EMotionFX/Source/Importer/Importer.h>
 #include <EMotionFX/CommandSystem/Source/MetaData.h>
 #include <EMotionFX/Exporters/ExporterLib/Exporter/Exporter.h>
+#include <SceneAPIExt/Rules/ActorPhysicsSetupRule.h>
+#include <SceneAPIExt/Rules/SimulatedObjectSetupRule.h>
 
 #include <SceneAPI/SceneCore/Utilities/FileUtilities.h>
 #include <SceneAPI/SceneCore/Utilities/Reporting.h>
@@ -71,7 +72,9 @@ namespace EMotionFX
             SceneEvents::ProcessingResultCombiner result;
 
             const Group::IActorGroup& actorGroup = context.m_group;
-            ActorBuilderContext actorBuilderContext(context.m_scene, context.m_outputDirectory, actorGroup, actor, AZ::RC::Phase::Construction);
+            AZStd::vector<AZStd::string> actorMaterialReferences;
+            ActorBuilderContext actorBuilderContext(context.m_scene, context.m_outputDirectory, actorGroup, actor, actorMaterialReferences, AZ::RC::Phase::Construction);
+            
             result += SceneEvents::Process(actorBuilderContext);
             result += SceneEvents::Process<ActorBuilderContext>(actorBuilderContext, AZ::RC::Phase::Filling);
             result += SceneEvents::Process<ActorBuilderContext>(actorBuilderContext, AZ::RC::Phase::Finalizing);
@@ -84,6 +87,18 @@ namespace EMotionFX
                 {
                     AZ_Error("EMotionFX", false, "Applying meta data to '%s' failed.", filename.c_str());
                 }
+            }
+
+            AZStd::shared_ptr<EMotionFX::PhysicsSetup> physicsSetup;
+            if (EMotionFX::Pipeline::Rule::LoadFromGroup<EMotionFX::Pipeline::Rule::ActorPhysicsSetupRule, AZStd::shared_ptr<EMotionFX::PhysicsSetup>>(actorGroup, physicsSetup))
+            {
+                actor->SetPhysicsSetup(physicsSetup);
+            }
+
+            AZStd::shared_ptr<EMotionFX::SimulatedObjectSetup> simulatedObjectSetup;
+            if (EMotionFX::Pipeline::Rule::LoadFromGroup<EMotionFX::Pipeline::Rule::SimulatedObjectSetupRule, AZStd::shared_ptr<EMotionFX::SimulatedObjectSetup>>(actorGroup, simulatedObjectSetup))
+            {
+                actor->SetSimulatedObjectSetup(simulatedObjectSetup);
             }
 
             ExporterLib::SaveActor(filename, actor, MCore::Endian::ENDIAN_LITTLE);
@@ -99,12 +114,16 @@ namespace EMotionFX
             filename += ".xac";
 
             // use this line to load the actor from the saved actor file
-            EMotionFX::Actor* testLoadingActor = EMotionFX::GetImporter().LoadActor(MCore::String(filename.c_str()));
+            EMotionFX::Actor* testLoadingActor = EMotionFX::GetImporter().LoadActor(AZStd::string(filename.c_str()));
             MCore::Destroy(testLoadingActor);
 #endif // EMOTIONFX_ACTOR_DEBUG
 
             static AZ::Data::AssetType emotionFXActorAssetType("{F67CC648-EA51-464C-9F5D-4A9CE41A7F86}"); // from ActorAsset.h in EMotionFX Gem
-            context.m_products.AddProduct(AZStd::move(filename), context.m_group.GetId(), emotionFXActorAssetType);
+            AZ::SceneAPI::Events::ExportProduct& product = context.m_products.AddProduct(AZStd::move(filename), context.m_group.GetId(), emotionFXActorAssetType);
+            for (AZStd::string& materialPathReference : actorMaterialReferences)
+            {
+                product.m_legacyPathDependencies.emplace_back(AZStd::move(materialPathReference));
+            }
 
             // Destroy the actor after save.
             MCore::Destroy(actor);

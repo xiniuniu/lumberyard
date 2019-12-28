@@ -11,11 +11,7 @@
 */
 #pragma once
 
-#include <AzCore/Component/Component.h>
 #include <AzCore/Component/EntityBus.h>
-#include <AzCore/Math/Transform.h>
-#include <AzCore/Slice/SliceAsset.h>
-#include <AzFramework/Entity/EntityContextBus.h>
 
 #include <LmbrCentral/Scripting/SpawnerComponentBus.h>
 
@@ -38,6 +34,14 @@ namespace LmbrCentral
         SpawnerComponent();
         SpawnerComponent(const AZ::Data::Asset<AZ::DynamicSliceAsset>& sliceAsset, bool spawnOnActivate);
         ~SpawnerComponent() override = default;
+
+        //////////////////////////////////////////////////////////////////////////
+        // Component descriptor
+        static void Reflect(AZ::ReflectContext* context);
+        static void GetRequiredServices(AZ::ComponentDescriptor::DependencyArrayType& required);
+        static void GetDependentServices(AZ::ComponentDescriptor::DependencyArrayType& dependent);
+        static void GetProvidedServices(AZ::ComponentDescriptor::DependencyArrayType& provided);
+        //////////////////////////////////////////////////////////////////////////
 
         //////////////////////////////////////////////////////////////////////////
         // AZ::Component
@@ -71,25 +75,12 @@ namespace LmbrCentral
         // SliceInstantiationResultBus::MultiHandler
         void OnSlicePreInstantiate(const AZ::Data::AssetId& sliceAssetId, const AZ::SliceComponent::SliceInstanceAddress& sliceAddress) override;
         void OnSliceInstantiated(const AZ::Data::AssetId& sliceAssetId, const AZ::SliceComponent::SliceInstanceAddress& sliceAddress) override;
-        void OnSliceInstantiationFailed(const AZ::Data::AssetId& sliceAssetId) override;
+        void OnSliceInstantiationFailedOrCanceled(const AZ::Data::AssetId& sliceAssetId, bool canceled) override;
         //////////////////////////////////////////////////////////////////////////
 
         //////////////////////////////////////////////////////////////////////////
         // EntityBus::MultiHandler
         void OnEntityDestruction(const AZ::EntityId& entityId) override;
-        //////////////////////////////////////////////////////////////////////////
-    private:
-
-        //////////////////////////////////////////////////////////////////////////
-        // Component descriptor
-        static void Reflect(AZ::ReflectContext* context);
-        static void GetDependentServices(AZ::ComponentDescriptor::DependencyArrayType& dependent);
-        static void GetProvidedServices(AZ::ComponentDescriptor::DependencyArrayType& provided);
-        //////////////////////////////////////////////////////////////////////////
-
-        //////////////////////////////////////////////////////////////////////////
-        // Private helpers
-        AzFramework::SliceInstantiationTicket SpawnSliceInternal(const AZ::Data::Asset<AZ::Data::AssetData>& slice, const AZ::Transform& relative);
         //////////////////////////////////////////////////////////////////////////
 
         //////////////////////////////////////////////////////////////////////////
@@ -97,6 +88,14 @@ namespace LmbrCentral
         AZ::Data::Asset<AZ::DynamicSliceAsset> m_sliceAsset;
         bool m_spawnOnActivate = false;
         bool m_destroyOnDeactivate = false;
+
+    private:
+
+        //////////////////////////////////////////////////////////////////////////
+        // Private helpers
+        AzFramework::SliceInstantiationTicket SpawnSliceInternalAbsolute(const AZ::Data::Asset<AZ::Data::AssetData>& slice, const AZ::Transform& world);
+        AzFramework::SliceInstantiationTicket SpawnSliceInternalRelative(const AZ::Data::Asset<AZ::Data::AssetData>& slice, const AZ::Transform& relative);
+        //////////////////////////////////////////////////////////////////////////
 
         //////////////////////////////////////////////////////////////////////////
         // Runtime-only members

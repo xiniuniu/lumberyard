@@ -11,31 +11,36 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "stdafx.h"
+#include "StdAfx.h"
 
 #include <AzCore/Component/ComponentApplicationBus.h>
+#include <AzCore/Component/EntityBus.h>
 #include <AzFramework/Components/CameraBus.h>
 #include <AzCore/Component/Entity.h>
 #include <AzToolsFramework/ToolsComponents/GenericComponentWrapper.h>
 #include <AzToolsFramework/Entity/EditorEntityContextComponent.h>
+#include <AzToolsFramework/Metrics/LyEditorMetricsBus.h>
 
 #include "TrackViewKeyPropertiesDlg.h"
 #include "TrackViewTrack.h"
-#include "TrackViewUndo.h"
-#include "Maestro/Types/AnimValueType.h"
-#include "Maestro/Types/SequenceType.h"
+#include <Maestro/Types/AnimValueType.h>
+#include <Maestro/Types/SequenceType.h>
+#include <Maestro/Types/SequenceType.h>
 
-#include "objects/CameraObject.h"
+#include "Objects/CameraObject.h"
 
 #include <QObject>
 
 //////////////////////////////////////////////////////////////////////////
 class CSelectKeyUIControls
     : public CTrackViewKeyUIControls
+    , protected Camera::CameraNotificationBus::Handler
+    , protected AZ::EntitySystemBus::Handler
 {
 public:
-    CSelectKeyUIControls()
-        : m_isLegacyCamera(true) {}
+    CSelectKeyUIControls() {}
+
+    ~CSelectKeyUIControls() override;
 
     CSmartVariableArray mv_table;
     CSmartVariableEnum<QString> mv_camera;
@@ -46,6 +51,9 @@ public:
         AddVariable(mv_table, "Key Properties");
         AddVariable(mv_table, mv_camera, "Camera");
         AddVariable(mv_table, mv_BlendTime, "Blend time");
+
+        Camera::CameraNotificationBus::Handler::BusConnect();
+        AZ::EntitySystemBus::Handler::BusConnect();
     }
     bool SupportTrackType(const CAnimParamType& paramType, EAnimCurveType trackType, AnimValueType valueType) const
     {
@@ -65,9 +73,27 @@ public:
         };
         return guid;
     }
+
+protected:
+    ////////////////////////////////////////////////////////////////////////
+    // CameraNotificationBus interface implementation
+    void OnCameraAdded(const AZ::EntityId& cameraId) override;
+    void OnCameraRemoved(const AZ::EntityId& cameraId) override;
+
+    //////////////////////////////////////////////////////////////////////////
+    // AZ::EntitySystemBus::Handler
+    void OnEntityNameChanged(const AZ::EntityId& entityId, const AZStd::string& name) override;
+
 private:
-    bool                        m_isLegacyCamera;
+
+    void ResetCameraEntries();
 };
+
+CSelectKeyUIControls::~CSelectKeyUIControls()
+{
+    AZ::EntitySystemBus::Handler::BusDisconnect();
+    Camera::CameraNotificationBus::Handler::BusDisconnect();
+}
 
 //////////////////////////////////////////////////////////////////////////
 bool CSelectKeyUIControls::OnKeySelectionChange(CTrackViewKeyBundle& selectedKeys)
@@ -85,72 +111,37 @@ bool CSelectKeyUIControls::OnKeySelectionChange(CTrackViewKeyBundle& selectedKey
         AnimValueType valueType = keyHandle.GetTrack()->GetValueType();
         if (valueType == AnimValueType::Select)
         {
+            ResetCameraEntries();
+
             // Get All cameras.
             CTrackViewSequence* sequence = GetIEditor()->GetAnimation()->GetSequence();
-            SequenceType sequenceType = sequence ? sequence->GetSequenceType() : SequenceType::Legacy;
 
             mv_camera.SetEnumList(NULL);
 
-            // Insert '<None>' empty enum
-            if (sequenceType == SequenceType::Legacy)
-            {
-                mv_camera->AddEnumItem(QObject::tr("<None>"), "");
-            }
-            else if (sequenceType == SequenceType::SequenceComponent)
-            {
-                mv_camera->AddEnumItem(QObject::tr("<None>"), QString::number(static_cast<AZ::u64>(AZ::EntityId::InvalidEntityId)));
-            }
+            mv_camera->AddEnumItem(QObject::tr("<None>"), QString::number(static_cast<AZ::u64>(AZ::EntityId::InvalidEntityId)));
 
-            if (sequenceType == SequenceType::Legacy)
-            {
-                // legacy sequences use legacy camera entities
-                m_isLegacyCamera = true;
+            // Find all Component Entity Cameras
+            AZ::EBusAggregateResults<AZ::EntityId> cameraComponentEntities;
+            Camera::CameraBus::BroadcastResult(cameraComponentEntities, &Camera::CameraRequests::GetCameras);
 
-                // Search for all CCameraObject entities
-                std::vector<CBaseObject*> objects;
-                GetIEditor()->GetObjectManager()->GetObjects(objects);
-                for (int i = 0; i < objects.size(); ++i)
+            // add names of all found entities with Camera Components
+            for (int i = 0; i < cameraComponentEntities.values.size(); i++)
+            {
+                AZ::Entity* entity = nullptr;
+                AZ::ComponentApplicationBus::BroadcastResult(entity, &AZ::ComponentApplicationBus::Events::FindEntity, cameraComponentEntities.values[i]);
+                if (entity)
                 {
-                    if (qobject_cast<CCameraObject*>(objects[i]))
-                    {
-                        mv_camera->AddEnumItem(objects[i]->GetName(), objects[i]->GetName());
-                    }
+                    // For Camera Components the enum value is the stringified AZ::EntityId of the entity with the Camera Component
+                    QString entityIdString = QString::number(static_cast<AZ::u64>(entity->GetId()));
+                    mv_camera->AddEnumItem(entity->GetName().c_str(), entityIdString);
                 }
-            }
-            else if (sequenceType == SequenceType::SequenceComponent)
-            {
-                // new sequences use camera components
-                m_isLegacyCamera = false;
-
-                // Find all Component Entity Cameras
-                AZ::EBusAggregateResults<AZ::EntityId> cameraComponentEntities;
-                Camera::CameraBus::BroadcastResult(cameraComponentEntities, &Camera::CameraRequests::GetCameras);
-
-                // add names of all found entities with Camera Components
-                for (int i = 0; i < cameraComponentEntities.values.size(); i++)
-                {
-                    AZ::Entity* entity = nullptr;
-                    AZ::ComponentApplicationBus::BroadcastResult(entity, &AZ::ComponentApplicationBus::Events::FindEntity, cameraComponentEntities.values[i]);
-                    if (entity)
-                    {
-                        // For Camera Components the enum value is the stringified AZ::EntityId of the entity with the Camera Component
-                        QString entityIdString = QString::number(static_cast<AZ::u64>(entity->GetId()));
-                        mv_camera->AddEnumItem(entity->GetName().c_str(), entityIdString);
-                    }
-                }
-            }
+            }            
 
             ISelectKey selectKey;
             keyHandle.GetKey(&selectKey);
 
-            if (sequenceType == SequenceType::Legacy)
-            {
-                mv_camera = selectKey.szSelection.c_str();
-            }
-            else if (sequenceType == SequenceType::SequenceComponent)
-            {
-                mv_camera = QString::number(static_cast<AZ::u64>(selectKey.cameraAzEntityId));
-            }
+            mv_camera = QString::number(static_cast<AZ::u64>(selectKey.cameraAzEntityId));            
+
             mv_BlendTime.GetVar()->SetLimits(0.0f, selectKey.fDuration > .0f ? selectKey.fDuration : 1.0f, 0.1f, true, false);
             mv_BlendTime = selectKey.fBlendTime;
 
@@ -163,9 +154,9 @@ bool CSelectKeyUIControls::OnKeySelectionChange(CTrackViewKeyBundle& selectedKey
 // Called when UI variable changes.
 void CSelectKeyUIControls::OnUIChange(IVariable* pVar, CTrackViewKeyBundle& selectedKeys)
 {
-    CTrackViewSequence* pSequence = GetIEditor()->GetAnimation()->GetSequence();
+    CTrackViewSequence* sequence = GetIEditor()->GetAnimation()->GetSequence();
 
-    if (!pSequence || !selectedKeys.AreAllKeysOfSameType())
+    if (!sequence || !selectedKeys.AreAllKeysOfSameType())
     {
         return;
     }
@@ -182,16 +173,9 @@ void CSelectKeyUIControls::OnUIChange(IVariable* pVar, CTrackViewKeyBundle& sele
 
             if (pVar == mv_camera.GetVar())
             {
-                if (m_isLegacyCamera)
-                {
-                    selectKey.szSelection = ((QString)mv_camera).toLatin1().data();
-                }
-                else
-                {
-                    QString entityIdString = mv_camera;
-                    selectKey.cameraAzEntityId = AZ::EntityId(entityIdString.toULongLong());
-                    selectKey.szSelection =  mv_camera.GetVar()->GetDisplayValue().toLatin1().data();
-                }
+                QString entityIdString = mv_camera;
+                selectKey.cameraAzEntityId = AZ::EntityId(entityIdString.toULongLong());
+                selectKey.szSelection =  mv_camera.GetVar()->GetDisplayValue().toUtf8().data();
             }
 
             if (pVar == mv_BlendTime.GetVar())
@@ -213,9 +197,95 @@ void CSelectKeyUIControls::OnUIChange(IVariable* pVar, CTrackViewKeyBundle& sele
                 }
             }
 
-            CUndo::Record(new CUndoTrackObject(keyHandle.GetTrack()));
-            keyHandle.SetKey(&selectKey);
+            bool isDuringUndo = false;
+            AzToolsFramework::ToolsApplicationRequests::Bus::BroadcastResult(isDuringUndo, &AzToolsFramework::ToolsApplicationRequests::Bus::Events::IsDuringUndoRedo);
+
+            if (isDuringUndo)
+            {
+                keyHandle.SetKey(&selectKey);
+            }
+            else
+            {
+                AzToolsFramework::ScopedUndoBatch undoBatch("Set Key Value");
+                keyHandle.SetKey(&selectKey);
+                undoBatch.MarkEntityDirty(sequence->GetSequenceComponentEntityId());
+            }
+
         }
+    }
+}
+
+void CSelectKeyUIControls::OnCameraAdded(const AZ::EntityId & cameraId)
+{
+    // Add a single camera component
+    AZ::Entity* entity = nullptr;
+    AZ::ComponentApplicationBus::BroadcastResult(entity, &AZ::ComponentApplicationBus::Events::FindEntity, cameraId);
+    if (entity)
+    {
+        // For Camera Components the enum value is the stringified AZ::EntityId of the entity with the Camera Component
+        QString entityIdString = QString::number(static_cast<AZ::u64>(entity->GetId()));
+        mv_camera->AddEnumItem(entity->GetName().c_str(), entityIdString);
+    }
+}
+
+void CSelectKeyUIControls::OnCameraRemoved(const AZ::EntityId & cameraId)
+{
+    mv_camera->EnableUpdateCallbacks(false);
+
+    // We can't iterate or remove an item from the enum list, and Camera::CameraRequests::GetCameras
+    // still includes the deleted camera at this point. Reset the list anyway and filter out the
+    // deleted camera.
+    IVarEnumList* oldList = mv_camera->GetEnumList();
+    mv_camera->SetEnumList(NULL);
+    mv_camera->AddEnumItem(QObject::tr("<None>"), QString::number(static_cast<AZ::u64>(AZ::EntityId::InvalidEntityId)));
+
+    AZ::EBusAggregateResults<AZ::EntityId> cameraComponentEntities;
+    Camera::CameraBus::BroadcastResult(cameraComponentEntities, &Camera::CameraRequests::GetCameras);
+    for (int i = 0; i < cameraComponentEntities.values.size(); i++)
+    {
+        if (cameraId == cameraComponentEntities.values[i])
+        {
+            continue;
+        }
+        OnCameraAdded(cameraComponentEntities.values[i]);
+    }
+
+    mv_camera->EnableUpdateCallbacks(true);
+}
+
+void CSelectKeyUIControls::OnEntityNameChanged(const AZ::EntityId & entityId, const AZStd::string & name)
+{
+    AZ::Entity* entity = nullptr;
+    AZ::ComponentApplicationBus::BroadcastResult(entity, &AZ::ComponentApplicationBus::Events::FindEntity, entityId);
+    if (entity == nullptr)
+    {
+        return;
+    }
+
+    AZ::Entity::ComponentArrayType cameraComponents = entity->FindComponents(EditorCameraComponentTypeId);
+    if (cameraComponents.size() == 0)
+    {
+        return;
+    }
+
+    mv_camera->EnableUpdateCallbacks(false);
+    ResetCameraEntries();
+    mv_camera->EnableUpdateCallbacks(true);
+}
+
+void CSelectKeyUIControls::ResetCameraEntries()
+{
+    mv_camera.SetEnumList(NULL);
+    mv_camera->AddEnumItem(QObject::tr("<None>"), QString::number(static_cast<AZ::u64>(AZ::EntityId::InvalidEntityId)));
+
+    // Find all Component Entity Cameras
+    AZ::EBusAggregateResults<AZ::EntityId> cameraComponentEntities;
+    Camera::CameraBus::BroadcastResult(cameraComponentEntities, &Camera::CameraRequests::GetCameras);
+
+    // add names of all found entities with Camera Components
+    for (int i = 0; i < cameraComponentEntities.values.size(); i++)
+    {
+        OnCameraAdded(cameraComponentEntities.values[i]);
     }
 }
 

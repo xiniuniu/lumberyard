@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 #include "EditorStaticPhysicsComponent.h"
 
 #include <AzCore/Serialization/EditContext.h>
@@ -56,8 +56,8 @@ namespace LmbrCentral
                 editContext->Class<EditorStaticPhysicsComponent>(
                     "Static Physics", "The Static Physics component is the primary method of adding static visual geometry to entities")
                     ->ClassElement(AZ::Edit::ClassElements::EditorData, "")
-                        ->Attribute(AZ::Edit::Attributes::Category, "Physics")
-                        ->Attribute(AZ::Edit::Attributes::Icon, "Editor/Icons/Components/StaticPhysics.png")
+                        ->Attribute(AZ::Edit::Attributes::Category, "Physics (Legacy)")
+                        ->Attribute(AZ::Edit::Attributes::Icon, "Editor/Icons/Components/StaticPhysics.svg")
                         ->Attribute(AZ::Edit::Attributes::ViewportIcon, "Editor/Icons/Components/Viewport/StaticPhysics.png")
                         ->Attribute(AZ::Edit::Attributes::AppearsInAddComponentMenu, AZ_CRC("Game", 0x232b318c))
                         ->Attribute(AZ::Edit::Attributes::AutoExpand, true)
@@ -84,7 +84,7 @@ namespace LmbrCentral
     {
         if (auto outConfig = azrtti_cast<AzFramework::StaticPhysicsConfig*>(outBaseConfig))
         {
-            *outConfig = m_configuration;
+            *outConfig = static_cast<const AzFramework::StaticPhysicsConfig&>(m_configuration);
             return true;
         }
         return false;

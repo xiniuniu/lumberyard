@@ -13,6 +13,8 @@
 #include <AzFramework/Input/Devices/Gamepad/InputDeviceGamepad.h>
 #include <AzFramework/Input/Utils/AdjustAnalogInputForDeadZone.h>
 
+#include <AzCore/RTTI/BehaviorContext.h>
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 namespace AzFramework
 {
@@ -116,6 +118,64 @@ namespace AzFramework
     }};
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
+    void InputDeviceGamepad::Reflect(AZ::ReflectContext* context)
+    {
+        if (AZ::BehaviorContext* behaviorContext = azrtti_cast<AZ::BehaviorContext*>(context))
+        {
+            // Unfortunately it doesn't seem possible to reflect anything through BehaviorContext
+            // using lambdas which capture variables from the enclosing scope. So we are manually
+            // reflecting all input channel names, instead of just iterating over them like this:
+            //
+            //  auto classBuilder = behaviorContext->Class<InputDeviceGamepad>();
+            //  for (const InputChannelId& channelId : Button::All)
+            //  {
+            //      const char* channelName = channelId.GetName();
+            //      classBuilder->Constant(channelName, [channelName]() { return channelName; });
+            //  }
+
+            behaviorContext->Class<InputDeviceGamepad>()
+                ->Attribute(AZ::Script::Attributes::Storage, AZ::Script::Attributes::StorageType::RuntimeOwn)
+                ->Constant("name", BehaviorConstant(IdForIndex0.GetName()))
+
+                ->Constant(Button::A.GetName(), BehaviorConstant(Button::A.GetName()))
+                ->Constant(Button::B.GetName(), BehaviorConstant(Button::B.GetName()))
+                ->Constant(Button::X.GetName(), BehaviorConstant(Button::X.GetName()))
+                ->Constant(Button::Y.GetName(), BehaviorConstant(Button::Y.GetName()))
+                ->Constant(Button::L1.GetName(), BehaviorConstant(Button::L1.GetName()))
+                ->Constant(Button::R1.GetName(), BehaviorConstant(Button::R1.GetName()))
+                ->Constant(Button::L3.GetName(), BehaviorConstant(Button::L3.GetName()))
+                ->Constant(Button::R3.GetName(), BehaviorConstant(Button::R3.GetName()))
+                ->Constant(Button::DU.GetName(), BehaviorConstant(Button::DU.GetName()))
+                ->Constant(Button::DD.GetName(), BehaviorConstant(Button::DD.GetName()))
+                ->Constant(Button::DL.GetName(), BehaviorConstant(Button::DL.GetName()))
+                ->Constant(Button::DR.GetName(), BehaviorConstant(Button::DR.GetName()))
+                ->Constant(Button::Start.GetName(), BehaviorConstant(Button::Start.GetName()))
+                ->Constant(Button::Select.GetName(), BehaviorConstant(Button::Select.GetName()))
+
+                ->Constant(Trigger::L2.GetName(), BehaviorConstant(Trigger::L2.GetName()))
+                ->Constant(Trigger::R2.GetName(), BehaviorConstant(Trigger::R2.GetName()))
+
+                ->Constant(ThumbStickAxis2D::L.GetName(), BehaviorConstant(ThumbStickAxis2D::L.GetName()))
+                ->Constant(ThumbStickAxis2D::R.GetName(), BehaviorConstant(ThumbStickAxis2D::R.GetName()))
+
+                ->Constant(ThumbStickAxis1D::LX.GetName(), BehaviorConstant(ThumbStickAxis1D::LX.GetName()))
+                ->Constant(ThumbStickAxis1D::LY.GetName(), BehaviorConstant(ThumbStickAxis1D::LY.GetName()))
+                ->Constant(ThumbStickAxis1D::RX.GetName(), BehaviorConstant(ThumbStickAxis1D::RX.GetName()))
+                ->Constant(ThumbStickAxis1D::RY.GetName(), BehaviorConstant(ThumbStickAxis1D::RY.GetName()))
+
+                ->Constant(ThumbStickDirection::LU.GetName(), BehaviorConstant(ThumbStickDirection::LU.GetName()))
+                ->Constant(ThumbStickDirection::LD.GetName(), BehaviorConstant(ThumbStickDirection::LD.GetName()))
+                ->Constant(ThumbStickDirection::LL.GetName(), BehaviorConstant(ThumbStickDirection::LL.GetName()))
+                ->Constant(ThumbStickDirection::LR.GetName(), BehaviorConstant(ThumbStickDirection::LR.GetName()))
+                ->Constant(ThumbStickDirection::RU.GetName(), BehaviorConstant(ThumbStickDirection::RU.GetName()))
+                ->Constant(ThumbStickDirection::RD.GetName(), BehaviorConstant(ThumbStickDirection::RD.GetName()))
+                ->Constant(ThumbStickDirection::RL.GetName(), BehaviorConstant(ThumbStickDirection::RL.GetName()))
+                ->Constant(ThumbStickDirection::RR.GetName(), BehaviorConstant(ThumbStickDirection::RR.GetName()))
+            ;
+        }
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
     InputDeviceGamepad::InputDeviceGamepad()
         : InputDeviceGamepad(0) // Delegated constructor
     {
@@ -178,11 +238,17 @@ namespace AzFramework
 
         // Connect to the haptic feedback request bus
         InputHapticFeedbackRequestBus::Handler::BusConnect(GetInputDeviceId());
+
+        // Connect to the light bar request bus
+        InputLightBarRequestBus::Handler::BusConnect(GetInputDeviceId());
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
     InputDeviceGamepad::~InputDeviceGamepad()
     {
+        // Disconnect from the light bar request bus
+        InputLightBarRequestBus::Handler::BusDisconnect(GetInputDeviceId());
+
         // Disconnect from the haptic feedback request bus
         InputHapticFeedbackRequestBus::Handler::BusDisconnect(GetInputDeviceId());
 
@@ -221,9 +287,18 @@ namespace AzFramework
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    const GridMate::PlayerId* InputDeviceGamepad::GetAssignedLocalPlayerId() const
+    LocalUserId InputDeviceGamepad::GetAssignedLocalUserId() const
     {
-        return m_pimpl ? m_pimpl->GetAssignedLocalPlayerId() : nullptr;
+        return m_pimpl ? m_pimpl->GetAssignedLocalUserId() : InputDevice::GetAssignedLocalUserId();
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    void InputDeviceGamepad::PromptLocalUserSignIn() const
+    {
+        if (m_pimpl)
+        {
+            m_pimpl->PromptLocalUserSignIn();
+        }
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -242,6 +317,34 @@ namespace AzFramework
     bool InputDeviceGamepad::IsConnected() const
     {
         return m_pimpl ? m_pimpl->IsConnected() : false;
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    void InputDeviceGamepad::GetPhysicalKeyOrButtonText(const InputChannelId& inputChannelId,
+                                                        AZStd::string& o_keyOrButtonText) const
+    {
+        // First see if the button has platform specific text 
+        if (m_pimpl && m_pimpl->GetPhysicalKeyOrButtonText(inputChannelId, o_keyOrButtonText))
+        {
+            return;
+        }
+
+        if      (inputChannelId == Button::A) { o_keyOrButtonText = "A"; }
+        else if (inputChannelId == Button::B) { o_keyOrButtonText = "B"; }
+        else if (inputChannelId == Button::X) { o_keyOrButtonText = "X"; }
+        else if (inputChannelId == Button::Y) { o_keyOrButtonText = "Y"; }
+        else if (inputChannelId == Button::L1) { o_keyOrButtonText = "L1"; }
+        else if (inputChannelId == Button::R1) { o_keyOrButtonText = "R1"; }
+        else if (inputChannelId == Button::L3) { o_keyOrButtonText = "L3"; }
+        else if (inputChannelId == Button::R3) { o_keyOrButtonText = "R3"; }
+        else if (inputChannelId == Button::DU) { o_keyOrButtonText = "D-pad Up"; }
+        else if (inputChannelId == Button::DD) { o_keyOrButtonText = "D-pad Down"; }
+        else if (inputChannelId == Button::DL) { o_keyOrButtonText = "D-pad Left"; }
+        else if (inputChannelId == Button::DR) { o_keyOrButtonText = "D-pad Right"; }
+        else if (inputChannelId == Button::Start) { o_keyOrButtonText = "Start"; }
+        else if (inputChannelId == Button::Select) { o_keyOrButtonText = "Select"; }
+        else if (inputChannelId == Trigger::L2) { o_keyOrButtonText = "L2"; }
+        else if (inputChannelId == Trigger::R2) { o_keyOrButtonText = "R2"; }
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -264,6 +367,24 @@ namespace AzFramework
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
+    void InputDeviceGamepad::SetLightBarColor(const AZ::Color& color)
+    {
+        if (m_pimpl)
+        {
+            m_pimpl->SetLightBarColor(color);
+        }
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    void InputDeviceGamepad::ResetLightBarColor()
+    {
+        if (m_pimpl)
+        {
+            m_pimpl->ResetLightBarColor();
+        }
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
     InputDeviceGamepad::Implementation::Implementation(InputDeviceGamepad& inputDevice)
         : m_inputDevice(inputDevice)
     {
@@ -275,9 +396,9 @@ namespace AzFramework
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    const GridMate::PlayerId* InputDeviceGamepad::Implementation::GetAssignedLocalPlayerId() const
+    LocalUserId InputDeviceGamepad::Implementation::GetAssignedLocalUserId() const
     {
-        return nullptr;
+        return GetInputDeviceIndex();
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -358,6 +479,20 @@ namespace AzFramework
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
+    AZ::Vector2 InputDeviceGamepad::Implementation::RawGamepadState::GetLeftThumbStickNormalizedValues() const
+    {
+        return AZ::Vector2(m_thumbStickLeftXState / m_thumbStickMaximumValue,
+                           m_thumbStickLeftYState / m_thumbStickMaximumValue);
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    AZ::Vector2 InputDeviceGamepad::Implementation::RawGamepadState::GetRightThumbStickNormalizedValues() const
+    {
+        return AZ::Vector2(m_thumbStickRightXState / m_thumbStickMaximumValue,
+                           m_thumbStickRightYState / m_thumbStickMaximumValue);
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
     void InputDeviceGamepad::Implementation::ProcessRawGamepadState(
         const RawGamepadState& rawGamepadState)
     {
@@ -379,13 +514,14 @@ namespace AzFramework
 
         // Update the left thumb-stick channels
         const AZ::Vector2 valuesLeftThumb = rawGamepadState.GetLeftThumbStickAdjustedForDeadZoneAndNormalized();
-        m_inputDevice.m_thumbStickAxis2DChannelsById[InputDeviceGamepad::ThumbStickAxis2D::L]->ProcessRawInputEvent(valuesLeftThumb);
+        const AZ::Vector2 valuesLeftThumbPreDeadZone = rawGamepadState.GetLeftThumbStickNormalizedValues();
+        m_inputDevice.m_thumbStickAxis2DChannelsById[InputDeviceGamepad::ThumbStickAxis2D::L]->ProcessRawInputEvent(valuesLeftThumb, &valuesLeftThumbPreDeadZone);
         m_inputDevice.m_thumbStickAxis1DChannelsById[InputDeviceGamepad::ThumbStickAxis1D::LX]->ProcessRawInputEvent(valuesLeftThumb.GetX());
         m_inputDevice.m_thumbStickAxis1DChannelsById[InputDeviceGamepad::ThumbStickAxis1D::LY]->ProcessRawInputEvent(valuesLeftThumb.GetY());
 
         const float leftStickUp = AZ::GetClamp(valuesLeftThumb.GetY(), 0.0f, 1.0f);
-        const float leftStickDown = AZ::GetClamp(valuesLeftThumb.GetY(), -1.0f, 0.0f);
-        const float leftStickLeft = AZ::GetClamp(valuesLeftThumb.GetX(), -1.0f, 0.0f);
+        const float leftStickDown = fabsf(AZ::GetClamp(valuesLeftThumb.GetY(), -1.0f, 0.0f));
+        const float leftStickLeft = fabsf(AZ::GetClamp(valuesLeftThumb.GetX(), -1.0f, 0.0f));
         const float leftStickRight = AZ::GetClamp(valuesLeftThumb.GetX(), 0.0f, 1.0f);
         m_inputDevice.m_thumbStickDirectionChannelsById[InputDeviceGamepad::ThumbStickDirection::LU]->ProcessRawInputEvent(leftStickUp);
         m_inputDevice.m_thumbStickDirectionChannelsById[InputDeviceGamepad::ThumbStickDirection::LD]->ProcessRawInputEvent(leftStickDown);
@@ -394,13 +530,14 @@ namespace AzFramework
 
         // Update the right thumb-stick channels
         const AZ::Vector2 valuesRightThumb = rawGamepadState.GetRightThumbStickAdjustedForDeadZoneAndNormalized();
-        m_inputDevice.m_thumbStickAxis2DChannelsById[InputDeviceGamepad::ThumbStickAxis2D::R]->ProcessRawInputEvent(valuesRightThumb);
+        const AZ::Vector2 valuesRightThumbPreDeadZone = rawGamepadState.GetRightThumbStickNormalizedValues();
+        m_inputDevice.m_thumbStickAxis2DChannelsById[InputDeviceGamepad::ThumbStickAxis2D::R]->ProcessRawInputEvent(valuesRightThumb, &valuesRightThumbPreDeadZone);
         m_inputDevice.m_thumbStickAxis1DChannelsById[InputDeviceGamepad::ThumbStickAxis1D::RX]->ProcessRawInputEvent(valuesRightThumb.GetX());
         m_inputDevice.m_thumbStickAxis1DChannelsById[InputDeviceGamepad::ThumbStickAxis1D::RY]->ProcessRawInputEvent(valuesRightThumb.GetY());
 
         const float rightStickUp = AZ::GetClamp(valuesRightThumb.GetY(), 0.0f, 1.0f);
-        const float rightStickDown = AZ::GetClamp(valuesRightThumb.GetY(), -1.0f, 0.0f);
-        const float rightStickLeft = AZ::GetClamp(valuesRightThumb.GetX(), -1.0f, 0.0f);
+        const float rightStickDown = fabsf(AZ::GetClamp(valuesRightThumb.GetY(), -1.0f, 0.0f));
+        const float rightStickLeft = fabsf(AZ::GetClamp(valuesRightThumb.GetX(), -1.0f, 0.0f));
         const float rightStickRight = AZ::GetClamp(valuesRightThumb.GetX(), 0.0f, 1.0f);
         m_inputDevice.m_thumbStickDirectionChannelsById[InputDeviceGamepad::ThumbStickDirection::RU]->ProcessRawInputEvent(rightStickUp);
         m_inputDevice.m_thumbStickDirectionChannelsById[InputDeviceGamepad::ThumbStickDirection::RD]->ProcessRawInputEvent(rightStickDown);

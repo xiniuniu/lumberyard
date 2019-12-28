@@ -1,5 +1,3 @@
-#pragma once
-
 /*
 * All or portions of this file Copyright (c) Amazon.com, Inc. or its affiliates or
 * its licensors.
@@ -12,9 +10,9 @@
 *
 */
 
-#include <memory>
-#include <cassert>
-#include "fbxsdk.h"
+#pragma once
+
+#include <fbxsdk.h>
 #include <AzCore/Math/Vector3.h>
 #include <AzCore/std/containers/vector.h>
 #include <AzCore/std/smart_ptr/shared_ptr.h>
@@ -27,12 +25,16 @@ namespace AZ
     {
         class FbxSkinWrapper;
         class FbxBlendShapeWrapper;
+        class FbxVertexTangentWrapper;
+        class FbxVertexBitangentWrapper;
 
         class FbxMeshWrapper
         {
         public:
             FbxMeshWrapper(FbxMesh* fbxMesh);
             virtual ~FbxMeshWrapper();
+
+            virtual const char* GetName() const;
 
             virtual int GetDeformerCount() const;
             virtual int GetDeformerCount(int type) const;
@@ -65,6 +67,11 @@ namespace AZ
             virtual FbxUVWrapper GetElementUV(int index = 0);
             
             virtual int GetElementUVCount() const;
+
+            virtual int GetElementTangentCount() const;
+            virtual int GetElementBitangentCount() const;
+            virtual FbxVertexTangentWrapper GetElementTangent(int index = 0);
+            virtual FbxVertexBitangentWrapper GetElementBitangent(int index = 0);
             
             // Returns this geometry's vertex color element
             virtual FbxVertexColorWrapper GetElementVertexColor(int index = 0);
@@ -78,5 +85,5 @@ namespace AZ
             FbxMeshWrapper() = default;
             FbxMesh* m_fbxMesh;
         };
-    }
-}
+    } // namespace FbxSDKWrapper
+} // namespace AZ

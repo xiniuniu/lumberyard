@@ -12,7 +12,7 @@
 
 #include <AzCore/Debug/Trace.h>
 #include <SceneAPI/SceneCore/Utilities/Reporting.h>
-#include "FbxTimeWrapper.h"
+#include <SceneAPI/FbxSDKWrapper/FbxTimeWrapper.h>
 
 namespace AZ
 {
@@ -65,10 +65,12 @@ namespace AZ
                 return FbxTime::eFrames30;
             case frames24:
                 return FbxTime::eFrames24;
+            case defaultMode:
+                return FbxTime::eDefaultMode;
             default:
                 AZ_TracePrintf(SceneAPI::Utilities::WarningWindow, "Unsupported frame rate");
                 return FbxTime::eDefaultMode;
             }
         }
-    }
-}
+    } // namespace FbxSDKWrapper
+} // namespace AZ

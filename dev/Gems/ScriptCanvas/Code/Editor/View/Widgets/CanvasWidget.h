@@ -13,6 +13,7 @@
 #pragma once
 
 #include <QWidget>
+#include <AzCore/std/smart_ptr/unique_ptr.h>
 #include <AzCore/Component/EntityId.h>
 #include <Debugger/Bus.h>
 #include <AzCore/Asset/AssetCommon.h>
@@ -28,7 +29,8 @@ namespace Ui
 
 namespace GraphCanvas
 {
-    class CanvasGraphicsView;
+    class GraphCanvasGraphicsView;
+    class MiniMapGraphicsView;
 }
 
 namespace ScriptCanvasEditor
@@ -37,7 +39,6 @@ namespace ScriptCanvasEditor
     {
         class CanvasWidget
             : public QWidget
-            , ScriptCanvas::Debugger::NotificationBus::Handler
         {
             Q_OBJECT
         public:
@@ -47,26 +48,43 @@ namespace ScriptCanvasEditor
 
             void ShowScene(const AZ::EntityId& sceneId);
             const GraphCanvas::ViewId& GetViewId() const;
+            void SetGraphId(const AZ::EntityId& graphId) { m_graphId = graphId; }
 
         protected:
+
+            void resizeEvent(QResizeEvent *ev);
 
             void OnClicked();
 
             bool m_attached;
 
             void SetupGraphicsView();
+            
+            AZ::Data::AssetId m_assetId;
+            AZ::EntityId m_graphId;
 
             AZStd::unique_ptr<Ui::CanvasWidget> ui;
-
-            // ScriptCanvas::Debugger::NotificationBus::Handler
-            void OnAttach(const AZ::EntityId& /*graphId*/) override;
-            void OnDetach(const AZ::EntityId& /*graphId*/) override;
-            //
 
             void showEvent(QShowEvent *event) override;
 
         private:
-            GraphCanvas::CanvasGraphicsView* m_graphicsView;
+
+            enum MiniMapPosition
+            {
+                MM_Not_Visible,
+                MM_Upper_Left,
+                MM_Upper_Right,
+                MM_Lower_Right,
+                MM_Lower_Left,
+
+                MM_Position_Count
+            };
+
+            void PositionMiniMap();
+
+            GraphCanvas::GraphCanvasGraphicsView* m_graphicsView;
+            GraphCanvas::MiniMapGraphicsView* m_miniMapView;
+            MiniMapPosition m_miniMapPosition = MM_Upper_Left;
         };
     }
 }

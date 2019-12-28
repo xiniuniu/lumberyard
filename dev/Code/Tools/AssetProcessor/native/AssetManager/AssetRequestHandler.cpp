@@ -11,7 +11,7 @@
 */
 #include "AssetRequestHandler.h"
 
-#include "native/utilities/assetUtilEBusHelper.h"
+#include "native/utilities/AssetUtilEBusHelper.h"
 
 #include <AzCore/Serialization/Utils.h>
 #include <AzFramework/Asset/AssetProcessorMessages.h>
@@ -99,7 +99,7 @@ bool AssetRequestHandler::InvokeHandler(AzFramework::AssetSystem::BaseAssetProce
         EBUS_EVENT_RESULT(relPathFound, AzToolsFramework::AssetSystemRequestBus, GetRelativeProductPathFromFullSourceOrProductPath, request->m_sourceOrProductPath, relProductPath);
         if (!relPathFound)
         {
-            AZ_TracePrintf(AssetProcessor::ConsoleChannel, "Could not find relative product path for the source file (%s).", request->m_sourceOrProductPath);
+            AZ_TracePrintf(AssetProcessor::ConsoleChannel, "Could not find relative product path for the source file (%s).", request->m_sourceOrProductPath.c_str());
         }
 
         GetRelativeProductPathFromFullSourceOrProductPathResponse response(relPathFound, relProductPath);
@@ -119,9 +119,20 @@ bool AssetRequestHandler::InvokeHandler(AzFramework::AssetSystem::BaseAssetProce
         SourceAssetInfoResponse response;
         if (request->m_assetId.IsValid())
         {
+
             AZStd::string rootFolder;
-            AzToolsFramework::AssetSystemRequestBus::BroadcastResult(response.m_found, &AzToolsFramework::AssetSystem::AssetSystemRequest::GetAssetInfoById, request->m_assetId, request->m_assetType, response.m_assetInfo, rootFolder );
-            response.m_rootFolder = rootFolder.c_str();
+            AzToolsFramework::AssetSystemRequestBus::BroadcastResult(response.m_found, &AzToolsFramework::AssetSystem::AssetSystemRequest::GetSourceInfoBySourceUUID, request->m_assetId.m_guid, response.m_assetInfo, rootFolder);
+ 
+            if (response.m_found)
+            {
+                response.m_assetInfo.m_assetId.m_subId = request->m_assetId.m_subId;
+                response.m_assetInfo.m_assetType = request->m_assetType;
+                response.m_rootFolder = rootFolder.c_str();
+            }
+            else 
+            {
+                response.m_assetInfo.m_assetId.SetInvalid();
+            }
             AssetProcessor::ConnectionBus::Event(key.first, &AssetProcessor::ConnectionBusTraits::SendResponse, key.second, response);
         }
         else if (!request->m_assetPath.empty())
@@ -137,6 +148,82 @@ bool AssetRequestHandler::InvokeHandler(AzFramework::AssetSystem::BaseAssetProce
         AssetProcessor::ConnectionBus::Event(key.first, &AssetProcessor::ConnectionBusTraits::SendResponse, key.second, response);
         return true;
     }
+    else if (message->GetMessageType() == AzToolsFramework::AssetSystem::SourceAssetProductsInfoRequest::MessageType())
+    {
+        AzToolsFramework::AssetSystem::SourceAssetProductsInfoRequest* request = 
+            azrtti_cast<AzToolsFramework::AssetSystem::SourceAssetProductsInfoRequest*>(message);
+
+        if (!request)
+        {
+            AZ_TracePrintf(AssetProcessor::DebugChannel, 
+                "Invalid Message Type: Message is not of type %d.  Incoming message type is %d.\n", 
+                AzToolsFramework::AssetSystem::SourceAssetProductsInfoRequest::MessageType(), message->GetMessageType());
+            return true;
+        }
+
+        AzToolsFramework::AssetSystem::SourceAssetProductsInfoResponse response;
+        if (request->m_assetId.IsValid())
+        {
+            AzToolsFramework::AssetSystemRequestBus::BroadcastResult(response.m_found, 
+                &AzToolsFramework::AssetSystem::AssetSystemRequest::GetAssetsProducedBySourceUUID, 
+                request->m_assetId.m_guid, response.m_productsAssetInfo);
+
+            AssetProcessor::ConnectionBus::Event(key.first, &AssetProcessor::ConnectionBusTraits::SendResponse, key.second, response);
+        }
+
+        // note that in the case of an invalid request, response is defaulted to false for m_found, so there is no need to
+        // populate the response in that case.
+
+        AssetProcessor::ConnectionBus::Event(key.first, &AssetProcessor::ConnectionBusTraits::SendResponse, key.second, response);
+        return true;
+    }
+    else if (message->GetMessageType() == AzToolsFramework::AssetSystem::GetScanFoldersRequest::MessageType())
+    {
+        AzToolsFramework::AssetSystem::GetScanFoldersRequest* request = azrtti_cast<AzToolsFramework::AssetSystem::GetScanFoldersRequest*>(message);
+        if (!request)
+        {
+            AZ_TracePrintf(AssetProcessor::DebugChannel, "Invalid Message Type: Message is not of type %d.Incoming message type is %d.\n", 
+                AzToolsFramework::AssetSystem::GetScanFoldersRequest::MessageType(), message->GetMessageType());
+            return true;
+        }
+
+        bool success = true;;
+        AZStd::vector<AZStd::string> scanFolders;
+        AzToolsFramework::AssetSystemRequestBus::BroadcastResult(success, &AzToolsFramework::AssetSystemRequestBus::Events::GetScanFolders, scanFolders);
+        if (!success)
+        {
+            AZ_TracePrintf(AssetProcessor::ConsoleChannel, "Could not acquire a list of scan folders from the database.");
+        }
+
+
+        AzToolsFramework::AssetSystem::GetScanFoldersResponse response(AZStd::move(scanFolders));
+        AssetProcessor::ConnectionBus::Event(key.first, &AssetProcessor::ConnectionBusTraits::SendResponse, key.second, response);
+        return true;
+    }
+    else if (message->GetMessageType() == AzToolsFramework::AssetSystem::GetAssetSafeFoldersRequest::MessageType())
+    {
+        AzToolsFramework::AssetSystem::GetAssetSafeFoldersRequest* request = azrtti_cast<AzToolsFramework::AssetSystem::GetAssetSafeFoldersRequest*>(message);
+        if (!request)
+        {
+            AZ_TracePrintf(AssetProcessor::DebugChannel, "Invalid Message Type: Message is not of type %d.Incoming message type is %d.\n",
+                AzToolsFramework::AssetSystem::GetAssetSafeFoldersRequest::MessageType(), message->GetMessageType());
+            return true;
+        }
+
+        bool success = true;;
+        AZStd::vector<AZStd::string> assetSafeFolders;
+        AzToolsFramework::AssetSystemRequestBus::BroadcastResult(success, &AzToolsFramework::AssetSystemRequestBus::Events::GetAssetSafeFolders, assetSafeFolders);
+        if (!success)
+        {
+            AZ_TracePrintf(AssetProcessor::ConsoleChannel, "Could not acquire a list of asset safe folders from the database.");
+        }
+
+
+        AzToolsFramework::AssetSystem::GetAssetSafeFoldersResponse response(AZStd::move(assetSafeFolders));
+        AssetProcessor::ConnectionBus::Event(key.first, &AssetProcessor::ConnectionBusTraits::SendResponse, key.second, response);
+        return true;
+    }
+
     else if (message->GetMessageType() == RegisterSourceAssetRequest::MessageType())
     {
         RegisterSourceAssetRequest* request = azrtti_cast<RegisterSourceAssetRequest*>(message);
@@ -165,6 +252,35 @@ bool AssetRequestHandler::InvokeHandler(AzFramework::AssetSystem::BaseAssetProce
 
         return true;
     }
+    else if (message->GetMessageType() == AzFramework::AssetSystem::AssetInfoRequest::MessageType())
+    {
+        AssetInfoRequest* request = azrtti_cast<AssetInfoRequest*>(message);
+
+        if (!request)
+        {
+            AZ_TracePrintf(AssetProcessor::DebugChannel, "Invalid Message Type: Message is not of type %d.  Incoming message type is %d.\n", AzFramework::AssetSystem::AssetInfoRequest::MessageType(), message->GetMessageType());
+            return true;
+        }
+
+        AssetInfoResponse response;
+
+        if (request->m_assetId.IsValid())
+        {
+            AZ::Data::AssetInfo assetInfo;
+            AZ::Data::AssetCatalogRequestBus::BroadcastResult(assetInfo, &AZ::Data::AssetCatalogRequestBus::Events::GetAssetInfoById, request->m_assetId);
+            response.m_assetInfo = assetInfo;
+            response.m_found = !assetInfo.m_relativePath.empty() && assetInfo.m_assetType != AZ::Data::s_invalidAssetType && assetInfo.m_assetId.IsValid();
+        }
+        else if (!request->m_assetPath.empty())
+        {
+            bool autoRegisterIfNotFound = false;
+            AZ::Data::AssetCatalogRequestBus::BroadcastResult(response.m_assetInfo.m_assetId, &AZ::Data::AssetCatalogRequestBus::Events::GetAssetIdByPath, request->m_assetPath.c_str(), AZ::Data::s_invalidAssetType, autoRegisterIfNotFound);
+            response.m_found = response.m_assetInfo.m_assetId.IsValid();
+        }
+
+        AssetProcessor::ConnectionBus::Event(key.first, &AssetProcessor::ConnectionBusTraits::SendResponse, key.second, response);
+        return true;
+    }
     else
     {
         auto located = m_RequestHandlerMap.find(message->GetMessageType());
@@ -179,7 +295,7 @@ bool AssetRequestHandler::InvokeHandler(AzFramework::AssetSystem::BaseAssetProce
     }
 }
 
-void AssetRequestHandler::ProcessAssetRequest(NetworkRequestID networkRequestId, BaseAssetProcessorMessage* message, QString platform, bool fencingFailed)
+void AssetRequestHandler::ProcessAssetRequest(NetworkRequestID networkRequestId, BaseAssetProcessorMessage* message, QString platform, bool /*fencingFailed*/)
 {
     using RequestAssetStatus = AzFramework::AssetSystem::RequestAssetStatus;
     RequestAssetStatus* stat = azrtti_cast<RequestAssetStatus*>(message);
@@ -279,7 +395,7 @@ void AssetRequestHandler::OnRequestAssetExistsResponse(NetworkRequestID groupID,
     m_pendingAssetRequests.erase(located);
 }
 
-void AssetRequestHandler::SendAssetStatus(NetworkRequestID groupID, unsigned int type, AssetStatus status)
+void AssetRequestHandler::SendAssetStatus(NetworkRequestID groupID, unsigned int /*type*/, AssetStatus status)
 {
     AzFramework::AssetSystem::ResponseAssetStatus resp;
     resp.m_assetStatus = status;
@@ -296,7 +412,7 @@ void AssetRequestHandler::RegisterRequestHandler(unsigned int messageId, QObject
     m_RequestHandlerMap.insert(messageId, object);
 }
 
-void AssetRequestHandler::DeRegisterRequestHandler(unsigned int messageId, QObject* object)
+void AssetRequestHandler::DeRegisterRequestHandler(unsigned int messageId, QObject* /*object*/)
 {
     auto located = m_RequestHandlerMap.find(messageId);
 

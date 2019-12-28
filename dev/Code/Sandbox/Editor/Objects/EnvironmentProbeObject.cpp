@@ -227,14 +227,12 @@ void CEnvironementProbeObject::GenerateCubemap()
 {
     QString levelfolder = GetIEditor()->GetGameEngine()->GetLevelPath();
     QString levelname = Path::GetFile(levelfolder).toLower();
-    QString fullGameFolder = (Path::GetEditingGameDataFolder() + "\\").c_str();
+    QString fullGameFolder = QString(Path::GetEditingGameDataFolder().c_str());
     QString texturename = (GetName() + QString("_cm.tif")).toLower();
 
-    QString relFolder = QString("Textures\\cubemaps\\") + levelname;
-    QString relFilename = relFolder + "\\" + texturename;
-    QString fullFolder = fullGameFolder + relFolder + "\\";
-    QString fullFilename = fullGameFolder + relFilename;
-
+    QString fullFolder = Path::SubDirectoryCaseInsensitive(fullGameFolder, {"textures", "cubemaps", levelname});
+    QString fullFilename = QDir(fullFolder).absoluteFilePath(texturename);
+    QString relFilename = QDir(fullGameFolder).relativeFilePath(fullFilename);
 
     CFileUtil::CreateDirectory(fullFolder.toUtf8().data());
 
@@ -271,10 +269,11 @@ void CEnvironementProbeTODObject::GenerateCubemap()
 {
     QString levelfolder = QString(GetIEditor()->GetGameEngine()->GetLevelPath());
     QString levelname = Path::GetFile(levelfolder).toLower();
-    QString relFolder = QString("Textures\\cubemaps\\") + levelname;
-    QString fullGameFolder = (Path::GetEditingGameDataFolder() + "\\").c_str();
-    QString fullFolder = fullGameFolder + relFolder + "\\";
-    CFileUtil::CreateDirectory(fullFolder.toLatin1().data());
+    QString fullGameFolder = Path::GetEditingGameDataFolder().c_str();
+    QString fullFolder = Path::SubDirectoryCaseInsensitive(fullGameFolder, {"textures", "cubemaps", levelname});
+    QString relFolder = QDir(fullGameFolder).relativeFilePath(fullFolder);
+
+    CFileUtil::CreateDirectory(fullFolder.toUtf8().data());
 
     int cubemapres = 256;
     m_cubemap_resolution->Get(cubemapres);
@@ -283,8 +282,8 @@ void CEnvironementProbeTODObject::GenerateCubemap()
     for (int i = 1; i <= m_timeSlots; i++)
     {
         QString texturename = (GetName() + QString(string().Format("_tod%d_cm.tif", i))).toLower();
-        QString relFilenameTOD = relFolder + "\\" + texturename;
-        QString fullFilenameTOD = fullGameFolder + relFilenameTOD;
+        QString fullFilenameTOD = QDir(fullFolder).absoluteFilePath(texturename);
+        QString relFilenameTOD = QDir(fullGameFolder).relativeFilePath(fullFilenameTOD);
 
         IVariable* pTODVar = GetProperties()->FindVariable(string().Format("TimeOfDay%d", i), true)->FindVariable("fHour", true);
         if (pTODVar)

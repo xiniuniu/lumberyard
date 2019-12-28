@@ -11,14 +11,14 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "StdAfx.h"
+#include "stdafx.h"
 #include "ConvertContext.h"
 #include "ChunkCompiler.h"
 #include "../Cry3DEngine/CGF/ChunkFileReaders.h"
 #include "../Cry3DEngine/CGF/ChunkFileWriters.h"
 #include "CryHeaders.h"
 #include "IChunkFile.h"
-#include "iconfig.h"
+#include "IConfig.h"
 #include "IResCompiler.h"
 #include "IResourceCompilerHelper.h"
 #include "StringHelpers.h"
@@ -251,12 +251,6 @@ ICompiler* CChunkCompiler::CreateCompiler()
     // convertor may as well just be the same object.
     ++m_refCount;
     return this;
-}
-
-
-bool CChunkCompiler::SupportsMultithreading() const
-{
-    return false;
 }
 
 

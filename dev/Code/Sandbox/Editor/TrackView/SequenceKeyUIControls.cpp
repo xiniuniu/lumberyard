@@ -11,14 +11,14 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "TrackViewDialog.h"
 #include "TrackViewKeyPropertiesDlg.h"
 #include "TrackViewSequence.h"
 #include "TrackViewTrack.h"
 #include "TrackViewSequenceManager.h"
-#include "TrackViewUndo.h"
-#include "Maestro/Types/AnimParamType.h"
+#include <Maestro/Types/AnimParamType.h>
+#include <Maestro/Types/SequenceType.h>
 
 //////////////////////////////////////////////////////////////////////////
 class CSequenceKeyUIControls
@@ -59,6 +59,7 @@ public:
     }
 
 private:
+    bool m_skipOnUIChange = false;
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -128,8 +129,12 @@ bool CSequenceKeyUIControls::OnKeySelectionChange(CTrackViewKeyBundle& selectedK
                 }
             }
 
+            // Don't trigger an OnUIChange event, since this code is the one
+            // updating the start/end ui elements, not the user setting new values.
+            m_skipOnUIChange = true;
             mv_startTime = sequenceKey.fStartTime;
             mv_endTime = sequenceKey.fEndTime;
+            m_skipOnUIChange = false;
 
             bAssigned = true;
         }
@@ -140,9 +145,9 @@ bool CSequenceKeyUIControls::OnKeySelectionChange(CTrackViewKeyBundle& selectedK
 // Called when UI variable changes.
 void CSequenceKeyUIControls::OnUIChange(IVariable* pVar, CTrackViewKeyBundle& selectedKeys)
 {
-    CTrackViewSequence* pSequence = GetIEditor()->GetAnimation()->GetSequence();
+    CTrackViewSequence* sequence = GetIEditor()->GetAnimation()->GetSequence();
 
-    if (!pSequence || !selectedKeys.AreAllKeysOfSameType())
+    if (!sequence || !selectedKeys.AreAllKeysOfSameType() || m_skipOnUIChange)
     {
         return;
     }
@@ -199,8 +204,20 @@ void CSequenceKeyUIControls::OnUIChange(IVariable* pVar, CTrackViewKeyBundle& se
                 pMovieSystem->SetStartEndTime(pSequence, sequenceKey.fStartTime, sequenceKey.fEndTime);
             }
 
-            CUndo::Record(new CUndoTrackObject(keyHandle.GetTrack()));
-            keyHandle.SetKey(&sequenceKey);
+            bool isDuringUndo = false;
+            AzToolsFramework::ToolsApplicationRequests::Bus::BroadcastResult(isDuringUndo, &AzToolsFramework::ToolsApplicationRequests::Bus::Events::IsDuringUndoRedo);
+
+            if (isDuringUndo)
+            {
+                keyHandle.SetKey(&sequenceKey);
+            }
+            else
+            {
+                AzToolsFramework::ScopedUndoBatch undoBatch("Set Key Value");
+                keyHandle.SetKey(&sequenceKey);
+                undoBatch.MarkEntityDirty(sequence->GetSequenceComponentEntityId());
+            }
+
         }
     }
 }

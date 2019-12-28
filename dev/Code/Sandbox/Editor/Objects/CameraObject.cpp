@@ -162,7 +162,7 @@ void CCameraObject::SetName(const QString& name)
 {
     if (gEnv->pMovieSystem && GetName().isEmpty() == false)
     {
-        gEnv->pMovieSystem->OnCameraRenamed(GetName().toLatin1().data(), name.toLatin1().data());
+        gEnv->pMovieSystem->OnCameraRenamed(GetName().toUtf8().data(), name.toUtf8().data());
         GetIEditor()->Notify(eNotify_OnReloadTrackView);
     }
 
@@ -457,8 +457,7 @@ void CCameraObject::OnContextMenu(QMenu* menu)
         menu->addSeparator();
     }
     QAction* action = menu->addAction("Set As View Camera");
-    QObject::connect(action, &QAction::triggered, [this] { OnMenuSetAsViewCamera();
-        });
+    QObject::connect(action, &QAction::triggered, this, &CCameraObject::OnMenuSetAsViewCamera);
 
     CEntityObject::OnContextMenu(menu);
 }

@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "StdAfx.h"
+#include "Maestro_precompiled.h"
 #include <AzCore/Serialization/SerializeContext.h>
 
 #include "AnimScreenFaderNode.h"
@@ -26,7 +26,7 @@
 namespace
 {
     bool s_screenFaderNodeParamsInitialized = false;
-    std::vector<CAnimNode::SParamInfo> s_screenFaderNodeParams;
+    StaticInstance<std::vector<CAnimNode::SParamInfo>> s_screenFaderNodeParams;
 
     void AddSupportedParams(const char* sName, AnimParamType paramId, AnimValueType valueType)
     {
@@ -141,7 +141,7 @@ void CAnimScreenFaderNode::Animate(SAnimContext& ac)
             continue;
         }
 
-        if (ac.bSingleFrame)
+        if (ac.singleFrame)
         {
             m_lastActivatedKey = -1;
         }

@@ -17,20 +17,51 @@
 
 #pragma once
 
-#include "targetver.h"
-
 #if 1
 
-#include <tchar.h>
+#if !defined(_WIN32)
+#include <stdint.h>
+typedef uint16_t uint16;
+typedef int16_t int16;
+typedef uint32_t uint32;
+typedef int32_t int32;
+typedef uint64_t uint64;
+typedef int64_t int64;
+typedef uint32 ULONG;
+typedef uint32 DWORD;
+typedef void* HANDLE;
+typedef void* HWND;
+typedef void* HMODULE;
+typedef unsigned char BYTE;
+typedef uint64 UINT64;
+typedef int32 LONG;
+typedef float FLOAT;
+typedef int HRESULT;
+typedef wchar_t WCHAR;
+typedef const char* LPCSTR;
+typedef char* LPSTR;
+typedef const void* LPCVOID;
+typedef void* LPVOID;
+
+typedef struct _FILETIME
+{
+    DWORD dwLowDateTime;
+    DWORD dwHighDateTime;
+} FILETIME, *PFILETIME;
+
+#define _MAX_PATH 260
+#define WINAPI
+#endif
+
 
 // DH Stuff:
 #include <AzCore/base.h>
-#include <AzCore/platformincl.h>
+#include <AzCore/PlatformIncl.h>
 #include <AzCore/Component/Component.h>
 #include <AzCore/Math/Crc.h>
 #include <AzCore/Memory/SystemAllocator.h>
 #include <AzCore/std/delegate/delegate.h>
-#include <AzCore/debug/trace.h>
+#include <AzCore/Debug/Trace.h>
 #include <AzCore/std/time.h>
 #include <AzCore/std/parallel/mutex.h>
 #include <AzCore/std/parallel/lock.h>
@@ -38,12 +69,11 @@
 #include <AzCore/std/containers/ring_buffer.h>
 #include <AzCore/std/containers/map.h>
 #include <AzCore/std/containers/vector.h>
-#include <AzCore/Math/uuid.h>
+#include <AzCore/Math/Uuid.h>
 #include <AzCore/Serialization/SerializeContext.h>
-#include <AzCore/IO/streamer.h>
+#include <AzCore/IO/Streamer.h>
 #include <AzCore/std/smart_ptr/shared_ptr.h>
 #include <AzCore/std/smart_ptr/make_shared.h>
-#include <WinIoCtl.h>
 
 // QT
 
@@ -53,6 +83,7 @@
 #pragma warning(disable : 4512)
 #pragma warning(disable : 4189)
 #pragma warning(disable : 4718) // warning C4718: 'QMapNode<int,bool>::destroySubTree' : recursive call has no side effects, deleting
+#pragma warning(disable : 4127) // conditional expression is constant in QVector and QMap
 #include <QtWidgets/QtWidgets>
 #include <QtWidgets/QApplication>
 #include <QtCore/QDir>

@@ -15,7 +15,7 @@
 #include <AzCore/std/containers/unordered_map.h>
 #include <AzCore/std/smart_ptr/shared_ptr.h>
 #include <AzCore/std/string/string.h>
-#include <SceneAPI/SceneCore/Components/ExportingComponent.h>
+#include <SceneAPI/SceneCore/Components/RCExportingComponent.h>
 
 namespace AZ
 {
@@ -33,12 +33,12 @@ namespace AZ
         struct MeshNodeExportContext;
 
         class SkinWeightExporter
-            : public SceneAPI::SceneCore::ExportingComponent
+            : public SceneAPI::SceneCore::RCExportingComponent
         {
         public:
             using BoneNameIdMap = AZStd::unordered_map<AZStd::string, int>;
 
-            AZ_COMPONENT(SkinWeightExporter, "{97C7D185-14F5-4BB1-AAE0-120A722882D1}", SceneAPI::SceneCore::ExportingComponent);
+            AZ_COMPONENT(SkinWeightExporter, "{97C7D185-14F5-4BB1-AAE0-120A722882D1}", SceneAPI::SceneCore::RCExportingComponent);
 
             SkinWeightExporter();
             ~SkinWeightExporter() override = default;
@@ -47,13 +47,9 @@ namespace AZ
 
             SceneAPI::Events::ProcessingResult ResolveRootBoneFromNode(ResolveRootBoneFromNodeContext& context);
             SceneAPI::Events::ProcessingResult ProcessSkinWeights(MeshNodeExportContext& context);
+            SceneAPI::Events::ProcessingResult ProcessTouchBendableSkinWeights(TouchBendableMeshNodeExportContext& context);
 
         protected:
-#if defined(AZ_COMPILER_MSVC) && AZ_COMPILER_MSVC <= 1800
-            // Workaround for VS2013 - Delete the copy constructor and make it private
-            // https://connect.microsoft.com/VisualStudio/feedback/details/800328/std-is-copy-constructible-is-broken
-            SkinWeightExporter(const SkinWeightExporter&) = delete;
-#endif
             void SetSkinWeights(MeshNodeExportContext& context, BoneNameIdMap boneNameIdMap);
             int GetGlobalBoneId(const AZStd::shared_ptr<const SceneAPI::DataTypes::ISkinWeightData>& skinWeights, BoneNameIdMap boneNameIdMap, int boneId);
         };

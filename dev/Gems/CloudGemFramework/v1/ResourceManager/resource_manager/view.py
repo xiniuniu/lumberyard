@@ -48,7 +48,7 @@ class ViewContext(object):
             ])
 
     def import_resource(self, name):
-        self._output_message('{name} imported sucessfully'.format(name=name))
+        self._output_message('{name} imported successfully'.format(name=name))
 
     def auto_added_resource(self, name):
         self._output_message('Added related resource with the name {name}'.format(name=name))
@@ -111,11 +111,29 @@ class ViewContext(object):
     def deleting_stack(self, stack_name, stack_id):
         self._output_message('\nDeleting stack {} ({})'.format(stack_name, stack_id))
 
+    def deleting_custom_resource_lambdas(self):
+        self._output_message('Deleting custom resource lambdas')
+
+    def deleting_lambda(self, lambda_name, version=None):
+        if version:
+            self._output_message('Deleting {}:{}'.format(lambda_name, version))
+        else:
+            self._output_message('Deleting {}'.format(lambda_name))
+
+    def deleting_lambdas_completed(self, delete_count):
+        self._output_message('Deleted {} lambdas.'.format(delete_count))
+
     def processing_lambda_code(self, description, function_name):
         self._output_message('\nProcessing code for the {} {} Lambda function.'.format(description, function_name))
 
     def processing_template(self, description):
         self._output_message('\nProcessing the {} Cloud Formation template.'.format(description))
+
+    def version_update(self, from_version, to_version, json):
+        self._output_message('Converting local project settings from {} with a local project settings file defined by \n\'{}\'\n to {} format'.format(from_version, json, to_version))
+
+    def version_update_complete(self, to_version, json):
+        self._output_message('Local project settings for version {} is now \'{}\''.format(to_version, json))
 
     def sack_event(self, event):
 
@@ -191,7 +209,7 @@ created using Cloud Canvas and CloudFormation in the same manner as if you creat
 You only pay for what you use, as you use it; there are no minimum fees and no required upfront
 commitments, and most services include a free tier.
 
-Learn more at https://docs.aws.amazon.com/lumberyard/userguide/cloud-canvas.''')
+Learn more at https://docs.aws.amazon.com/lumberyard/latest/userguide/cloud-canvas-intro.html.''')
 
     def confirm_resource_deletion(self, resources, stack_description = None):
         '''Prompts the user to confirm that it is ok to delete the specified resources.
@@ -321,6 +339,14 @@ Learn more at https://docs.aws.amazon.com/lumberyard/userguide/cloud-canvas.''')
                 { 'Field': 'Name', 'Heading': 'Name' },
                 { 'Field': 'ResourceType', 'Heading': 'Type' },
                 { 'Field': 'PhysicalResourceId', 'Heading': 'Id' }
+            ])
+    
+    def path_list(self, mappings):        
+        self._output_message('\nPath mappings for the Cloud Gem Framework:')        
+        self.__output_table(mappings,
+            [
+                { 'Field': 'Type', 'Heading': 'Type' },
+                { 'Field': 'Path', 'Heading': 'Path' },                
             ])
 
     def mapping_update(self, deployment_name, args):        
@@ -683,16 +709,12 @@ Learn more at https://docs.aws.amazon.com/lumberyard/userguide/cloud-canvas.''')
     def using_deprecated_lambda_code_path(self, function_name, path, prefered_path):
         self._output_message('WARNING: using deprecated Lambda Function code directory path naming convention for {} at {}. The prefered path is {}.'.format(function_name, path, prefered_path))
 
-    def missing_project_settings(self, bucket, key, message):
-        self._output_message('\nERROR: Project settings could not be read from bucket {} object {}. Default settings will be used! {} \n'.format(
-            bucket, key, message))
-            
     def invalid_user_default_deployment_clearing(self, name):
         self._output_message('\nWARNING: The {} user default deployment is invalid.  Setting default to none.\n'.format(name))
         
     def invalid_project_default_deployment_clearing(self, name):
-        self._output_message('\nWARNING: The {} project default deployment is invalid.  Setting default to none.\n'.format(name))
-        
+        self._output_message('\nWARNING: The {} project default deployment is invalid.  Setting default to none.\n'.format(name))    
+
     def updating_framework_version(self, from_version, to_version):
         self._output_message('Updating the CloudGemFramework used by the project from version {} to {}.'.format(from_version, to_version))
 

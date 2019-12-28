@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 
 #include <AzCore/IO/GenericStreams.h>
 #include <AzFramework/Asset/SimpleAsset.h>
@@ -135,7 +135,7 @@ namespace LmbrCentral
 
     const char* LensFlareAssetHandler::GetBrowserIcon() const
     {
-        return "Editor/Icons/Components/LensFlare.png";
+        return "Editor/Icons/Components/LensFlare.svg";
     }
 
     AZ::Uuid LensFlareAssetHandler::GetComponentTypeId() const

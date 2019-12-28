@@ -37,7 +37,8 @@ namespace LmbrCentral
         virtual bool IsMaterialOwnerReady() { return true; }
 
         //! Sets the component's current material. This MaterialHandle version provides support for BehaviorContext reflection.
-        virtual void SetMaterialHandle(MaterialHandle) {};
+        //! \param materialHandle       New material handle
+        virtual void SetMaterialHandle(const MaterialHandle& /*materialHandle*/) {};
         //! Gets the component's current material. This MaterialHandle version provides support for BehaviorContext reflection.
         virtual MaterialHandle GetMaterialHandle() { return MaterialHandle(); }
 
@@ -91,7 +92,7 @@ namespace LmbrCentral
     };
 
     using MaterialOwnerRequestBus = AZ::EBus<MaterialOwnerRequests>;
-    
+
     /*!
      * Messages sent by components that support materials (e.g. Mesh, Decal).
      * We specifically chose the name "MaterialOwnerNotificationBus" rather than just "MaterialNotificationBus" to communicate
@@ -107,6 +108,29 @@ namespace LmbrCentral
         //! doesn't exist yet.
         virtual void OnMaterialOwnerReady() = 0;
 
+        /**
+        * When connecting to this bus, if the material owner is ready you will immediately get an OnMaterialOwnerReady event
+        **/
+        template<class Bus>
+        struct ConnectionPolicy
+            : public AZ::EBusConnectionPolicy<Bus>
+        {
+            static void Connect(typename Bus::BusPtr& busPtr, typename Bus::Context& context, typename Bus::HandlerNode& handler, const typename Bus::BusIdType& id = 0)
+            {
+                AZ::EBusConnectionPolicy<Bus>::Connect(busPtr, context, handler, id);
+
+                bool readyResult = false;
+                LmbrCentral::MaterialOwnerRequestBus::EventResult(
+                    readyResult,
+                    id,
+                    &LmbrCentral::MaterialOwnerRequestBus::Events::IsMaterialOwnerReady);
+
+                if (readyResult)
+                {
+                    handler->OnMaterialOwnerReady();
+                }
+            }
+        };
     };
 
     using MaterialOwnerNotificationBus = AZ::EBus<MaterialOwnerNotifications>;

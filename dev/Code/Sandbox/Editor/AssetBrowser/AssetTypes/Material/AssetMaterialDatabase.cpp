@@ -14,7 +14,7 @@
 // Description : Implements AssetMaterialDatabase.h
 
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "AssetMaterialDatabase.h"
 #include "AssetMaterialItem.h"
 #include "IMaterial.h"
@@ -182,12 +182,12 @@ void CAssetMaterialDatabase::Refresh()
         }
 
         poMaterialDatabaseItem->SetFileSize(rstFileDescriptor.size);
-        poMaterialDatabaseItem->SetFilename(strFileNameOnly.toLatin1().data());
-        poMaterialDatabaseItem->SetRelativePath(strPathOnly.toLatin1().data());
+        poMaterialDatabaseItem->SetFilename(strFileNameOnly.toUtf8().data());
+        poMaterialDatabaseItem->SetRelativePath(strPathOnly.toUtf8().data());
         poMaterialDatabaseItem->SetOwnerDatabase(this);
-        poMaterialDatabaseItem->SetFileExtension(strExtension.toLatin1().data());
+        poMaterialDatabaseItem->SetFileExtension(strExtension.toUtf8().data());
         poMaterialDatabaseItem->SetFlag(IAssetItem::eFlag_Visible, true);
-        poMaterialDatabaseItem->SetHash(AssetBrowser::HashStringSbdm(strOutputMaterialName.toLatin1().data()));
+        poMaterialDatabaseItem->SetHash(CAssetBrowserManager::HashStringSbdm(strOutputMaterialName.toUtf8().data()));
         m_assets[strOutputMaterialName] = poMaterialDatabaseItem;
     }
 }

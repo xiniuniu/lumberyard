@@ -10,13 +10,16 @@
 *
 */
 
+#include <AzQtComponents/Components/ExtendedLabel.h>
+
 #include "ArticleView.h"
 #include "NewsShared/ResourceManagement/ArticleDescriptor.h"
+AZ_PUSH_DISABLE_WARNING(4251, "-Wunknown-warning-option") // 4251: 'QVariant::d': struct 'QVariant::Private' needs to have dll-interface to be used by clients of class 'QVariant'
 #include "NewsShared/Qt/ui_ArticleView.h"
+AZ_POP_DISABLE_WARNING
 #include "NewsShared/Qt/ui_PinnedArticleView.h"
 #include "NewsShared/ResourceManagement/ResourceManifest.h"
 #include "NewsShared/ResourceManagement/Resource.h"
-#include "NewsShared/Qt/QBetterLabel.h"
 
 #include <QDesktopServices>
 #include <QUrl>
@@ -54,12 +57,12 @@ void ArticleView::Update()
             {
                 if (!m_icon)
                 {
-                    m_icon = new QBetterLabel(this);
+                    m_icon = new AzQtComponents::ExtendedLabel(this);
                     m_icon->setStyleSheet("border: none;");
                     m_icon->setAlignment(Qt::AlignCenter);
                     static_cast<QVBoxLayout*>(
                         m_widgetImageFrame->layout())->insertWidget(0, m_icon);
-                    connect(m_icon, &QBetterLabel::clicked, this, &ArticleView::articleSelectedSlot);
+                    connect(m_icon, &AzQtComponents::ExtendedLabel::clicked, this, &ArticleView::articleSelectedSlot);
                 }
                 m_icon->setPixmap(pixmap.scaled(m_widgetImageFrame->minimumWidth(), 
                     m_widgetImageFrame->minimumHeight(),
@@ -107,7 +110,7 @@ QSharedPointer<const ArticleDescriptor> ArticleView::GetArticle() const
     return m_pArticle;
 }
 
-void ArticleView::SetupViewWidget(QFrame* widgetImageFrame, QBetterLabel* widgetTitle, QBetterLabel* widgetBody)
+void ArticleView::SetupViewWidget(QFrame* widgetImageFrame, AzQtComponents::ExtendedLabel* widgetTitle, AzQtComponents::ExtendedLabel* widgetBody)
 {
     Q_ASSERT(m_widgetImageFrame == nullptr && m_widgetTitle == nullptr && m_widgetBody == nullptr);
 
@@ -117,8 +120,8 @@ void ArticleView::SetupViewWidget(QFrame* widgetImageFrame, QBetterLabel* widget
 
     connect(m_widgetTitle, &QLabel::linkActivated, this, &ArticleView::linkActivatedSlot);
     connect(m_widgetBody, &QLabel::linkActivated, this, &ArticleView::linkActivatedSlot);
-    connect(m_widgetTitle, &QBetterLabel::clicked, this, &ArticleView::articleSelectedSlot);
-    connect(m_widgetBody, &QBetterLabel::clicked, this, &ArticleView::articleSelectedSlot);
+    connect(m_widgetTitle, &AzQtComponents::ExtendedLabel::clicked, this, &ArticleView::articleSelectedSlot);
+    connect(m_widgetBody, &AzQtComponents::ExtendedLabel::clicked, this, &ArticleView::articleSelectedSlot);
 
     Q_ASSERT(m_widgetImageFrame && m_widgetTitle && m_widgetBody);
 }

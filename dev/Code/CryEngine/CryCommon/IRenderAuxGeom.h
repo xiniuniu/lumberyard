@@ -200,6 +200,27 @@ struct IRenderAuxGeom
     //##@{
     virtual void RenderText(Vec3 pos, SDrawTextInfo& ti, const char* format, va_list args) = 0;
 
+    // Summary:
+    //   Draws 3d Label.
+    //##@{
+    void Draw3dLabel(Vec3 pos, float font_size, const ColorF& color, const char* label_text, ...) PRINTF_PARAMS(5, 6)
+    {
+        va_list args;
+        va_start(args, label_text);
+
+        SDrawTextInfo ti;
+        ti.xscale = ti.yscale = font_size;
+        ti.color[0] = color[0];
+        ti.color[1] = color[1];
+        ti.color[2] = color[2];
+        ti.color[3] = color[3];
+        ti.flags = eDrawText_2D | eDrawText_FixedSize | eDrawText_Monospace;
+
+        RenderText(pos, ti, label_text, args);
+
+        va_end(args);
+    }
+
     void Draw2dLabelInternal(float x, float y, float font_size, const float* pfColor, int flags, const char* format, va_list args)
     {
         SDrawTextInfo ti;
@@ -226,10 +247,10 @@ struct IRenderAuxGeom
 
     void Draw2dLabel(float x, float y, float font_size, const ColorF& fColor, bool bCenter, const char* label_text, ...) PRINTF_PARAMS(7, 8)
     {
-        const float& pColor = fColor[0];
+        const AZStd::array<float, 4> color = fColor.GetAsArray();
         va_list args;
         va_start(args, label_text);
-        Draw2dLabelInternal(x, y, font_size, &pColor, (bCenter ? eDrawText_Center : eDrawText_Left), label_text, args);
+        Draw2dLabelInternal(x, y, font_size, color.data(), (bCenter ? eDrawText_Center : eDrawText_Left), label_text, args);
         va_end(args);
     }
 
@@ -243,10 +264,10 @@ struct IRenderAuxGeom
 
     void Draw2dLabelCustom(float x, float y, float font_size, const ColorF& fColor, int flags, const char* label_text, ...) PRINTF_PARAMS(7, 8)
     {
-        const float& pColor = fColor[0];
+        const AZStd::array<float, 4> color = fColor.GetAsArray();
         va_list args;
         va_start(args, label_text);
-        Draw2dLabelInternal(x, y, font_size, &pColor, flags, label_text, args);
+        Draw2dLabelInternal(x, y, font_size, color.data(), flags, label_text, args);
         va_end(args);
     }
     //##@}

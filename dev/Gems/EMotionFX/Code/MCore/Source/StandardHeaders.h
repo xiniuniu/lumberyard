@@ -12,8 +12,9 @@
 
 #pragma once
 
+#include <AzCore/PlatformDef.h>
+
 // include standard core headers
-#include "Platform.h"
 #include "Config.h"
 #include "Macros.h"
 #include "MemoryCategoriesCore.h"
@@ -30,54 +31,6 @@
 #include <stdarg.h>
 #include <wchar.h>
 //#include <complex.h>
-
-#if (MCORE_COMPILER != MCORE_COMPILER_CODEWARRIOR)
-//  #include <malloc.h>
-//  #include <memory.h>
-#endif
-
-#if (MCORE_COMPILER != MCORE_COMPILER_GCC)
-    #include <new.h>
-#else
-    #include <new>
-    #include <ctype.h>  // strupr and strlwr
-#endif
-
-
-// include the Windows header
-#if defined(MCORE_PLATFORM_WINDOWS)
-/*
-    #ifndef _WIN32_WINNT
-        #define _WIN32_WINNT 0x0500
-    #endif
-    #ifndef WIN32
-        #define WIN32
-    #endif
-    #ifndef WIN32_LEAN_AND_MEAN
-        #define WIN32_LEAN_AND_MEAN
-    #endif
-*/
-    #include <windows.h>
-#endif
-
-
-// include the revolution sdk
-#ifdef MCORE_PLATFORM_WII
-    #include <revolution.h>
-    #include <revolution/mtx/mtx44ext.h>
-#endif
-
-
-#ifdef MCORE_PLATFORM_ANDROID
-    #include <time.h>
-    #include <android/log.h>
-#endif
-
-
-#ifdef MCORE_SSE_ENABLED
-    #include <intrin.h>
-    #pragma intrinsic( _mm_hadd_ps )
-#endif
 
 // include the system
 #include "MCoreSystem.h"

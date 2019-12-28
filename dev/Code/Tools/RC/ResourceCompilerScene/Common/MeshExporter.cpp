@@ -41,7 +41,7 @@ namespace AZ
             SerializeContext* serializeContext = azrtti_cast<SerializeContext*>(context);
             if (serializeContext)
             {
-                serializeContext->Class<MeshExporter, SceneAPI::SceneCore::ExportingComponent>()->Version(1);
+                serializeContext->Class<MeshExporter, SceneAPI::SceneCore::RCExportingComponent>()->Version(1);
             }
         }
 
@@ -107,7 +107,8 @@ namespace AZ
 
                 // Create and use a unified subset if the mesh is chosen to be physicalized
                 if (physicalizeType == PHYS_GEOM_TYPE_DEFAULT_PROXY ||
-                    physicalizeType == PHYS_GEOM_TYPE_OBSTRUCT)
+                    physicalizeType == PHYS_GEOM_TYPE_OBSTRUCT ||
+                    physicalizeType == PHYS_GEOM_TYPE_NO_COLLIDE)
                 {
                     mesh.m_pFaces[i].nSubset = 0;
                     if (mesh.m_subsets.empty())

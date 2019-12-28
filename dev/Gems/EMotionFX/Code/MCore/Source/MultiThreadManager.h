@@ -14,22 +14,17 @@
 
 // include required headers
 #include "StandardHeaders.h"
-#include "Array.h"
-#include "MCoreSystem.h"
 
 // some c++11 concurrency features
-#include <functional>
-#include <mutex>
-#include <atomic>
-#include <condition_variable>
-#include <thread>
+#include <AzCore/std/functional.h>
+#include <AzCore/std/parallel/mutex.h>
+#include <AzCore/std/parallel/lock.h>
+#include <AzCore/std/parallel/atomic.h>
+#include <AzCore/std/parallel/condition_variable.h>
 
 
 namespace MCore
 {
-    // forward declarations
-    class JobList;
-
 
     class MCORE_API Mutex
     {
@@ -43,7 +38,7 @@ namespace MCore
         MCORE_INLINE bool TryLock()         { return mMutex.try_lock(); }
 
     private:
-        std::mutex  mMutex;
+        AZStd::mutex  mMutex;
     };
 
 
@@ -58,7 +53,7 @@ namespace MCore
         MCORE_INLINE bool TryLock()         { return mMutex.try_lock(); }
 
     private:
-        std::recursive_mutex    mMutex;
+        AZStd::recursive_mutex    mMutex;
     };
 
 
@@ -68,13 +63,13 @@ namespace MCore
         MCORE_INLINE ConditionVariable()    {}
         MCORE_INLINE ~ConditionVariable()   {}
 
-        MCORE_INLINE void Wait(Mutex& mtx, const std::function<bool()>& predicate)              { std::unique_lock<std::mutex> lock(mtx.mMutex); mVariable.wait(lock, predicate); }
-        MCORE_INLINE void WaitWithTimeout(Mutex& mtx, uint32 microseconds, const std::function<bool()>& predicate)  { std::unique_lock<std::mutex> lock(mtx.mMutex); mVariable.wait_for(lock, std::chrono::microseconds(microseconds), predicate); }
+        MCORE_INLINE void Wait(Mutex& mtx, const AZStd::function<bool()>& predicate)              { AZStd::unique_lock<AZStd::mutex> lock(mtx.mMutex); mVariable.wait(lock, predicate); }
+        MCORE_INLINE void WaitWithTimeout(Mutex& mtx, uint32 microseconds, const AZStd::function<bool()>& predicate)  { AZStd::unique_lock<AZStd::mutex> lock(mtx.mMutex); mVariable.wait_for(lock, AZStd::chrono::microseconds(microseconds), predicate); }
         MCORE_INLINE void NotifyOne()                                                           { mVariable.notify_one(); }
         MCORE_INLINE void NotifyAll()                                                           { mVariable.notify_all(); }
 
     private:
-        std::condition_variable mVariable;
+        AZStd::condition_variable mVariable;
     };
 
 
@@ -91,7 +86,7 @@ namespace MCore
         MCORE_INLINE int32 Decrement()              { return mAtomic--; }
 
     private:
-        std::atomic<int32>  mAtomic;
+        AZStd::atomic<int32>  mAtomic;
     };
 
 
@@ -109,7 +104,7 @@ namespace MCore
         MCORE_INLINE uint32 Decrement()             { return mAtomic--; }
 
     private:
-        std::atomic<uint32> mAtomic;
+        AZStd::atomic<uint32> mAtomic;
     };
 
 
@@ -117,14 +112,14 @@ namespace MCore
     {
     public:
         Thread() {}
-        Thread(const std::function<void()>& threadFunction)         { Init(threadFunction); }
+        Thread(const AZStd::function<void()>& threadFunction)         { Init(threadFunction); }
         ~Thread() {}
 
-        void Init(const std::function<void()>& threadFunction)      { mThread = std::thread(threadFunction); }
+        void Init(const AZStd::function<void()>& threadFunction)      { mThread = AZStd::thread(threadFunction); }
         void Join()         { mThread.join(); }
 
     private:
-        std::thread mThread;
+        AZStd::thread mThread;
     };
 
 
@@ -159,13 +154,11 @@ namespace MCore
         void Reset()                { mConditionValue = false; }
         void Wait()
         {
-            mCV.Wait(mMutex, [this] { return mConditionValue;
-                });
+            mCV.Wait(mMutex, [this] { return mConditionValue; });
         }
         void WaitWithTimeout(uint32 microseconds)
         {
-            mCV.WaitWithTimeout(mMutex, microseconds, [this] { return mConditionValue;
-                });
+            mCV.WaitWithTimeout(mMutex, microseconds, [this] { return mConditionValue; });
         }
         void NotifyAll()            { mConditionValue = true; mCV.NotifyAll(); }
         void NotifyOne()            { mConditionValue = true; mCV.NotifyOne(); }
@@ -176,14 +169,4 @@ namespace MCore
         bool                mConditionValue;
     };
 
-
-    // the main job list execute function, call this one to execute work
-    MCORE_API void ExecuteJobList(JobList* jobList, bool addSyncPointAfterList = true, bool waitForJobListToFinish = true); // the main function you should call
-
-    // implementations (do not call these directly, use ExecuteJobList instead)
-    MCORE_API void JobListExecuteSerial(JobList* jobList, bool addSyncPointAfterList, bool waitForJobListToFinish);         // serial execution (no multi-threading)
-    MCORE_API void JobListExecuteMCoreJobSystem(JobList* jobList, bool addSyncPointAfterList, bool waitForJobListToFinish); // parallel execution using the MCore job system
-#ifdef MCORE_OPENMP_ENABLED
-    MCORE_API void JobListExecuteOpenMP(JobList* jobList, bool addSyncPointAfterList, bool waitForJobListToFinish);         // parallel execution using OpenMP
-#endif
 }   // namespace MCore

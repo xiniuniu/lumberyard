@@ -17,7 +17,7 @@
 #include "WipFeatureManager.h"
 #include "WipFeaturesDlg.h"
 
-#if defined(AZ_PLATFORM_WINFOWS)
+#if defined(AZ_PLATFORM_WINDOWS)
 const char* CWipFeatureManager::kWipFeaturesFilename = "@user@\\Editor\\UI\\WipFeatures.xml";
 #else
 const char* CWipFeatureManager::kWipFeaturesFilename = "@user@/Editor/UI/WipFeatures.xml";
@@ -86,7 +86,7 @@ static void WipFeatureVarChange(ICVar* pVar)
             }
             else
             {
-                CWipFeatureManager::Instance()->SetAllFeaturesParams(attr.toLatin1().data());
+                CWipFeatureManager::Instance()->SetAllFeaturesParams(attr.toUtf8().data());
             }
 
             return;
@@ -123,7 +123,7 @@ static void WipFeatureVarChange(ICVar* pVar)
         }
         else
         {
-            CWipFeatureManager::Instance()->SetFeatureParams(id, attr.toLatin1().data());
+            CWipFeatureManager::Instance()->SetFeatureParams(id, attr.toUtf8().data());
         }
     }
 }

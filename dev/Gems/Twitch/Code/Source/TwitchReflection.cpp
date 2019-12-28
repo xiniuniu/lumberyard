@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "Twitch_precompiled.h"
 #include <AzCore/Script/ScriptContext.h>
 #include <AzCore/RTTI/BehaviorContext.h>
 #include <Twitch/TwitchBus.h>
@@ -27,8 +27,6 @@ namespace AZ
     AZ_TYPE_INFO_SPECIALIZE(Twitch::PresenceActivityType, "{B8D3EFFC-D71E-4441-9D09-BFD585A4B1B8}");
     AZ_TYPE_INFO_SPECIALIZE(Twitch::BroadCastType, "{751DA7A4-A080-4DE4-A15F-F63B2B066AA6}");
     AZ_TYPE_INFO_SPECIALIZE(Twitch::CommercialLength, "{76255136-2B04-4EE2-A499-BBB141A28716}");
-    AZ_TYPE_INFO_SPECIALIZE(Twitch::FuelProductType, "{D8580D3E-96F5-44B6-A326-204F0B7B6023}");
-    AZ_TYPE_INFO_SPECIALIZE(Twitch::FulfillmentResult, "{EF77203B-7D09-41A6-AE6A-4BFED64C00BF}");
 }
 
 namespace Twitch
@@ -41,14 +39,6 @@ namespace Twitch
         switch(code)
         {
             ENUMCASE(ResultCode::Success)
-            ENUMCASE(ResultCode::FuelSDKNotInitialized)
-            ENUMCASE(ResultCode::FuelNoSession)
-            ENUMCASE(ResultCode::FuelNoApplicationID)
-            ENUMCASE(ResultCode::FuelNoIAPClient)
-            ENUMCASE(ResultCode::FuelMissingCredentials)
-            ENUMCASE(ResultCode::FuelProductDataFail)
-            ENUMCASE(ResultCode::FuelIllformedSku)
-            ENUMCASE(ResultCode::FuelPurchaseFail)
             ENUMCASE(ResultCode::InvalidParam)
             ENUMCASE(ResultCode::TwitchRESTError)
             ENUMCASE(ResultCode::TwitchChannelNoUpdatesToMake)
@@ -91,38 +81,6 @@ namespace Twitch
         return txtCode;
     }
 
-    AZStd::string FuelProductTypeToString(FuelProductType productType)
-    {
-        AZStd::string txtCode;
-        switch (productType)
-        {
-            ENUMCASE(FuelProductType::Consumable)
-            ENUMCASE(FuelProductType::Entitlement)
-            ENUMCASE(FuelProductType::Subscription)
-            ENUMCASE(FuelProductType::Unknown)
-            ENUMCASE(FuelProductType::Undefined)
-        default:
-            txtCode = AZStd::string::format("Undefined FuelProductTypeToString value (%llu)", static_cast<AZ::u64>(productType));
-        }
-
-        return txtCode;
-    }
-
-    AZStd::string FulfillmentResultToString(FulfillmentResult fulfillmentResult)
-    {
-        AZStd::string txtCode;
-        switch (fulfillmentResult)
-        {
-            ENUMCASE(FulfillmentResult::Fulfilled)
-            ENUMCASE(FulfillmentResult::Unavailable)
-            ENUMCASE(FulfillmentResult::Undefined)
-        default:
-            txtCode = AZStd::string::format("Undefined FulfillmentResult value (%llu)", static_cast<AZ::u64>(fulfillmentResult));
-        }
-
-        return txtCode;
-    }
-
     AZStd::string BoolName(bool value, const AZStd::string & trueText, const AZStd::string & falseText)
     {
         return value ? trueText : falseText;
@@ -141,12 +99,12 @@ namespace Twitch
 
     AZStd::string UserInfoMiniString(const UserInfo & info)
     {
-        return  UserInfoIDToString(info) + 
+        return  UserInfoIDToString(info) +
                 " DisplayName:" + info.DisplayName +
                 " Name:" + info.Name +
                 " Type:" + info.Type;
     }
-    
+
     AZStd::string UserInfoToString(const UserInfo & info)
     {
         return  UserInfoMiniString(info) +
@@ -232,10 +190,10 @@ namespace Twitch
 
     AZStd::string FriendRequestToString(const FriendRequest & info)
     {
-        return  UserInfoIDToString(info.User) + 
+        return  UserInfoIDToString(info.User) +
                 " IsRecommended:" + BoolName(info.IsRecommended, "Yes", "No") +
                 " IsStranger:" + BoolName(info.IsStranger, "Yes", "No") +
-                " NonStrangerReason:" + info.NonStrangerReason + 
+                " NonStrangerReason:" + info.NonStrangerReason +
                 " RequestedDate:" + info.RequestedDate;
     }
 
@@ -345,7 +303,7 @@ namespace Twitch
 
     AZStd::string TeamInfoToString(const TeamInfo& info)
     {
-        return  "ID:" + info.ID + 
+        return  "ID:" + info.ID +
                 " Background:" + info.Background +
                 " Banner:" + info.Banner +
                 " CreatedDate:" + info.CreatedDate +
@@ -378,10 +336,10 @@ namespace Twitch
     AZStd::string SubscriberInfoToString(const SubscriberInfo& info)
     {
         return  "ID:" + info.ID +
-                " CreatedDate:" + info.CreatedDate + 
+                " CreatedDate:" + info.CreatedDate +
                 UserInfoIDToString(info.User);
     }
-    
+
     AZStd::string SubscriberInfoListToString(const SubscriberInfoList& info)
     {
         AZStd::string strList;
@@ -447,33 +405,31 @@ namespace Twitch
                 " Summary:" + info.Summary;
     }
 
-    AZStd::string ProductDataReturnToString(const ProductData& info)
+    AZStd::string CommunityInfoListToString(const CommunityInfoList& info)
     {
-        return  " Products:" + AZStd::string::format("%llu", static_cast<AZ::u64>(info.ProductList.size())) +
-                " UnavailableSkus:" + AZStd::string::format("%llu", static_cast<AZ::u64>(info.UnavailableSkus.size()));
+        AZStd::string strList;
+
+        for (const auto & i : info)
+        {
+            if (!strList.empty())
+            {
+                strList += ",";
+            }
+
+            strList += "{";
+            strList += CommunityInfoToString(i);
+            strList += "}";
+        }
+
+        return strList;
     }
 
-    AZStd::string PurchaseReceiptToString(const PurchaseReceipt& info)
-    {
-        return  "Sku:" + info.Sku +
-                " ReceiptId:" + info.ReceiptId +
-                " PurchaseDate:" + AZStd::string::format("%llu", info.PurchaseDate) +
-                " CancelDate:" + AZStd::string::format("%llu", info.CancelDate) +
-                " Type:" + FuelProductTypeToString(info.Type);
-    }
-
-    AZStd::string PurchaseUpdateToString(const PurchaseUpdate& info)
-    {
-        return  "SyncToken:" + info.SyncToken +
-                " NumProducts:" + AZStd::string::format("%llu", static_cast<AZ::u64>(info.Products.size()) );
-    }
-    
     AZStd::string ReturnValueToString(const ReturnValue& info)
     {
-        return  "ReceiptID:" + AZStd::string::format("%llu", info.GetID()) + 
+        return  "ReceiptID:" + AZStd::string::format("%llu", info.GetID()) +
                 " Result: " + ResultCodeToString(info.Result);
     }
-   
+
     AZStd::string Int64Value::ToString() const
     {
         return  ReturnValueToString(*this) +
@@ -501,7 +457,7 @@ namespace Twitch
     AZStd::string FriendRecommendationValue::ToString() const
     {
         return  ReturnValueToString(*this) +
-                " ListSize:" + AZStd::string::format("%llu-", static_cast<AZ::u64>(Value.size())) + 
+                " ListSize:" + AZStd::string::format("%llu-", static_cast<AZ::u64>(Value.size())) +
                 " Recommendations:" + FriendRecommendationsToString(Value);
     }
 
@@ -509,14 +465,14 @@ namespace Twitch
     {
         return  ReturnValueToString(*this) +
                 " ListSize:" + AZStd::string::format("%llu-", static_cast<AZ::u64>(Value.Friends.size())) +
-                " Cursor:" + Value.Cursor + 
+                " Cursor:" + Value.Cursor +
                 " Friends:" + FriendListToString(Value.Friends);
     }
 
     AZStd::string FriendStatusValue::ToString() const
     {
         return  ReturnValueToString(*this) +
-                " Status:" + Value.Status + 
+                " Status:" + Value.Status +
                 UserInfoToString(Value.User);
     }
 
@@ -524,7 +480,7 @@ namespace Twitch
     {
         return  ReturnValueToString(*this) +
                 " Total:" + AZStd::string::format("%llu", Value.Total) +
-                " Cursor:" + Value.Cursor + 
+                " Cursor:" + Value.Cursor +
                 " Requests:" + FriendRequestListToString(Value.Requests);
     }
 
@@ -558,7 +514,7 @@ namespace Twitch
     {
         return  ReturnValueToString(*this) +
                 " Total:" + AZStd::string::format("%llu", Value.Total) +
-                " Cursor:" + Value.Cursor + 
+                " Cursor:" + Value.Cursor +
                 " Followers:" + FollowerListToString(Value.Followers);
     }
 
@@ -601,24 +557,13 @@ namespace Twitch
                 " " + CommunityInfoToString(Value);
     }
 
-    AZStd::string ProductDataReturnValue::ToString() const
+    AZStd::string CommunityInfoReturnValue::ToString() const
     {
         return  ReturnValueToString(*this) +
-                " " + ProductDataReturnToString(Value);
+            " Total:" + AZStd::string::format("%llu", Value.Total) +
+            " Communities:" + CommunityInfoListToString(Value.Communities);
     }
 
-    AZStd::string PurchaseReceiptReturnValue::ToString() const
-    {
-        return  ReturnValueToString(*this) +
-                " " + PurchaseReceiptToString(Value);
-    }
-
-    AZStd::string PurchaseUpdateReturnValue::ToString() const
-    {
-        return  ReturnValueToString(*this) +
-                " " + PurchaseUpdateToString(Value);
-    }
-    
     namespace Internal
     {
         class BehaviorTwitchNotifyBus
@@ -629,10 +574,6 @@ namespace Twitch
             AZ_EBUS_BEHAVIOR_BINDER(BehaviorTwitchNotifyBus, "{63EEA49D-1205-4E43-9451-26ACF5771901}", AZ::SystemAllocator,
                 UserIDNotify,
                 OAuthTokenNotify,
-                EntitlementNotify,
-                RequestProductCatalog,
-                PurchaseProduct,
-                GetPurchaseUpdates,
                 GetUser,
                 ResetFriendsNotificationCountNotify,
                 GetFriendNotificationCount,
@@ -657,10 +598,7 @@ namespace Twitch
                 CheckChannelSubscriptionbyUser,
                 GetChannelVideos,
                 StartChannelCommercial,
-                ResetChannelStreamKey,
-                GetChannelCommunity,
-                SetChannelCommunity,
-                DeleteChannelfromCommunity);
+                ResetChannelStreamKey);
 
             void UserIDNotify(const StringValue& userID)
             {
@@ -672,26 +610,6 @@ namespace Twitch
                 Call(FN_OAuthTokenNotify, token);
             }
 
-            void EntitlementNotify(const StringValue& result)
-            {
-                Call(FN_EntitlementNotify, result);
-            }
-
-            void OnRequestProductCatalog(const ProductDataReturnValue& result)
-            {
-                Call(FN_RequestProductCatalog, result);
-            }
-
-            void OnPurchaseProduct(const PurchaseReceiptReturnValue& result)
-            {
-                Call(FN_PurchaseProduct, result);
-            }
-
-            void OnGetPurchaseUpdates(const PurchaseUpdateReturnValue& result)
-            {
-                Call(FN_GetPurchaseUpdates, result);
-            }
-            
             void GetUser(const UserInfoValue& result)
             {
                 Call(FN_GetUser, result);
@@ -706,7 +624,7 @@ namespace Twitch
             {
                 Call(FN_GetFriendNotificationCount, result);
             }
-  
+
             void GetFriendRecommendations(const FriendRecommendationValue& result)
             {
                 Call(FN_GetFriendRecommendations, result);
@@ -716,7 +634,7 @@ namespace Twitch
             {
                 Call(FN_GetFriends, result);
             }
-            
+
             void GetFriendStatus(const FriendStatusValue& result)
             {
                 Call(FN_GetFriendStatus, result);
@@ -731,7 +649,7 @@ namespace Twitch
             {
                 Call(FN_GetFriendRequests, result);
             }
-            
+
             void CreateFriendRequest(const Int64Value& result)
             {
                 Call(FN_CreateFriendRequest, result);
@@ -751,7 +669,7 @@ namespace Twitch
             {
                 Call(FN_GetPresenceStatusofFriends, result);
             }
-            
+
             void GetPresenceSettings(const PresenceSettingsValue& result)
             {
                 Call(FN_GetPresenceSettings, result);
@@ -816,21 +734,6 @@ namespace Twitch
             {
                 Call(FN_ResetChannelStreamKey, result);
             }
-
-            void GetChannelCommunity(const CommunityInfoValue& result)
-            {
-                Call(FN_GetChannelCommunity, result);
-            }
-
-            void SetChannelCommunity(const Int64Value& result)
-            {
-                Call(FN_SetChannelCommunity, result);
-            }
-
-            void DeleteChannelfromCommunity(const Int64Value& result)
-            {
-                Call(FN_DeleteChannelfromCommunity, result);
-            }
         };
 
         /*
@@ -846,16 +749,7 @@ namespace Twitch
             */
 
             context.Class<ResultCode>("ResultCode")->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 ENUM_CLASS_HELPER(ResultCode, Success)->
-                ENUM_CLASS_HELPER(ResultCode, FuelSDKNotInitialized)->
-                ENUM_CLASS_HELPER(ResultCode, FuelNoSession)->
-                ENUM_CLASS_HELPER(ResultCode, FuelNoApplicationID)->
-                ENUM_CLASS_HELPER(ResultCode, FuelNoIAPClient)->
-                ENUM_CLASS_HELPER(ResultCode, FuelMissingCredentials)->
-                ENUM_CLASS_HELPER(ResultCode, FuelProductDataFail)->
-                ENUM_CLASS_HELPER(ResultCode, FuelIllformedSku)->
-                ENUM_CLASS_HELPER(ResultCode, FuelPurchaseFail)->
                 ENUM_CLASS_HELPER(ResultCode, InvalidParam)->
                 ENUM_CLASS_HELPER(ResultCode, TwitchRESTError)->
                 ENUM_CLASS_HELPER(ResultCode, TwitchChannelNoUpdatesToMake)->
@@ -863,14 +757,12 @@ namespace Twitch
                 ;
 
             context.Class<PresenceAvailability>("PresenceAvailability")->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 ENUM_CLASS_HELPER(PresenceAvailability, Unknown)->
                 ENUM_CLASS_HELPER(PresenceAvailability, Online)->
                 ENUM_CLASS_HELPER(PresenceAvailability, Idle)
                 ;
 
             context.Class<PresenceActivityType>("PresenceActivityType")->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 ENUM_CLASS_HELPER(PresenceActivityType, Unknown)->
                 ENUM_CLASS_HELPER(PresenceActivityType, Watching)->
                 ENUM_CLASS_HELPER(PresenceActivityType, Playing)->
@@ -878,7 +770,6 @@ namespace Twitch
                 ;
 
             context.Class<BroadCastType>("BroadCastType")->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 ENUM_CLASS_HELPER(BroadCastType, Default)->
                 ENUM_CLASS_HELPER(BroadCastType, Archive)->
                 ENUM_CLASS_HELPER(BroadCastType, Highlight)->
@@ -890,7 +781,6 @@ namespace Twitch
                 ;
 
             context.Class<CommercialLength>("CommercialLength")->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 ENUM_CLASS_HELPER(CommercialLength, T30Seconds)->
                 ENUM_CLASS_HELPER(CommercialLength, T60Seconds)->
                 ENUM_CLASS_HELPER(CommercialLength, T90Seconds)->
@@ -899,31 +789,13 @@ namespace Twitch
                 ENUM_CLASS_HELPER(CommercialLength, T180Seconds)
                 ;
 
-            context.Class<FuelProductType>("FuelProductType")->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
-                ENUM_CLASS_HELPER(FuelProductType, Consumable)->
-                ENUM_CLASS_HELPER(FuelProductType, Entitlement)->
-                ENUM_CLASS_HELPER(FuelProductType, Subscription)->
-                ENUM_CLASS_HELPER(FuelProductType, Unknown)->
-                ENUM_CLASS_HELPER(FuelProductType, Undefined)
-                ;
-
-            context.Class<FulfillmentResult>("FulfillmentResult")->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
-                ENUM_CLASS_HELPER(FulfillmentResult, Fulfilled)->
-                ENUM_CLASS_HELPER(FulfillmentResult, Unavailable)->
-                ENUM_CLASS_HELPER(FulfillmentResult, Undefined)
-                ;
-
             context.Class<ReceiptID>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Method("Equal", &ReceiptID::operator==)->
                     Attribute(AZ::Script::Attributes::Operator, AZ::Script::Attributes::OperatorType::Equal)->
                 Property("ID", &ReceiptID::GetID, &ReceiptID::SetID)
                 ;
 
             context.Class<Int64Value>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Value", [](const Int64Value& i64Value) { return i64Value.Value; }, nullptr)->
                 Property("Result", [](const Int64Value& i64Value) { return i64Value.Result; }, nullptr)->
                 Method("ToString", &Int64Value::ToString)->
@@ -931,7 +803,6 @@ namespace Twitch
                 ;
 
             context.Class<Uint64Value>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Value", [](const Uint64Value& u64Value) { return u64Value.Value; }, nullptr)->
                 Property("Result", [](const Uint64Value& u64Value) { return u64Value.Result; }, nullptr)->
                 Method("ToString", &Uint64Value::ToString)->
@@ -939,76 +810,18 @@ namespace Twitch
                 ;
 
             context.Class<StringValue>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Value", [](const StringValue& strValue) { return strValue.Value; }, nullptr)->
                 Property("Result", [](const StringValue& strValue) { return strValue.Result; }, nullptr)->
                 Method("ToString", &StringValue::ToString)->
                     Attribute(AZ::Script::Attributes::Operator, AZ::Script::Attributes::OperatorType::ToString)
                 ;
 
-            context.Class<ProductInfo>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
-                Property("Sku", [](const ProductInfo& value) { return value.Sku; }, nullptr)->
-                Property("Description", [](const ProductInfo& value) { return value.Description; }, nullptr)->
-                Property("Price", [](const ProductInfo& value) { return value.Price; }, nullptr)->
-                Property("SmallIconUrl", [](const ProductInfo& value) { return value.SmallIconUrl; }, nullptr)->
-                Property("Title", [](const ProductInfo& value) { return value.Title; }, nullptr)->
-                Property("ProductType", [](const ProductInfo& value) { return value.ProductType; }, nullptr)
-                ;
-
-            context.Class<ProductData>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
-                Property("ProductList", [](const ProductData& value) { return value.ProductList; }, nullptr)->
-                Property("UnavailableSkus", [](const ProductData& value) { return value.UnavailableSkus; }, nullptr)
-                ;
-
-            context.Class<ProductDataReturnValue>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
-                Property("Value", [](const ProductDataReturnValue& strValue) { return strValue.Value; }, nullptr)->
-                Property("Result", [](const ProductDataReturnValue& strValue) { return strValue.Result; }, nullptr)->
-                Method("ToString", &ProductDataReturnValue::ToString)->
-                  Attribute(AZ::Script::Attributes::Operator, AZ::Script::Attributes::OperatorType::ToString)
-                ;
-
-            context.Class<PurchaseReceipt>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
-                Property("Sku", [](const PurchaseReceipt& value) { return value.Sku; }, nullptr)->
-                Property("ReceiptId", [](const PurchaseReceipt& value) { return value.ReceiptId; }, nullptr)->
-                Property("PurchaseDate", [](const PurchaseReceipt& value) { return value.PurchaseDate; }, nullptr)->
-                Property("CancelDate", [](const PurchaseReceipt& value) { return value.CancelDate; }, nullptr)->
-                Property("ProductType", [](const PurchaseReceipt& value) { return value.Type; }, nullptr)
-                ;
-
-            context.Class<PurchaseReceiptReturnValue>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
-                Property("Value", [](const PurchaseReceiptReturnValue& strValue) { return strValue.Value; }, nullptr)->
-                Property("Result", [](const PurchaseReceiptReturnValue& strValue) { return strValue.Result; }, nullptr)->
-                Method("ToString", &PurchaseReceiptReturnValue::ToString)->
-                    Attribute(AZ::Script::Attributes::Operator, AZ::Script::Attributes::OperatorType::ToString)
-                ;
-
-            context.Class<PurchaseUpdate>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
-                Property("SyncToken", [](const PurchaseUpdate& value) { return value.SyncToken; }, nullptr)->
-                Property("Products", [](const PurchaseUpdate& value) { return value.Products; }, nullptr)
-                ;
-
-            context.Class<PurchaseUpdateReturnValue>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
-                Property("Value", [](const PurchaseUpdateReturnValue& strValue) { return strValue.Value; }, nullptr)->
-                Property("Result", [](const PurchaseUpdateReturnValue& strValue) { return strValue.Result; }, nullptr)->
-                Method("ToString", &PurchaseUpdateReturnValue::ToString)->
-                    Attribute(AZ::Script::Attributes::Operator, AZ::Script::Attributes::OperatorType::ToString)
-                ;
-            
             context.Class<UserNotifications>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("EMail", [](const UserNotifications& value) { return value.EMail; }, nullptr)->
                 Property("Push", [](const UserNotifications& value) { return value.Push; }, nullptr)
                 ;
 
             context.Class<UserInfo>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("ID", [](const UserInfo& value) { return value.ID; }, nullptr)->
                 Property("Bio", [](const UserInfo& value) { return value.Bio; }, nullptr)->
                 Property("CreatedDate", [](const UserInfo& value) { return value.CreatedDate; }, nullptr)->
@@ -1027,7 +840,6 @@ namespace Twitch
                 ;
 
             context.Class<UserInfoValue>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Value", [](const UserInfoValue& value) { return value.Value; }, nullptr)->
                 Property("Result", [](const UserInfoValue& value) { return value.Result; }, nullptr)->
                 Method("ToString", &UserInfoValue::ToString)->
@@ -1035,13 +847,11 @@ namespace Twitch
                 ;
 
             context.Class<FriendRecommendation>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Reason", [](const FriendRecommendation& value) { return value.Reason; }, nullptr)->
                 Property("User", [](const FriendRecommendation& value) { return value.User; }, nullptr)
                 ;
 
             context.Class<FriendRecommendationValue>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Value", [](const FriendRecommendationValue& value) { return value.Value; }, nullptr)->
                 Property("Result", [](const FriendRecommendationValue& value) { return value.Result; }, nullptr)->
                 Method("ToString", &FriendRecommendationValue::ToString)->
@@ -1049,13 +859,11 @@ namespace Twitch
                 ;
 
             context.Class<GetFriendReturn>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Cursor", [](const GetFriendReturn& value) { return value.Cursor; }, nullptr)->
                 Property("Friends", [](const GetFriendReturn& value) { return value.Friends; }, nullptr)
                 ;
 
             context.Class<GetFriendValue>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Value", [](const GetFriendValue& value) { return value.Value; }, nullptr)->
                 Property("Result", [](const GetFriendValue& value) { return value.Result; }, nullptr)->
                 Method("ToString", &GetFriendValue::ToString)->
@@ -1063,13 +871,11 @@ namespace Twitch
                 ;
 
             context.Class<FriendStatus>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Status", [](const FriendStatus& value) { return value.Status; }, nullptr)->
                 Property("User", [](const FriendStatus& value) { return value.User; }, nullptr)
                 ;
 
             context.Class<FriendStatusValue>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Value", [](const FriendStatusValue& value) { return value.Value; }, nullptr)->
                 Property("Result", [](const FriendStatusValue& value) { return value.Result; }, nullptr)->
                 Method("ToString", &FriendStatusValue::ToString)->
@@ -1077,7 +883,6 @@ namespace Twitch
                 ;
 
             context.Class<FriendRequest>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("IsRecommended", [](const FriendRequest& value) { return value.IsRecommended; }, nullptr)->
                 Property("IsStranger", [](const FriendRequest& value) { return value.IsStranger; }, nullptr)->
                 Property("NonStrangerReason", [](const FriendRequest& value) { return value.NonStrangerReason; }, nullptr)->
@@ -1086,14 +891,12 @@ namespace Twitch
                 ;
 
             context.Class<FriendRequestResult>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Total", [](const FriendRequestResult& value) { return value.Total; }, nullptr)->
                 Property("Cursor", [](const FriendRequestResult& value) { return value.Cursor; }, nullptr)->
                 Property("Requests", [](const FriendRequestResult& value) { return value.Requests; }, nullptr)
                 ;
-                        
+
             context.Class<FriendRequestValue>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Value", [](const FriendRequestValue& value) { return value.Value; }, nullptr)->
                 Property("Result", [](const FriendRequestValue& value) { return value.Result; }, nullptr)->
                 Method("ToString", &FriendRequestValue::ToString)->
@@ -1101,7 +904,6 @@ namespace Twitch
                 ;
 
             context.Class<PresenceStatus>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("ActivityType", [](const PresenceStatus& value) { return value.ActivityType; }, nullptr)->
                 Property("Availability", [](const PresenceStatus& value) { return value.Availability; }, nullptr)->
                 Property("Index", [](const PresenceStatus& value) { return value.Index; }, nullptr)->
@@ -1110,7 +912,6 @@ namespace Twitch
                 ;
 
             context.Class<PresenceStatusValue>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Value", [](const PresenceStatusValue& value) { return value.Value; }, nullptr)->
                 Property("Result", [](const PresenceStatusValue& value) { return value.Result; }, nullptr)->
                 Method("ToString", &PresenceStatusValue::ToString)->
@@ -1118,13 +919,11 @@ namespace Twitch
                 ;
 
             context.Class<PresenceSettings>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("IsInvisible", [](const PresenceSettings& value) { return value.IsInvisible; }, nullptr)->
                 Property("ShareActivity", [](const PresenceSettings& value) { return value.ShareActivity; }, nullptr)
                 ;
-            
+
             context.Class<PresenceSettingsValue>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Value", [](const PresenceSettingsValue& value) { return value.Value; }, nullptr)->
                 Property("Result", [](const PresenceSettingsValue& value) { return value.Result; }, nullptr)->
                 Method("ToString", &PresenceSettingsValue::ToString)->
@@ -1132,7 +931,6 @@ namespace Twitch
                 ;
 
             context.Class<ChannelInfo>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("NumFollowers", [](const ChannelInfo& value) { return value.NumFollowers; }, nullptr)->
                 Property("NumViews", [](const ChannelInfo& value) { return value.NumViews; }, nullptr)->
                 Property("NumItemsRecieved", [](const ChannelInfo& value) { return value.NumItemsRecieved; }, nullptr)->
@@ -1157,7 +955,6 @@ namespace Twitch
                 ;
 
             context.Class<ChannelInfoValue>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Value", [](const ChannelInfoValue& value) { return value.Value; }, nullptr)->
                 Property("Result", [](const ChannelInfoValue& value) { return value.Result; }, nullptr)->
                 Method("ToString", &ChannelInfoValue::ToString)->
@@ -1165,33 +962,28 @@ namespace Twitch
                 ;
 
             context.Class<UpdateValuebool>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Value", &UpdateValuebool::GetValue, &UpdateValuebool::SetValue)->
                 Method("ToBeUpdated", &UpdateValuebool::ToBeUpdated)
                 ;
 
             context.Class<UpdateValueuint>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Value", &UpdateValueuint::GetValue, &UpdateValueuint::SetValue)->
                 Method("ToBeUpdated", &UpdateValueuint::ToBeUpdated)
                 ;
 
             context.Class<UpdateValuestring>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Value", &UpdateValuestring::GetValue, &UpdateValuestring::SetValue)->
                 Method("ToBeUpdated", &UpdateValuestring::ToBeUpdated)
                 ;
 
             context.Class<ChannelUpdateInfo>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
-                Property("ChannelFeedEnabled", [](const ChannelUpdateInfo& value) { return value.ChannelFeedEnabled; }, nullptr)->
-                Property("Delay", [](const ChannelUpdateInfo& value) { return value.Delay; }, nullptr)->
-                Property("Status", [](const ChannelUpdateInfo& value) { return value.Status; }, nullptr)->
-                Property("GameName", [](const ChannelUpdateInfo& value) { return value.GameName; }, nullptr)
+                Property("ChannelFeedEnabled", BehaviorValueProperty(&ChannelUpdateInfo::ChannelFeedEnabled))->
+                Property("Delay", BehaviorValueProperty(&ChannelUpdateInfo::Delay))->
+                Property("Status", BehaviorValueProperty(&ChannelUpdateInfo::Status))->
+                Property("GameName", BehaviorValueProperty(&ChannelUpdateInfo::GameName))
                 ;
-            
+
             context.Class<UserInfoListValue>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Value", [](const UserInfoListValue& value) { return value.Value; }, nullptr)->
                 Property("Result", [](const UserInfoListValue& value) { return value.Result; }, nullptr)->
                 Method("ToString", &UserInfoListValue::ToString)->
@@ -1199,21 +991,18 @@ namespace Twitch
                 ;
 
             context.Class<Follower>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Notifications", [](const Follower& value) { return value.Notifications; }, nullptr)->
                 Property("CreatedDate", [](const Follower& value) { return value.CreatedDate; }, nullptr)->
                 Property("User", [](const Follower& value) { return value.User; }, nullptr)
                 ;
 
             context.Class<FollowerResult>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Total", [](const FollowerResult& value) { return value.Total; }, nullptr)->
                 Property("Cursor", [](const FollowerResult& value) { return value.Cursor; }, nullptr)->
                 Property("Followers", [](const FollowerResult& value) { return value.Followers; }, nullptr)
                 ;
 
             context.Class<FollowerResultValue>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Value", [](const FollowerResultValue& value) { return value.Value; }, nullptr)->
                 Property("Result", [](const FollowerResultValue& value) { return value.Result; }, nullptr)->
                 Method("ToString", &FollowerResultValue::ToString)->
@@ -1221,7 +1010,6 @@ namespace Twitch
                 ;
 
             context.Class<TeamInfo>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("ID", [](const TeamInfo& value) { return value.ID; }, nullptr)->
                 Property("Background", [](const TeamInfo& value) { return value.Background; }, nullptr)->
                 Property("Banner", [](const TeamInfo& value) { return value.Banner; }, nullptr)->
@@ -1234,28 +1022,24 @@ namespace Twitch
                 ;
 
             context.Class<ChannelTeamValue>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Value", [](const ChannelTeamValue& value) { return value.Value; }, nullptr)->
                 Property("Result", [](const ChannelTeamValue& value) { return value.Result; }, nullptr)->
                 Method("ToString", &ChannelTeamValue::ToString)->
                     Attribute(AZ::Script::Attributes::Operator, AZ::Script::Attributes::OperatorType::ToString)
                 ;
-                    
+
             context.Class<SubscriberInfo>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("ID", [](const SubscriberInfo& value) { return value.ID; }, nullptr)->
                 Property("CreatedDate", [](const SubscriberInfo& value) { return value.CreatedDate; }, nullptr)->
                 Property("User", [](const SubscriberInfo& value) { return value.User; }, nullptr)
                 ;
 
             context.Class<Subscription>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Total", [](const Subscription& value) { return value.Total; }, nullptr)->
                 Property("Subscribers", [](const Subscription& value) { return value.Subscribers; }, nullptr)
                 ;
 
             context.Class<SubscriberValue>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Value", [](const SubscriberValue& value) { return value.Value; }, nullptr)->
                 Property("Result", [](const SubscriberValue& value) { return value.Result; }, nullptr)->
                 Method("ToString", &SubscriberValue::ToString)->
@@ -1263,7 +1047,6 @@ namespace Twitch
                 ;
 
             context.Class<SubscriberbyUserValue>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Value", [](const SubscriberbyUserValue& value) { return value.Value; }, nullptr)->
                 Property("Result", [](const SubscriberbyUserValue& value) { return value.Result; }, nullptr)->
                 Method("ToString", &SubscriberbyUserValue::ToString)->
@@ -1271,14 +1054,12 @@ namespace Twitch
                 ;
 
             context.Class<VideoChannelInfo>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("ID", [](const VideoChannelInfo& value) { return value.ID; }, nullptr)->
                 Property("DisplayName", [](const VideoChannelInfo& value) { return value.DisplayName; }, nullptr)->
                 Property("Name", [](const VideoChannelInfo& value) { return value.Name; }, nullptr)
                 ;
 
             context.Class<FPSInfo>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Chunked", [](const FPSInfo& value) { return value.Chunked; }, nullptr)->
                 Property("High", [](const FPSInfo& value) { return value.High; }, nullptr)->
                 Property("Low", [](const FPSInfo& value) { return value.Low; }, nullptr)->
@@ -1287,7 +1068,6 @@ namespace Twitch
                 ;
 
             context.Class<PreviewInfo>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Large", [](const PreviewInfo& value) { return value.Large; }, nullptr)->
                 Property("Medium", [](const PreviewInfo& value) { return value.Medium; }, nullptr)->
                 Property("Small", [](const PreviewInfo& value) { return value.Small; }, nullptr)->
@@ -1295,7 +1075,6 @@ namespace Twitch
                 ;
 
             context.Class<ResolutionsInfo>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Chunked", [](const ResolutionsInfo& value) { return value.Chunked; }, nullptr)->
                 Property("High", [](const ResolutionsInfo& value) { return value.High; }, nullptr)->
                 Property("Low", [](const ResolutionsInfo& value) { return value.Low; }, nullptr)->
@@ -1304,13 +1083,11 @@ namespace Twitch
                 ;
 
             context.Class<ThumbnailInfo>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Type", [](const ThumbnailInfo& value) { return value.Type; }, nullptr)->
                 Property("Url", [](const ThumbnailInfo& value) { return value.Url; }, nullptr)
                 ;
 
             context.Class<ThumbnailsInfo>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Large", [](const ThumbnailsInfo& value) { return value.Large; }, nullptr)->
                 Property("Medium", [](const ThumbnailsInfo& value) { return value.Medium; }, nullptr)->
                 Property("Small", [](const ThumbnailsInfo& value) { return value.Small; }, nullptr)->
@@ -1318,7 +1095,6 @@ namespace Twitch
                 ;
 
             context.Class<VideoInfo>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Length", [](const VideoInfo& value) { return value.Length; }, nullptr)->
                 Property("Views", [](const VideoInfo& value) { return value.Views; }, nullptr)->
                 Property("BroadcastID", [](const VideoInfo& value) { return value.BroadcastID; }, nullptr)->
@@ -1342,15 +1118,13 @@ namespace Twitch
                 Property("Thumbnails", [](const VideoInfo& value) { return value.Thumbnails; }, nullptr)->
                 Property("Resolutions", [](const VideoInfo& value) { return value.Resolutions; }, nullptr)
                 ;
-            
+
             context.Class<VideoReturn>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Total", [](const VideoReturn& value) { return value.Total; }, nullptr)->
                 Property("Videos", [](const VideoReturn& value) { return value.Videos; }, nullptr)
                 ;
 
             context.Class<VideoReturnValue>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Value", [](const VideoReturnValue& value) { return value.Value; }, nullptr)->
                 Property("Result", [](const VideoReturnValue& value) { return value.Result; }, nullptr)->
                 Method("ToString", &VideoReturnValue::ToString)->
@@ -1358,14 +1132,12 @@ namespace Twitch
                 ;
 
             context.Class<StartChannelCommercialResult>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Duration", [](const StartChannelCommercialResult& value) { return value.Duration; }, nullptr)->
                 Property("RetryAfter", [](const StartChannelCommercialResult& value) { return value.RetryAfter; }, nullptr)->
                 Property("Message", [](const StartChannelCommercialResult& value) { return value.Message; }, nullptr)
                 ;
 
             context.Class<StartChannelCommercialValue>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Value", [](const StartChannelCommercialValue& value) { return value.Value; }, nullptr)->
                 Property("Result", [](const StartChannelCommercialValue& value) { return value.Result; }, nullptr)->
                 Method("ToString", &StartChannelCommercialValue::ToString)->
@@ -1373,7 +1145,6 @@ namespace Twitch
                 ;
 
             context.Class<CommunityInfo>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("ID", [](const CommunityInfo& value) { return value.ID; }, nullptr)->
                 Property("AvatarImageURL", [](const CommunityInfo& value) { return value.AvatarImageURL; }, nullptr)->
                 Property("CoverImageURL", [](const CommunityInfo& value) { return value.CoverImageURL; }, nullptr)->
@@ -1388,22 +1159,34 @@ namespace Twitch
                 ;
 
             context.Class<CommunityInfoValue>()->
-                Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)->
                 Property("Value", [](const CommunityInfoValue& value) { return value.Value; }, nullptr)->
                 Property("Result", [](const CommunityInfoValue& value) { return value.Result; }, nullptr)->
                 Method("ToString", &CommunityInfoValue::ToString)->
                     Attribute(AZ::Script::Attributes::Operator, AZ::Script::Attributes::OperatorType::ToString)
                 ;
-            
+
+            context.Class<CommunityInfoReturn>()->
+                Property("Total", [](const CommunityInfoReturn& value) { return value.Total; }, nullptr)->
+                Property("Communities", [](const CommunityInfoReturn& value) { return value.Communities; }, nullptr)
+                ;
+
+            context.Class<CommunityInfoReturnValue>()->
+                Property("Value", [](const CommunityInfoReturnValue& value) { return value.Value; }, nullptr)->
+                Property("Result", [](const CommunityInfoReturnValue& value) { return value.Result; }, nullptr)->
+                Method("ToString", &CommunityInfoReturnValue::ToString)->
+                Attribute(AZ::Script::Attributes::Operator, AZ::Script::Attributes::OperatorType::ToString)
+                ;
+
             context.EBus<TwitchRequestBus>("TwitchRequestBus")
-                ->Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)
                 ->Event("SetApplicationID", &TwitchRequestBus::Events::SetApplicationID)
+                ->Event("GetApplicationID", &TwitchRequestBus::Events::GetApplicationID)
+                ->Event("GetUserID", &TwitchRequestBus::Events::GetUserID)
+                ->Event("GetOAuthToken", &TwitchRequestBus::Events::GetOAuthToken)
+                ->Event("GetSessionID", &TwitchRequestBus::Events::GetSessionID)
+                ->Event("SetUserID", &TwitchRequestBus::Events::SetUserID)
+                ->Event("SetOAuthToken", &TwitchRequestBus::Events::SetOAuthToken)
                 ->Event("RequestUserID", &TwitchRequestBus::Events::RequestUserID)
-                ->Event("RequestEntitlement", &TwitchRequestBus::Events::RequestEntitlement)
                 ->Event("RequestOAuthToken", &TwitchRequestBus::Events::RequestOAuthToken)
-                ->Event("RequestProductCatalog", &TwitchRequestBus::Events::RequestProductCatalog)
-                ->Event("PurchaseProduct", &TwitchRequestBus::Events::PurchaseProduct)
-                ->Event("GetPurchaseUpdates", &TwitchRequestBus::Events::GetPurchaseUpdates)
                 ->Event("GetUser", &TwitchRequestBus::Events::GetUser)
                 ->Event("ResetFriendsNotificationCount", &TwitchRequestBus::Events::ResetFriendsNotificationCount)
                 ->Event("GetFriendNotificationCount", &TwitchRequestBus::Events::GetFriendNotificationCount)
@@ -1429,13 +1212,9 @@ namespace Twitch
                 ->Event("GetChannelVideos", &TwitchRequestBus::Events::GetChannelVideos)
                 ->Event("StartChannelCommercial", &TwitchRequestBus::Events::StartChannelCommercial)
                 ->Event("ResetChannelStreamKey", &TwitchRequestBus::Events::ResetChannelStreamKey)
-                ->Event("GetChannelCommunity", &TwitchRequestBus::Events::GetChannelCommunity)
-                ->Event("SetChannelCommunity", &TwitchRequestBus::Events::SetChannelCommunity)
-                ->Event("DeleteChannelfromCommunity", &TwitchRequestBus::Events::DeleteChannelfromCommunity)
                 ;
 
             context.EBus<TwitchNotifyBus>("TwitchNotifyBus")
-                ->Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)
                 ->Handler<BehaviorTwitchNotifyBus>();
         }
     }

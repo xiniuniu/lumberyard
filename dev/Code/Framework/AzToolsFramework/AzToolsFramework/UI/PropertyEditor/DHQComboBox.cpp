@@ -9,11 +9,43 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "DHQComboBox.hxx"
+
+AZ_PUSH_DISABLE_WARNING(4244 4251, "-Wunknown-warning-option") // 4244: conversion from 'int' to 'float', possible loss of data
+                                                               // 4251: '...' needs to have dll-interface to be used by clients of class '...'
+#include <QAbstractItemView>
+#include <QFontMetrics>
+#include <QWheelEvent>
+AZ_POP_DISABLE_WARNING
 
 namespace AzToolsFramework
 {
+    DHQComboBox::DHQComboBox(QWidget* parent) : QComboBox(parent) 
+    {
+        view()->setTextElideMode(Qt::ElideNone);
+    }
+
+    void DHQComboBox::showPopup()
+    {
+        // make sure the combobox pop-up is wide enough to accommodate its text
+        QFontMetrics comboMetrics(view()->fontMetrics());
+        QMargins theMargins = view()->contentsMargins();
+        const int marginsWidth = theMargins.left() + theMargins.right();
+
+        int widestStringWidth = 0;
+        for (int index = 0, numIndices = count(); index < numIndices; ++index)
+        {
+            const int newMax = comboMetrics.boundingRect(itemText(index)).width() + marginsWidth;
+            
+            if (newMax > widestStringWidth)
+                widestStringWidth = newMax;
+        }
+
+        view()->setMinimumWidth(widestStringWidth);
+        QComboBox::showPopup();
+    }
+
     void DHQComboBox::wheelEvent(QWheelEvent* e)
     {
         if (hasFocus())

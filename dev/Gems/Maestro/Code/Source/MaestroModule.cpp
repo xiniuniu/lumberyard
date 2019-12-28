@@ -9,12 +9,11 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "Maestro_precompiled.h"
 #include <platform_impl.h>
 
 #include "Components/SequenceComponent.h"
 #include "Components/SequenceAgentComponent.h"
-#include "Components/SequenceAgentExternalCreator.h"
 #if defined(MAESTRO_EDITOR)
 #include "Components/EditorSequenceComponent.h"
 #include "Components/EditorSequenceAgentComponent.h"
@@ -36,10 +35,10 @@ namespace Maestro
         {
             // Push results of [MyComponent]::CreateDescriptor() into m_descriptors here.
             m_descriptors.insert(m_descriptors.end(), {
+                MaestroAllocatorComponent::CreateDescriptor(),
                 MaestroSystemComponent::CreateDescriptor(),
                 SequenceComponent::CreateDescriptor(),
                 SequenceAgentComponent::CreateDescriptor(),
-                SequenceAgentExternalCreator::CreateDescriptor(),
 #if defined(MAESTRO_EDITOR)
                 EditorSequenceComponent::CreateDescriptor(),
                 EditorSequenceAgentComponent::CreateDescriptor(),
@@ -53,8 +52,8 @@ namespace Maestro
         AZ::ComponentTypeList GetRequiredSystemComponents() const override
         {
             return AZ::ComponentTypeList{
-                azrtti_typeid<MaestroSystemComponent>(),
-                azrtti_typeid<SequenceAgentExternalCreator>(),
+                azrtti_typeid<MaestroAllocatorComponent>(),
+                azrtti_typeid<MaestroSystemComponent>()
             };
         }
     };

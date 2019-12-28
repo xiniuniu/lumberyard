@@ -10,7 +10,7 @@
 *
 */
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "MannequinConfigFileEditor.h"
 #include "Util/PathUtil.h"
 #include "Util/AutoDirectoryRestoreFileDialog.h"
@@ -139,7 +139,7 @@ bool MannequinConfigFileHelper::CreateNewConfig(AZStd::string& generatedPreviewF
         }
 
         //Do not allow creating a preview with an existing name
-        const AZStd::string previewsFileName = MannequinConfig(prefixStr.toLatin1().data()).PreviewFilePath();
+        const AZStd::string previewsFileName = MannequinConfig(prefixStr.toUtf8().data()).PreviewFilePath();
         if (isValidFileName && CFileUtil::FileExists(previewsFileName.c_str(), nullptr))
         {
             isValidFileName = false;
@@ -148,7 +148,7 @@ bool MannequinConfigFileHelper::CreateNewConfig(AZStd::string& generatedPreviewF
     }
 
     AZStd::vector<AZStd::string> generatedAssets;
-    const AZStd::string prefix = prefixStr.toLatin1().data();
+    const AZStd::string prefix = prefixStr.toUtf8().data();
     CMannequinConfigFileEditor editor(prefix, parent);
     
     editor.setMinimumSize(425, 600);
@@ -285,7 +285,7 @@ bool MannequinConfigFileHelper::CreateNewConfig(AZStd::string& generatedPreviewF
             while (count < g_maxAssetFileCompileTries)
             {
                 AzFramework::AssetSystem::AssetStatus status = AzFramework::AssetSystem::AssetStatus_Unknown;
-                EBUS_EVENT_RESULT(status, AzFramework::AssetSystemRequestBus, GetAssetStatus, assetPath);
+                EBUS_EVENT_RESULT(status, AzFramework::AssetSystemRequestBus, GetAssetStatus_FlushIO, assetPath);
                 if (status == AzFramework::AssetSystem::AssetStatus_Compiled)
                 {
                     success = true;
@@ -334,7 +334,7 @@ CMannequinConfigFileEditor::CMannequinConfigFileEditor(const AZStd::string &pref
     QPushButton *cancelButton = new QPushButton(tr("Cancel"));
 
     //TODO: style the pushbutton
-    connect(helpButton, &QPushButton::clicked, []() { QDesktopServices::openUrl(QUrl(QStringLiteral("http://docs.aws.amazon.com/lumberyard/latest/userguide/mannequin-intro.html"))); });
+    connect(helpButton, &QPushButton::clicked, this, []() { QDesktopServices::openUrl(QUrl(QStringLiteral("http://docs.aws.amazon.com/lumberyard/latest/userguide/mannequin-intro.html"))); });
     connect(createButton, &QPushButton::clicked, this, &CMannequinConfigFileEditor::OnCreateClicked);
     connect(cancelButton, &QPushButton::clicked, this, &QDialog::reject);
 
@@ -877,7 +877,7 @@ AZ::u32 FileSelectorHandler::GetHandlerName() const
 QWidget* FileSelectorHandler::CreateGUI(QWidget *pParent)
 {
     FileSelectorPropertyWidget* newCtrl = aznew FileSelectorPropertyWidget(pParent);
-    connect(newCtrl, &FileSelectorPropertyWidget::ValueChanged, [newCtrl]()
+    connect(newCtrl, &FileSelectorPropertyWidget::ValueChanged, newCtrl, [newCtrl]()
     {
         EBUS_EVENT(AzToolsFramework::PropertyEditorGUIMessages::Bus, RequestWrite, newCtrl);
     });
@@ -923,7 +923,7 @@ void FileSelectorHandler::ConsumeAttribute(FileSelectorPropertyWidget* GUI, AZ::
 void FileSelectorHandler::WriteGUIValuesIntoProperty(size_t /*index*/, FileSelectorPropertyWidget* GUI, property_t& instance, AzToolsFramework::InstanceDataNode* /*node*/)
 {
     AZStd::string val;
-    val = GUI->GetValue().toLatin1().data();
+    val = GUI->GetValue().toUtf8().data();
     instance = static_cast<property_t>(val);
 }
 

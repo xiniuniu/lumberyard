@@ -23,11 +23,18 @@
 #include <AzFramework/TargetManagement/TargetManagementComponent.h>
 #include <AzToolsFramework/UI/LegacyFramework/Core/IPCComponent.h>
 
+#ifndef AZ_PLATFORM_WINDOWS
+int __argc;
+char **__argv;
+#endif
+
 namespace Woodpecker
 {
-    BaseApplication::BaseApplication()
+    BaseApplication::BaseApplication(int &argc, char **argv)
         : LegacyFramework::Application()
     {
+        __argc = argc;
+        __argv = argv;
         AZ::UserSettingsFileLocatorBus::Handler::BusConnect();
     }
 
@@ -40,8 +47,8 @@ namespace Woodpecker
     {
         LegacyFramework::Application::RegisterCoreComponents();
 
-        Telemetry::TelemetryComponent::CreateDescriptor();
-        LegacyFramework::IPCComponent::CreateDescriptor();
+        RegisterComponentDescriptor(Telemetry::TelemetryComponent::CreateDescriptor());
+        RegisterComponentDescriptor(LegacyFramework::IPCComponent::CreateDescriptor());
 
         RegisterComponentDescriptor(AZ::UserSettingsComponent::CreateDescriptor());
         RegisterComponentDescriptor(AzFramework::TargetManagementComponent::CreateDescriptor());
@@ -131,6 +138,27 @@ namespace Woodpecker
 
         return ::CreateProcess(discoveryServiceExe, L"-fail_silently", nullptr, nullptr, FALSE, 0, nullptr, workingDir, &si, &pi) == TRUE;
 #else
+        AZStd::string applicationFilePath;
+        AzFramework::StringFunc::Path::Join(GetExecutableFolder(), "GridHub.app/Contents/MacOS/GridHub", applicationFilePath);
+        if (AZ::IO::SystemFile::Exists(applicationFilePath.c_str()))
+        {
+            if (fork() == 0)
+            {
+                char *args[] = { const_cast<char*>(applicationFilePath.c_str()), nullptr };
+                execv(applicationFilePath.c_str(), args);
+            }
+            return true;
+        }
+        AzFramework::StringFunc::Path::Join(GetExecutableFolder(), "GridHub", applicationFilePath);
+        if (AZ::IO::SystemFile::Exists(applicationFilePath.c_str()))
+        {
+            if (fork() == 0)
+            {
+                char *args[] = { const_cast<char*>(applicationFilePath.c_str()), nullptr };
+                execv(applicationFilePath.c_str(), args);
+            }
+            return true;
+        }
         return false;
 #endif
     }

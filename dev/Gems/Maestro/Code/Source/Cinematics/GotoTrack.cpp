@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "StdAfx.h"
+#include "Maestro_precompiled.h"
 #include <AzCore/Serialization/SerializeContext.h>
 #include "GotoTrack.h"
 #include "Maestro/Types/AnimValueType.h"
@@ -160,11 +160,12 @@ template<>
 inline void TAnimTrack<IDiscreteFloatKey>::Reflect(AZ::SerializeContext* serializeContext)
 {
     serializeContext->Class<TAnimTrack<IDiscreteFloatKey> >()
-        ->Version(1)
+        ->Version(2)
         ->Field("Flags", &TAnimTrack<IDiscreteFloatKey>::m_flags)
         ->Field("Range", &TAnimTrack<IDiscreteFloatKey>::m_timeRange)
         ->Field("ParamType", &TAnimTrack<IDiscreteFloatKey>::m_nParamType)
-        ->Field("Keys", &TAnimTrack<IDiscreteFloatKey>::m_keys);
+        ->Field("Keys", &TAnimTrack<IDiscreteFloatKey>::m_keys)
+        ->Field("Id", &TAnimTrack<IDiscreteFloatKey>::m_id);
 }
 
 //////////////////////////////////////////////////////////////////////////

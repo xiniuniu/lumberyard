@@ -25,11 +25,12 @@
 #pragma once
 
 class QSlider;
-class QDoubleSpinBox;
 class QToolButton;
 
 namespace AzToolsFramework
 {
+    class DHQDoubleSpinbox;
+
     class DHPropertyDoubleSlider
         : public QWidget
     {
@@ -80,7 +81,7 @@ namespace AzToolsFramework
         int m_sliderMin;
         int m_sliderMax;
         int m_sliderCurrent;
-        QDoubleSpinBox* m_pSpinBox;
+        DHQDoubleSpinbox* m_pSpinBox;
         double m_minimum;
         double m_maximum;
         double m_pageStep;
@@ -91,6 +92,7 @@ namespace AzToolsFramework
         double m_pressValue;
         double m_singleStep;
         double m_offset_accumulated;
+        double m_curveMidpoint;
         bool  m_tracking;
         bool  m_blocktracking;
         bool  m_pressed;
@@ -183,6 +185,9 @@ namespace AzToolsFramework
         void setTracking(bool enable);
         bool hasTracking() const { return m_tracking; }
         void setDecimals(int decimals);
+        void setDisplayDecimals(int displayDecimals);
+
+        void setCurveMidpoint(double midpoint);
 
         void setSliderDown(bool);
         bool isSliderDown() const { return m_pressed; }
@@ -238,6 +243,10 @@ namespace AzToolsFramework
         void wheelEvent(QWheelEvent* e);
 #endif
         void changeEvent(QEvent* e);
+
+        double ConvertToSliderValue(double value);
+        double ConvertFromSliderValue(double value);
+        double ConvertPowerCurveValue(double value, bool fromSlider);
 
 #ifdef QT3_SUPPORT
     public:

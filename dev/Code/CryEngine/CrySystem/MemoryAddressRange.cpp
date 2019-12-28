@@ -13,6 +13,7 @@
 
 #include "StdAfx.h"
 #include "MemoryAddressRange.h"
+#include "System.h"
 
 #if defined(APPLE) || defined(LINUX)
 #include <sys/mman.h>
@@ -23,7 +24,6 @@ CMemoryAddressRange::CMemoryAddressRange(char* pBaseAddress, size_t nPageSize, s
     , m_nPageSize(nPageSize)
     , m_nPageCount(nPageCount)
 {
-    CryGetIMemReplay()->RegisterFixedAddressRange(pBaseAddress, nPageSize * nPageCount, sName);
 }
 
 void CMemoryAddressRange::Release()
@@ -46,7 +46,7 @@ size_t CMemoryAddressRange::GetPageSize() const
     return m_nPageSize;
 }
 
-#if defined(WIN32) || defined(DURANGO)
+#if AZ_LEGACY_CRYSYSTEM_TRAIT_MEMADDRESSRANGE_WINDOWS_STYLE
 
 void* CMemoryAddressRange::ReserveSpace(size_t capacity)
 {
@@ -67,11 +67,6 @@ CMemoryAddressRange::CMemoryAddressRange(size_t capacity, const char* name)
     size_t algnCap = Align(capacity, m_nPageSize);
     m_pBaseAddress = (char*)ReserveSpace(algnCap);
     m_nPageCount = algnCap / m_nPageSize;
-
-    if (m_pBaseAddress && name && name[0])
-    {
-        CryGetIMemReplay()->RegisterFixedAddressRange(m_pBaseAddress, m_nPageSize * m_nPageCount, name);
-    }
 }
 
 CMemoryAddressRange::~CMemoryAddressRange()
@@ -82,22 +77,12 @@ CMemoryAddressRange::~CMemoryAddressRange()
 void* CMemoryAddressRange::MapPage(size_t pageIdx)
 {
     void* pRet = VirtualAlloc(m_pBaseAddress + pageIdx * m_nPageSize, m_nPageSize, MEM_COMMIT, PAGE_READWRITE);
-
-#if CAPTURE_REPLAY_LOG
-    if (pRet)
-    {
-        CryGetIMemReplay()->MapPage(pRet, m_nPageSize);
-    }
-#endif
-
     return pRet;
 }
 
 void CMemoryAddressRange::UnmapPage(size_t pageIdx)
 {
     char* pBase = m_pBaseAddress + pageIdx * m_nPageSize;
-
-    CryGetIMemReplay()->UnMapPage(pBase, m_nPageSize);
 
     // Disable warning about only decommitting pages, and not releasing them
 #pragma warning( push )
@@ -106,6 +91,14 @@ void CMemoryAddressRange::UnmapPage(size_t pageIdx)
 #pragma warning( pop )
 }
 
+#elif defined(AZ_RESTRICTED_PLATFORM)
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/MemoryAddressRange_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/MemoryAddressRange_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/MemoryAddressRange_cpp_salem.inl"
+    #endif
 #elif defined(APPLE) || defined(LINUX)
 
 void* CMemoryAddressRange::ReserveSpace(size_t capacity)
@@ -126,11 +119,6 @@ CMemoryAddressRange::CMemoryAddressRange(size_t capacity, const char* name)
     m_pBaseAddress = (char*)ReserveSpace(m_allocatedSpace);
     assert(m_pBaseAddress != MAP_FAILED);
     m_nPageCount = m_allocatedSpace / m_nPageSize;
-
-    if (m_pBaseAddress && name && name[0])
-    {
-        CryGetIMemReplay()->RegisterFixedAddressRange(m_pBaseAddress, m_nPageSize * m_nPageCount, name);
-    }
 }
 
 CMemoryAddressRange::~CMemoryAddressRange()
@@ -150,12 +138,6 @@ void* CMemoryAddressRange::MapPage(size_t pageIdx)
     {
         pRet = m_pBaseAddress + (pageIdx * m_nPageSize);
     }
-#if CAPTURE_REPLAY_LOG
-    if (pRet)
-    {
-        CryGetIMemReplay()->MapPage(pRet, m_nPageSize);
-    }
-#endif
 
     return pRet;
 }
@@ -166,7 +148,6 @@ void CMemoryAddressRange::UnmapPage(size_t pageIdx)
     int ret = mprotect(pBase, m_nPageSize, PROT_NONE);
     (void) ret;
     assert(ret == 0);
-    CryGetIMemReplay()->UnMapPage(pBase, m_nPageSize);
 }
 
 

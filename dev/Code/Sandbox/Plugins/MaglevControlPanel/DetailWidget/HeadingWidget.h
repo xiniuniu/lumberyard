@@ -12,7 +12,7 @@
 
 #pragma once
 
-#include <QFrame.h>
+#include <QFrame>
 
 class QLabel;
 class QPushButton;
@@ -24,7 +24,7 @@ class HeadingWidget
 
 public:
 
-    HeadingWidget();
+    HeadingWidget(QWidget* parent);
 
     void SetTitleText(const QString& text);
     void HideTitle();

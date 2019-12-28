@@ -10,21 +10,25 @@
  *
  */
 
-#include <AssetBuilderSDK/AssetBuilderSDK.h>
-#include <AzCore/Serialization/Utils.h>
-#include <AzFramework/StringFunc/StringFunc.h>
 #include <AzCore/Debug/Trace.h>
-
-#include <AssetBuilderApplication.h>
-#include <AssetBuilderInfo.h>
-#include <AssetBuilderComponent.h>
+#include <AzCore/IO/FileIO.h>
 #include <AzCore/Asset/AssetManager.h>
 #include <AzCore/IO/StreamerComponent.h>
+#include <AzCore/Serialization/Utils.h>
 #include <AzCore/UserSettings/UserSettingsComponent.h>
-#include <AzFramework/Input/System/InputSystemComponent.h>
+
+#include <AzFramework/API/BootstrapReaderBus.h>
 #include <AzFramework/Asset/AssetCatalogComponent.h>
-#include <AzToolsFramework/ToolsComponents/ToolsAssetCatalogComponent.h>
+#include <AzFramework/Input/System/InputSystemComponent.h>
+#include <AzFramework/StringFunc/StringFunc.h>
+
 #include <AzToolsFramework/Asset/AssetSystemComponent.h>
+#include <AzToolsFramework/ToolsComponents/ToolsAssetCatalogComponent.h>
+
+#include <AssetBuilderSDK/AssetBuilderSDK.h>
+#include <AssetBuilderApplication.h>
+#include <AssetBuilderComponent.h>
+#include <AssetBuilderInfo.h>
 
 AZ::ComponentTypeList AssetBuilderApplication::GetRequiredSystemComponents() const
 {
@@ -70,26 +74,81 @@ void AssetBuilderApplication::RegisterCoreComponents()
 
 void AssetBuilderApplication::StartCommon(AZ::Entity* systemEntity)
 {
+    InstallCtrlHandler();
+
     AzToolsFramework::ToolsApplication::StartCommon(systemEntity);
 
     AZStd::string configFilePath;
     AZStd::string gameRoot;
     
+#if defined(AZ_PLATFORM_APPLE_OSX)
+    // The asset builder needs to start astcenc as a child process to compress textures.
+    // astcenc is started by the PVRTexLib dynamic library. In order for it to be able to find
+    // the executable, we need to set the PATH environment variable.
+    AZStd::string binFullPath, binFolder;
+    AZ::ComponentApplicationBus::BroadcastResult(binFolder, &AZ::ComponentApplicationBus::Events::GetBinFolder);
+    AzFramework::StringFunc::Path::Join(GetAppRoot(), binFolder.c_str(), binFullPath);
+    setenv("PATH", binFullPath.c_str(), 1);
+#endif // AZ_PLATFORM_APPLE_OSX
+
     if (m_commandLine.GetNumSwitchValues("gameRoot") > 0)
     {
         gameRoot = m_commandLine.GetSwitchValue("gameRoot", 0);
     }
-    
+
     if (gameRoot.empty())
     {
-        AZ_Printf(AssetBuilderSDK::InfoWindow, "gameRoot not specified on the command line, assuming current directory.\n");
-        AZ_Printf(AssetBuilderSDK::InfoWindow, "gameRoot is best specified as the full path to the game's asset folder.");
+        if (IsInDebugMode())
+        {
+            if (!ReadGameFolderFromBootstrap(gameRoot))
+            {
+                AZ_Error("AssetBuilder", false, "Unable to determine the game root automatically. "
+                    "Make sure a default project has been set or provide a default option on the command line. (See -help for more info.)");
+                return;
+            }
+        }
+        else
+        {
+            AZ_Printf(AssetBuilderSDK::InfoWindow, "gameRoot not specified on the command line, assuming current directory.\n");
+            AZ_Printf(AssetBuilderSDK::InfoWindow, "gameRoot is best specified as the full path to the game's asset folder.");
+        }
     }
-    
-    AzFramework::StringFunc::Path::Join(gameRoot.c_str(), "config/editor.xml", configFilePath);
 
+    AZ::IO::FileIOBase* fileIO = AZ::IO::FileIOBase::GetInstance();
+    if (fileIO)
+    {
+        fileIO->SetAlias("@devassets@", gameRoot.c_str());
+    }
+
+    AzFramework::StringFunc::Path::Join(gameRoot.c_str(), "config/editor.xml", configFilePath);
     ReflectModulesFromAppDescriptor(configFilePath.c_str());
+
+    // once we load all the modules from the app descriptor, create an entity with the builders inside gems
+    CreateAndAddEntityFromComponentTags(AZStd::vector<AZ::Crc32>({ AssetBuilderSDK::ComponentTags::AssetBuilder }), "AssetBuilders Entity");
 
     // the asset builder app never writes source files, only assets, so there is no need to do any kind of asset upgrading
     AZ::Data::AssetManager::Instance().SetAssetInfoUpgradingEnabled(false);
+}
+
+bool AssetBuilderApplication::IsInDebugMode() const
+{
+    return AssetBuilderComponent::IsInDebugMode(m_commandLine);
+}
+
+bool AssetBuilderApplication::ReadGameFolderFromBootstrap(AZStd::string& result) const
+{
+    AZStd::string assetRoot;
+    AzFramework::ApplicationRequests::Bus::BroadcastResult(assetRoot, &AzFramework::ApplicationRequests::GetAssetRoot);
+    if (assetRoot.empty())
+    {
+        return false;
+    }
+    AZStd::string gameFolder;
+    AzFramework::BootstrapReaderRequestBus::Broadcast(&AzFramework::BootstrapReaderRequestBus::Events::SearchConfigurationForKey, "sys_game_folder", false, gameFolder);
+    if (gameFolder.empty())
+    {
+        return false;
+    }
+
+    return AzFramework::StringFunc::Path::Join(assetRoot.c_str(), gameFolder.c_str(), result);
 }

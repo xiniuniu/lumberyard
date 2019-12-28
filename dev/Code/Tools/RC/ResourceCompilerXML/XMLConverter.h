@@ -19,7 +19,7 @@
 #include "IConvertor.h"
 #include "ICryXML.h"
 #include "NameConvertor.h"
-#include "XmlBinaryHeaders.h"
+#include "XMLBinaryHeaders.h"
 
 struct XMLFilterElement
 {
@@ -70,7 +70,6 @@ public:
 
     virtual void Init(const ConvertorInitContext& context);
     virtual ICompiler* CreateCompiler();
-    virtual bool SupportsMultithreading() const;
     virtual const char* GetExt(int index) const;
 
 private:

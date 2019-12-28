@@ -22,6 +22,9 @@ import uuid
 import csv
 
 from errors import ClientError
+from botocore.client import Config
+
+import text_to_speech_s3
 
 PACKAGEDVOICELINES = 'packagedvoicelines'
 ID_PACKAGES_FOLDER = "idPackages/"
@@ -58,7 +61,7 @@ def check_url(name, in_lib = True):
     return url
 
 def get_generated_packages():
-    s3_client = boto3.client('s3')
+    s3_client = text_to_speech_s3.get_s3_client()
     response = s3_client.list_objects(Bucket = CloudCanvas.get_setting(PACKAGEDVOICELINES))
 
     generated_packages = []
@@ -86,16 +89,22 @@ def create_zip_file(tts_info_list, name, UUID):
             character_custom_mapping = key
         elif value == 'line':
             line_custom_mapping = key
-    speech_lines_header = [character_custom_mapping, line_custom_mapping]
+    speech_lines_header = [character_custom_mapping, line_custom_mapping, 'MD5']
 
     for tts_info in tts_info_list:
         character_info = character_config.get_character_info(tts_info['character'])
         tts_info['voice'] = character_info['voice']
         tts_info['message'] = tts.add_prosody_tags_to_message(tts_info['line'], character_info)
         tts_info['speechMarks'] = character_info['speechMarks']
-        character_mapping[tts_info['character']] = {'voice': character_info['voice'], 'speechMarks': character_info['speechMarks']}
-        if character_info.get('ssmlTags',[]):
-            character_mapping[tts_info['character']]['ssmlTags'] = character_info['ssmlTags']
+        character_mapping[tts_info['character']] = {
+            'voice': character_info['voice'], 'speechMarks': character_info['speechMarks']
+        }
+        if character_info.get('ssmlProsodyTags', []):
+            character_mapping[tts_info['character']]['ssmlTags'] = character_info['ssmlProsodyTags']
+        if character_info.get('ssmlLanguage',''):
+            character_mapping[tts_info['character']]['ssmlLanguage'] = character_info['ssmlLanguage']
+        if character_info.get('timbre',''):
+            character_mapping[tts_info['character']]['timbre'] = character_info['timbre']
 
         __add_speech_line_definition(tts_info, speech_line_definitions, speech_lines_header)
         __update_spoken_line_file(tts_info, zip_file_name)
@@ -108,6 +117,14 @@ def create_zip_file(tts_info_list, name, UUID):
 
     message = 'The zip file {} is generated successfully.'.format(zip_file_key)
     print(message)
+
+def delete_zip_file(key):
+    client = text_to_speech_s3.get_s3_client()
+    try:
+        client.delete_object(Bucket=CloudCanvas.get_setting(PACKAGEDVOICELINES), Key = key)
+    except ClientError as e:
+        return "ERROR: " + e.response['Error']['Message']
+    return 'success'
 
 def __update_spoken_line_file(tts_info, zip_file_name):
     spoken_line_url = tts.get_voice(tts_info, True)
@@ -169,6 +186,7 @@ def __add_speech_line_definition(tts_info, speech_line_definitions, speech_lines
         else:
             speech_line_definition[key] = value;
 
+    speech_line_definition['MD5'] = tts.generate_key(tts_info)
     speech_line_definitions.append(speech_line_definition)
 
 def __create_speech_definitions_file(zip_file_name, speech_line_definitions, speech_lines_header):
@@ -188,7 +206,7 @@ def __create_speech_definitions_file(zip_file_name, speech_line_definitions, spe
         zf.close()
 
 def __upload_zip_file(file_name, key):
-    s3 = boto3.resource('s3')
+    s3 = boto3.resource('s3', config=Config(signature_version='s3v4'))
     try:
         s3.meta.client.upload_file(file_name, CloudCanvas.get_setting(PACKAGEDVOICELINES), key)
     except:
@@ -196,7 +214,7 @@ def __upload_zip_file(file_name, key):
         raise ClientError(error_message)
 
 def __generate_presigned_url(key):
-    s3_client = boto3.client('s3')
+    s3_client = text_to_speech_s3.get_s3_client()
     try:
         presigned_url = s3_client.generate_presigned_url('get_object', Params =
             {

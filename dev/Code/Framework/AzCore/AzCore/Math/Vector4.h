@@ -200,6 +200,16 @@ namespace AZ
         /*@}*/
 
         //===============================================================
+        // Interpolation
+        //===============================================================
+
+        /**
+         * Linear interpolation between this vector and a destination.
+         * @return (*this)*(1-t) + dest*t
+         */
+        const Vector4 Lerp(const Vector4& dest, const VectorFloat& t) const;
+
+        //===============================================================
         // Dot products
         //===============================================================
 
@@ -295,15 +305,8 @@ namespace AZ
     };
 }
 
-#ifndef AZ_PLATFORM_WINDOWS // Remove this once all compilers support POD (MSVC already does)
-#   include <AzCore/std/typetraits/is_pod.h>
-AZSTD_DECLARE_POD_TYPE(AZ::Vector4);
-#endif
-
-#if defined(AZ_SIMD_WINDOWS) || defined(AZ_SIMD_XBONE) || defined(AZ_SIMD_PS4) || defined(AZ_SIMD_LINUX) || defined(AZ_SIMD_APPLE_OSX)
+#if AZ_TRAIT_USE_PLATFORM_SIMD
     #include <AzCore/Math/Internal/Vector4Win32.inl>
-#elif defined(AZ_SIMD_WII)
-    #include <AzCore/Math/Internal/Vector4Wii.inl>
 #else
     #include <AzCore/Math/Internal/Vector4Fpu.inl>
 #endif

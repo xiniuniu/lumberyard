@@ -9,7 +9,6 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#ifndef AZ_UNITY_BUILD
 
 #include <AzCore/Jobs/JobContext.h>
 
@@ -18,34 +17,32 @@
 
 namespace AZ
 {
-    static EnvironmentVariable<JobContext*> g_jobContextInstance;
-    static const char* s_jobContextName = "JobContext";
+    static EnvironmentVariable<JobContext*> s_globalJobContext;
+    static const char* s_globalJobContextName = "GlobalJobContext";
 
     void JobContext::SetGlobalContext(JobContext* context)
     {
-        if (!g_jobContextInstance)
+        if (!s_globalJobContext)
         {
-            g_jobContextInstance = Environment::CreateVariable<JobContext*>(s_jobContextName);
-            (*g_jobContextInstance) = nullptr;
+            s_globalJobContext = Environment::CreateVariable<JobContext*>(s_globalJobContextName);
         }
-
-        // At this point we're guaranteed to have g_jobContextInstance. Its value might be nullptr.
-        if ((context) && (g_jobContextInstance) && (*g_jobContextInstance))
+        else if (context && *s_globalJobContext)
         {
             AZ_Error("JobContext", false, "JobContext::SetGlobalContext was called without first destroying the old context and setting it to nullptr");
         }
 
-        (*g_jobContextInstance) = context;
+        s_globalJobContext.Set(context);
     }
 
     JobContext* JobContext::GetGlobalContext()
     {
-        if (!g_jobContextInstance)
+        if (!s_globalJobContext)
         {
-            g_jobContextInstance = Environment::FindVariable<JobContext*>(s_jobContextName);
+            s_globalJobContext = Environment::FindVariable<JobContext*>(s_globalJobContextName);
         }
+        AZ_Assert(s_globalJobContext, "JobContext::GetGlobalContext called before JobContext::SetGlobalContext()");
 
-        return g_jobContextInstance ? *g_jobContextInstance : nullptr;
+        return *s_globalJobContext;
     }
 
     JobContext* JobContext::GetParentContext()
@@ -56,5 +53,3 @@ namespace AZ
         return currentJob ? currentJob->GetContext() : globalContext;
     }
 }
-
-#endif // #ifndef AZ_UNITY_BUILD

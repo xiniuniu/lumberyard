@@ -11,11 +11,11 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "StdAfx.h"
+#include "CryLegacy_precompiled.h"
 
 #include "SynergyKeyboard.h"
 
-#include <AzFramework/Input/Devices/Keyboard/InputDeviceKeyboard_win_scancodes.inl>
+#include <AzFramework/Input/Devices/Keyboard/InputDeviceKeyboardWindowsScanCodes.h>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 namespace SynergyInput

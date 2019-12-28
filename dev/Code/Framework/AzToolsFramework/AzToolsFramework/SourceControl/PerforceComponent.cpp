@@ -10,356 +10,29 @@
 *
 */
 
-#include "stdafx.h"
+#include "StdAfx.h"
 
 #include <AzToolsFramework/SourceControl/PerforceComponent.h>
 
-#include <AzCore/Serialization/SerializeContext.h>
-#include <AzCore/platformincl.h>
-#include <AzCore/Math/Crc.h>
+#include <AzCore/Component/TickBus.h>
+#include <AzCore/IO/SystemFile.h>
+#include <AzCore/Serialization/EditContext.h>
 #include <AzCore/std/string/conversions.h>
-#include <AzCore/std/parallel/mutex.h>
 #include <AzCore/std/parallel/lock.h>
 
 #include <AzFramework/StringFunc/StringFunc.h>
-#include <AzCore/std/parallel/thread.h>
-#include <AzCore/IO/SystemFile.h>
 
-#include <AzToolsFramework/Process/ProcessCommunicator.h>
 #include <AzToolsFramework/Process/ProcessWatcher.h>
+#include <AzToolsFramework/SourceControl/PerforceConnection.h>
 
 #define SCC_WINDOW "Source Control"
 
 namespace AzToolsFramework
 {
-    class PerforceConnection;
-
     namespace
     {
-        const int changeList_Default = -1;
-        const int changeList_None = 0;
-
         PerforceConnection* s_perforceConn = nullptr;
     }
-
-    class PerforceCommand
-    {
-    public:
-        ProcessOutput m_rawOutput;
-        PerforceMap m_commandOutputMap; // doesn't allow duplicate kvp's
-        AZStd::vector<PerforceMap> m_commandOutputMapList; // allows duplicate kvp's
-
-        PerforceCommand()
-            : endOfFileChar(static_cast<char>(26)) {}
-        ~PerforceCommand() {}
-
-        AZStd::string GetCurrentChangelistNumber() const { return this->GetOutputValue("change"); }
-        AZStd::string GetHaveRevision() const { return this->GetOutputValue("haveRev"); }
-        AZStd::string GetHeadRevision() const { return this->GetOutputValue("headRev"); }
-        AZStd::string GetOtherUserCheckedOut() const { return this->GetOutputValue("otherOpen0"); }
-        int GetOtherUserCheckOutCount() const { return atoi(this->GetOutputValue("otherOpen").c_str()); }
-
-        bool CurrentActionIsAdd() const { return this->GetOutputValue("action") == "add"; }
-        bool CurrentActionIsEdit() const { return this->GetOutputValue("action") == "edit"; }
-        bool CurrentActionIsDelete() const { return this->GetOutputValue("action") == "delete"; }
-        bool FileExists() const { return m_rawOutput.errorResult.find("no such file(s)") == AZStd::string::npos; }
-        bool HasRevision() const { return atoi(this->GetOutputValue("haveRev").c_str()) >= 0; }
-        bool HeadActionIsDelete() const { return this->GetOutputValue("headAction") == "delete"; }
-        bool IsMarkedForAdd() const { return m_rawOutput.outputResult.find("can't edit (already opened for add)") != AZStd::string::npos; }
-        bool NeedsReopening() const { return m_rawOutput.outputResult.find("use 'reopen'") != AZStd::string::npos; }
-        bool IsOpenByOtherUsers() const { return this->OutputKeyExists("otherOpen"); }
-        bool IsOpenByCurrentUser() const { return this->OutputKeyExists("action"); }
-
-        bool HasTrustIssue() const
-        {
-            if (m_rawOutput.errorResult.find("The authenticity of ") != AZStd::string::npos &&
-                m_rawOutput.errorResult.find("can't be established,") != AZStd::string::npos)
-            {
-                return true;
-            }
-
-            return false;
-        }
-
-        bool ExclusiveOpen() const
-        {
-            AZStd::string fileType = GetOutputValue("headType");
-            if (!fileType.empty())
-            {
-                size_t modLocation = fileType.find('+');
-                if (modLocation != AZStd::string::npos)
-                {
-                    return fileType.find('l', modLocation) != AZStd::string::npos;
-                }
-            }
-            return false;
-        }
-
-        AZStd::string GetOutputValue(const AZStd::string& key) const
-        {
-            PerforceMap::const_iterator kvp = this->m_commandOutputMap.find(key);
-            if (kvp != this->m_commandOutputMap.end())
-            {
-                return kvp->second;
-            }
-            else
-            {
-                return "";
-            }
-        }
-
-        AZStd::string GetOutputValue(const AZStd::string& key, PerforceMap perforceMap) const
-        {
-            PerforceMap::const_iterator kvp = perforceMap.find(key);
-            if (kvp != perforceMap.end())
-            {
-                return kvp->second;
-            }
-            else
-            {
-                return "";
-            }
-        }
-
-        bool OutputKeyExists(const AZStd::string& key) const
-        {
-            PerforceMap::const_iterator kvp = this->m_commandOutputMap.find(key);
-            return kvp != this->m_commandOutputMap.end();
-        }
-
-        bool OutputKeyExists(const AZStd::string& key, PerforceMap perforceMap) const
-        {
-            PerforceMap::const_iterator kvp = perforceMap.find(key);
-            return kvp != perforceMap.end();
-        }
-
-        AZStd::vector<PerforceMap>::iterator FindMapWithPartiallyMatchingValueForKey(const AZStd::string& key, const AZStd::string& value)
-        {
-            for (AZStd::vector<PerforceMap>::iterator perforceIter = m_commandOutputMapList.begin();
-                 perforceIter != m_commandOutputMapList.end(); ++perforceIter)
-            {
-                const PerforceMap currentMap = *perforceIter;
-                PerforceMap::const_iterator kvp = currentMap.find(key);
-                if (kvp != currentMap.end() && kvp->second.find(value) != AZStd::string::npos)
-                {
-                    return perforceIter;
-                }
-            }
-
-            return nullptr;
-        }
-
-        AZStd::string CreateChangelistForm(const AZStd::string& client, const AZStd::string& user, const AZStd::string& description)
-        {
-            AZStd::string changelistForm = "Change:	new\n\nClient:	";
-            changelistForm.append(client);
-
-            if (!user.empty() && user != "*unknown*")
-            {
-                changelistForm.append("\n\nUser:	");
-                changelistForm.append(user);
-            }
-
-            changelistForm.append("\n\nStatus:	new\n\nDescription:\n	");
-            changelistForm.append(description);
-            changelistForm.append("\n\n");
-            changelistForm += endOfFileChar;
-            return changelistForm;
-        }
-
-        void ExecuteAdd(const AZStd::string& changelist, const AZStd::string& filePath)
-        {
-            m_commandArgs = "add -c " + changelist + " \"" + filePath + "\"";
-            ExecuteCommand();
-        }
-
-        void ExecuteClaimChangedFile(const AZStd::string& filePath, const AZStd::string& changeList)
-        {
-            m_commandArgs = "reopen -c " + changeList + " \"" + filePath + "\"";
-            ExecuteCommand();
-        }
-
-        void ExecuteDelete(const AZStd::string& changelist, const AZStd::string& filePath)
-        {
-            m_commandArgs = "delete -c " + changelist + " \"" + filePath + "\"";
-            ExecuteCommand();
-        }
-
-        void ExecuteEdit(const AZStd::string& changelist, const AZStd::string& filePath)
-        {
-            m_commandArgs = "edit -c " + changelist + " \"" + filePath + "\"";
-            ExecuteCommand();
-        }
-
-        void ExecuteFstat(const AZStd::string& filePath)
-        {
-            m_commandArgs = "fstat \"" + filePath + "\"";
-            ExecuteCommand();
-        }
-
-        void ExecuteSet()
-        {
-            m_commandArgs = "set";
-            ExecuteRawCommand();
-        }
-
-        void ExecuteSet(const AZStd::string& key, const AZStd::string& value)
-        {
-            m_commandArgs = "set " + key + '=' + value;
-            ExecuteIOCommand();
-        }
-
-        void ExecuteInfo()
-        {
-            m_commandArgs = "info";
-            ExecuteCommand();
-        }
-
-        void ExecuteShortInfo()
-        {
-            m_commandArgs = "info -s";
-            ExecuteCommand();
-        }
-
-        void ExecuteTicketStatus()
-        {
-            m_commandArgs = "login -s";
-            ExecuteCommand();
-        }
-
-        void ExecuteTrust(bool enable, const AZStd::string& fingerprint)
-        {
-            if (enable)
-            {
-                m_commandArgs = "trust -i ";
-            }
-            else
-            {
-                m_commandArgs = "trust -d ";
-            }
-            m_commandArgs += fingerprint;
-            ExecuteCommand();
-        }
-
-        ProcessWatcher* ExecuteNewChangelistInput()
-        {
-            m_commandArgs = "change -i";
-            return ExecuteIOCommand();
-        }
-
-        void ExecuteNewChangelistOutput()
-        {
-            m_commandArgs = "change -o";
-            ExecuteRawCommand();
-        }
-
-        void ExecuteRevert(const AZStd::string& filePath)
-        {
-            m_commandArgs = "revert \"" + filePath + "\"";
-            ExecuteCommand();
-        }
-
-        void ExecuteShowChangelists(const AZStd::string& currentUser, const AZStd::string& currentClient)
-        {
-            m_commandArgs = "changes -s pending -c " + currentClient;
-            if (!currentUser.empty() && currentUser != "*unknown*")
-            {
-                m_commandArgs += " -u " + currentUser;
-            }
-            ExecuteCommand();
-        }
-
-        void ThrowWarningMessage()
-        {
-            // This can happen all the time, for various reasons.  AZ_Warning will actually cause the application to
-            // take a stack dump and will load pdbs, which can introduce a serious delay during startup.  As such,
-            // we send it as a Trace, not a warning.  Background threads retrying may hit this many times.
-            AZ_TracePrintf(SCC_WINDOW, "Perforce Warning - Command has failed '%s'\n", m_commandArgs.c_str());
-        }
-
-    private:
-        char endOfFileChar;
-
-        AZStd::string m_commandArgs;
-
-        void ExecuteCommand()
-        {
-            m_rawOutput.Clear();
-            ProcessLauncher::ProcessLaunchInfo processLaunchInfo;
-            processLaunchInfo.m_commandlineParameters = "p4 -ztag " + m_commandArgs;
-            processLaunchInfo.m_showWindow = false;
-            ProcessWatcher::LaunchProcessAndRetrieveOutput(processLaunchInfo, ProcessCommunicationType::COMMUNICATOR_TYPE_STDINOUT, m_rawOutput);
-        }
-
-        ProcessWatcher* ExecuteIOCommand()
-        {
-            ProcessLauncher::ProcessLaunchInfo processLaunchInfo;
-            processLaunchInfo.m_commandlineParameters = "p4 " + m_commandArgs;
-            processLaunchInfo.m_showWindow = false;
-            return ProcessWatcher::LaunchProcess(processLaunchInfo, ProcessCommunicationType::COMMUNICATOR_TYPE_STDINOUT);
-        }
-
-        void ExecuteRawCommand()
-        {
-            m_rawOutput.Clear();
-            ProcessLauncher::ProcessLaunchInfo processLaunchInfo;
-            processLaunchInfo.m_commandlineParameters = "p4 " + m_commandArgs;
-            processLaunchInfo.m_showWindow = false;
-            ProcessWatcher::LaunchProcessAndRetrieveOutput(processLaunchInfo, ProcessCommunicationType::COMMUNICATOR_TYPE_STDINOUT, m_rawOutput);
-        }
-    };
-
-    class PerforceConnection
-    {
-    public:
-        PerforceMap m_infoResultMap;
-        PerforceCommand m_command;
-
-        PerforceConnection() {}
-        ~PerforceConnection() {}
-
-        AZStd::string GetUser() const { return this->GetInfoValue("userName"); }
-        AZStd::string GetClientName() const { return this->GetInfoValue("clientName"); }
-        AZStd::string GetClientRoot() const { return this->GetInfoValue("clientRoot"); }
-        AZStd::string GetServerAddress() const { return this->GetInfoValue("serverAddress"); }
-        AZStd::string GetServerUptime() const { return this->GetInfoValue("serverUptime"); }
-
-        AZStd::string GetInfoValue(const AZStd::string& key) const
-        {
-            PerforceMap::const_iterator kvp = this->m_infoResultMap.find(key);
-            if (kvp != this->m_infoResultMap.end())
-            {
-                return kvp->second;
-            }
-            else
-            {
-                return "";
-            }
-        }
-
-        bool CommandHasOutput() const { return this->m_command.m_rawOutput.HasOutput(); }
-        bool CommandHasError() const { return this->m_command.m_rawOutput.HasError(); }
-        bool CommandHasTrustIssue() const { return this->m_command.HasTrustIssue(); }
-        AZStd::string GetCommandOutput() const { return this->m_command.m_rawOutput.outputResult; }
-        AZStd::string GetCommandError() const { return this->m_command.m_rawOutput.errorResult; }
-
-        bool CommandHasFailed()
-        {
-            if (!CommandHasOutput())
-            {
-                if (CommandHasError())
-                {
-                    AZ_TracePrintf(SCC_WINDOW, "Perforce - ERRORS\n%s\n", GetCommandError().c_str());
-                    AZ_TracePrintf(SCC_WINDOW, "Perforce - Error = %s\n", !m_command.FileExists() ? "No such file exists" : "Unknown error");
-                }
-
-                m_command.ThrowWarningMessage();
-                return true;
-            }
-
-            return false;
-        }
-    };
 
     void PerforceSettingResult::UpdateSettingInfo(const AZStd::string& value)
     {
@@ -436,8 +109,7 @@ namespace AzToolsFramework
         if (AZ::SerializeContext* serializeContext = azrtti_cast<AZ::SerializeContext*>(context))
         {
             serializeContext->Class<PerforceComponent, AZ::Component>()
-                ->SerializerForEmptyClass()
-            ;
+                ;
 
             if (AZ::EditContext* editContext = serializeContext->GetEditContext())
             {
@@ -467,10 +139,7 @@ namespace AzToolsFramework
         AZ_Assert(fullFilePath, "Must specify a file path");
         AZ_Assert(callbackFn, "Must specify a callback!");
 
-        PerforceJobRequest topReq;
-        topReq.m_requestPath = fullFilePath;
-        topReq.m_requestType = PerforceJobRequest::PJR_Stat;
-        topReq.m_callback = callbackFn;
+        PerforceJobRequest topReq(PerforceJobRequest::PJR_Stat, fullFilePath, callbackFn);
         QueueJobRequest(AZStd::move(topReq));
     }
 
@@ -479,11 +148,8 @@ namespace AzToolsFramework
         AZ_Assert(fullFilePath, "Must specify a file path");
         AZ_Assert(callbackFn, "Must specify a callback!");
 
-        PerforceJobRequest topReq;
-        topReq.m_requestPath = fullFilePath;
-        topReq.m_requestType = PerforceJobRequest::PJR_Edit;
+        PerforceJobRequest topReq(PerforceJobRequest::PJR_Edit, fullFilePath, callbackFn);
         topReq.m_allowMultiCheckout = allowMultiCheckout;
-        topReq.m_callback = callbackFn;
         QueueJobRequest(AZStd::move(topReq));
     }
 
@@ -492,10 +158,7 @@ namespace AzToolsFramework
         AZ_Assert(fullFilePath, "Must specify a file path");
         AZ_Assert(callbackFn, "Must specify a callback!");
 
-        PerforceJobRequest topReq;
-        topReq.m_requestPath = fullFilePath;
-        topReq.m_requestType = PerforceJobRequest::PJR_Delete;
-        topReq.m_callback = callbackFn;
+        PerforceJobRequest topReq(PerforceJobRequest::PJR_Delete, fullFilePath, callbackFn);
         QueueJobRequest(AZStd::move(topReq));
     }
 
@@ -504,10 +167,27 @@ namespace AzToolsFramework
         AZ_Assert(fullFilePath, "Must specify a file path");
         AZ_Assert(callbackFn, "Must specify a callback!");
 
-        PerforceJobRequest topReq;
-        topReq.m_requestPath = fullFilePath;
-        topReq.m_requestType = PerforceJobRequest::PJR_Revert;
-        topReq.m_callback = callbackFn;
+        PerforceJobRequest topReq(PerforceJobRequest::PJR_Revert, fullFilePath, callbackFn);
+        QueueJobRequest(AZStd::move(topReq));
+    }
+
+    void PerforceComponent::RequestLatest(const char* fullFilePath, const SourceControlResponseCallback& callbackFn)
+    {
+        AZ_Assert(fullFilePath, "Must specify a file path");
+        AZ_Assert(callbackFn, "Must specify a callback!");
+
+        PerforceJobRequest topReq(PerforceJobRequest::PJR_Sync, fullFilePath, callbackFn);
+        QueueJobRequest(AZStd::move(topReq));
+    }
+
+    void PerforceComponent::RequestRename(const char* sourcePathFull, const char* destPathFull, const SourceControlResponseCallback& callbackFn)
+    {
+        AZ_Assert(sourcePathFull, "Must specify a source file path");
+        AZ_Assert(destPathFull, "Must specify a destination file path");
+        AZ_Assert(callbackFn, "Must specify a callback!");
+
+        PerforceJobRequest topReq(PerforceJobRequest::PJR_Rename, sourcePathFull, callbackFn);
+        topReq.m_targetPath = destPathFull;
         QueueJobRequest(AZStd::move(topReq));
     }
 
@@ -580,14 +260,13 @@ namespace AzToolsFramework
                 AZ_TracePrintf(SCC_WINDOW, "Perforce - File is not tracked\n");
                 return newInfo;
             }
-            
+
             newInfo.m_status = SCS_ProviderError;
             return newInfo;
         }
 
-        bool deletedAtHeadRev = s_perforceConn->m_command.HeadActionIsDelete();
-        bool hasRevision = s_perforceConn->m_command.HasRevision();
-        if (!(deletedAtHeadRev && !hasRevision))
+        bool newFileAfterDeletionAtHead = s_perforceConn->m_command.NewFileAfterDeletedRev();
+        if (!newFileAfterDeletionAtHead)
         {
             if (s_perforceConn->m_command.GetHeadRevision() != s_perforceConn->m_command.GetHaveRevision())
             {
@@ -610,7 +289,7 @@ namespace AzToolsFramework
 
         if (s_perforceConn->m_command.IsOpenByCurrentUser())
         {
-            newInfo.m_flags |= SCF_OpenByUser;
+            newInfo.m_flags |= SCF_Tracked | SCF_OpenByUser;
             if (s_perforceConn->m_command.CurrentActionIsAdd())
             {
                 newInfo.m_flags |= SCF_PendingAdd;
@@ -635,7 +314,7 @@ namespace AzToolsFramework
             newInfo.m_flags |= SCF_Tracked;
             AZ_TracePrintf(SCC_WINDOW, "Perforce - File is opened by %s\n", newInfo.m_StatusUser.c_str());
         }
-        else if (deletedAtHeadRev && !hasRevision)
+        else if (newFileAfterDeletionAtHead)
         {
             AZ_TracePrintf(SCC_WINDOW, "Perforce - File is deleted at head revision\n");
         }
@@ -656,7 +335,7 @@ namespace AzToolsFramework
             return false;
         }
 
-        return ExecuteEdit(filePath, allowMultiCheckout);
+        return ExecuteEdit(filePath, allowMultiCheckout, true);
     }
 
     bool PerforceComponent::RequestDelete(const char* filePath)
@@ -669,14 +348,14 @@ namespace AzToolsFramework
         return ExecuteDelete(filePath);
     }
 
-    bool PerforceComponent::GetLatest(const char* filePath)
+    bool PerforceComponent::RequestLatest(const char* filePath)
     {
-        AZ_Assert(m_ProcessThreadID != AZStd::thread::id(), "The perforce worker thread has not started.");
-        AZ_Assert(AZStd::this_thread::get_id() == m_ProcessThreadID, "You may only call this function from the perforce worker thread.");
+        if (!CheckConnectivityForAction("sync", filePath))
+        {
+            return false;
+        }
 
-        (void)filePath;
-        AZ_Assert(false, "Get Latest not implemented.");
-        return false;
+        return ExecuteSync(filePath);
     }
 
     bool PerforceComponent::RequestRevert(const char* filePath)
@@ -687,6 +366,16 @@ namespace AzToolsFramework
         }
 
         return ExecuteRevert(filePath);
+    }
+
+    bool PerforceComponent::RequestRename(const char* sourcePath, const char* destPath)
+    {
+        if (!CheckConnectivityForAction("rename", sourcePath))
+        {
+            return false;
+        }
+
+        return ExecuteMove(sourcePath, destPath);
     }
 
     // claim changed file just moves the file to the new changelist - it assumes its already on your changelist
@@ -717,7 +406,6 @@ namespace AzToolsFramework
         int changeListNumber = GetOrCreateOurChangelist();
         if (changeListNumber <= 0)
         {
-            // error will have already been emitted.
             return false;
         }
 
@@ -729,7 +417,7 @@ namespace AzToolsFramework
             return false;
         }
 
-        // Interesting result of our intention based system - 
+        // Interesting result of our intention based system -
         // The perforce Add operation does not remove 'read only' status from a file; however,
         // since our intention is to say "place this file in a state ready for work," we need
         // to remove read only status (otherwise subsequent save operations would fail)
@@ -746,7 +434,7 @@ namespace AzToolsFramework
         return true;
     }
 
-    bool PerforceComponent::ExecuteEdit(const char* filePath, bool allowMultiCheckout)
+    bool PerforceComponent::ExecuteEdit(const char* filePath, bool allowMultiCheckout, bool allowAdd)
     {
         bool sourceAwareFile = false;
         if (!ExecuteAndParseFstat(filePath, sourceAwareFile))
@@ -771,22 +459,25 @@ namespace AzToolsFramework
 
         if (!sourceAwareFile)
         {
-            if (!ExecuteAdd(filePath))
+            if (allowAdd)
             {
-                AZ_Warning(SCC_WINDOW, false, "Perforce - Unable to add file %s\n", filePath);
-                // if the file is writable, this does not count as an error as we are likely
-                // simply outside the workspace.
-                return AZ::IO::SystemFile::IsWritable(filePath);
+                if (!ExecuteAdd(filePath))
+                {
+                    AZ_Warning(SCC_WINDOW, false, "Perforce - Unable to add file %s\n", filePath);
+                    // if the file is writable, this does not count as an error as we are likely
+                    // simply outside the workspace.
+                    return AZ::IO::SystemFile::IsWritable(filePath);
+                }
+
+                return true;
             }
 
-            return true;
+            return false;
         }
 
-        // find or create 'the changelist' that we will use to handle our stuff:
         int changeListNumber = GetOrCreateOurChangelist();
         if (changeListNumber <= 0)
         {
-            // error will have already been emitted.
             return false;
         }
 
@@ -825,7 +516,7 @@ namespace AzToolsFramework
                 return false;
             }
         }
-        else if (s_perforceConn->m_command.HeadActionIsDelete())
+        else if (s_perforceConn->m_command.HeadActionIsDelete() && allowAdd)
         {
             // it's currently deleted - we need to fix that before we can check it out
             // this Add operation is all we need since it puts the file under our control
@@ -895,7 +586,6 @@ namespace AzToolsFramework
             int changeListNumber = GetOrCreateOurChangelist();
             if (changeListNumber <= 0)
             {
-                AZ_Warning(SCC_WINDOW, false, "Perforce - Unable to find our changelist %s\n", m_autoChangelistDescription.c_str());
                 return false;
             }
 
@@ -915,6 +605,42 @@ namespace AzToolsFramework
         AZ::IO::SystemFile::Delete(filePath);
 
         return true;
+    }
+
+    bool PerforceComponent::ExecuteSync(const char* filePath)
+    {
+        bool sourceAwareFile = false;
+        if (!ExecuteAndParseFstat(filePath, sourceAwareFile))
+        {
+            AZ_TracePrintf(SCC_WINDOW, "Perforce - Unable to get latest on file '%s'\n", filePath);
+            return false;
+        }
+
+        // If we're working on a new file - unknown to p4 or a 'new file' after a deletion
+        if (!sourceAwareFile || s_perforceConn->m_command.NewFileAfterDeletedRev())
+        {
+            return true;
+        }
+
+        if (AZ::IO::SystemFile::IsWritable(filePath) && !s_perforceConn->m_command.IsOpenByCurrentUser())
+        {
+            AZ_TracePrintf(SCC_WINDOW, "Perforce - Unable to get latest on file '%s' (File is not checked out but has changes locally.  Please reconcile offline work!)\n", filePath);
+            return false;
+        }
+
+        if (s_perforceConn->m_command.GetHeadRevision() == s_perforceConn->m_command.GetHaveRevision())
+        {
+            return true;
+        }
+
+        if (s_perforceConn->m_command.IsOpenByCurrentUser())
+        {
+            AZ_TracePrintf(SCC_WINDOW, "Perforce - Unable to get latest on file '%s' (File is open by current user, but not at head revision!)\n", filePath);
+            return false;
+        }
+
+        s_perforceConn->m_command.ExecuteSync(filePath);
+        return CommandSucceeded();
     }
 
     bool PerforceComponent::ExecuteRevert(const char* filePath)
@@ -947,6 +673,51 @@ namespace AzToolsFramework
 
         AZ_TracePrintf(SCC_WINDOW, "Perforce - Revert succeeded for %s\n", filePath);
         return true;
+    }
+
+    bool PerforceComponent::ExecuteMove(const char* sourcePath, const char* destPath)
+    {
+        if (!AZ::IO::SystemFile::Exists(sourcePath))
+        {
+            AZ_TracePrintf(SCC_WINDOW, "Perforce - Unable to move file '%s' (source file does not exist)\n", sourcePath);
+            return false;
+        }
+
+        // Blocked output - File exists or SourceAwareFile and File is not deleted at head
+        if (AZ::IO::SystemFile::Exists(destPath))
+        {
+            AZ_TracePrintf(SCC_WINDOW, "Perforce - Unable to move file '%s' (destination file '%s' already exists)\n", sourcePath, destPath);
+            return false;
+        }
+
+        bool sourceAwareFile = false;
+        ExecuteAndParseFstat(destPath, sourceAwareFile);
+        if (sourceAwareFile)
+        {
+            if (!s_perforceConn->m_command.HeadActionIsDelete())
+            {
+                AZ_TracePrintf(SCC_WINDOW, "Perforce - Unable to move file '%s' (destination file '%s' exists in perforce)\n", sourcePath, destPath);
+                return false;
+            }
+        }
+
+        // Make sure we're not going to trash any data.
+
+        if (!ExecuteEdit(sourcePath, false, false))
+        {
+            AZ_TracePrintf(SCC_WINDOW, "Perforce - Unable to mark file '%s' for edit prior to move operation\n", sourcePath);
+            return false;
+        }
+
+        int changeListNumber = GetOrCreateOurChangelist();
+        if (changeListNumber <= 0)
+        {
+            return false;
+        }
+
+        AZStd::string changeListNumberStr = AZStd::to_string(changeListNumber);
+        s_perforceConn->m_command.ExecuteMove(changeListNumberStr, sourcePath, destPath);
+        return CommandSucceeded();
     }
 
     void PerforceComponent::QueueJobRequest(PerforceJobRequest&& jobRequest)
@@ -984,13 +755,10 @@ namespace AzToolsFramework
 
     bool PerforceComponent::ExecuteAndParseFstat(const char* filePath, bool& sourceAwareFile)
     {
-        sourceAwareFile = false;
         s_perforceConn->m_command.ExecuteFstat(filePath);
-        if (CommandSucceeded())
-        {
-            sourceAwareFile = true;
-        }
+        sourceAwareFile = CommandSucceeded();
 
+        AZStd::lock_guard<AZStd::mutex> locker(s_perforceConn->m_command.m_commandMutex);
         return ParseOutput(s_perforceConn->m_command.m_commandOutputMap, s_perforceConn->m_command.m_rawOutput.outputResult);
     }
 
@@ -1011,11 +779,20 @@ namespace AzToolsFramework
             return false;
         }
 
+        AZStd::lock_guard<AZStd::mutex> locker(s_perforceConn->m_command.m_commandMutex);
         return ParseOutput(s_perforceConn->m_command.m_commandOutputMap, s_perforceConn->m_command.m_rawOutput.outputResult, "=");
     }
 
     bool PerforceComponent::CommandSucceeded()
     {
+        // This is misleading - FileExists only returns false if the phrase 'no such file(s)'
+        // is present in output.  Therefore, this is safe to call even on perforce commands
+        // that are not directly related to files (p4 set / p4 change / p4 describe / etc)
+        if (!s_perforceConn->m_command.FileExists())
+        {
+            return false;
+        }
+
         if (s_perforceConn->CommandHasFailed())
         {
             m_testTrust = true;
@@ -1053,7 +830,7 @@ namespace AzToolsFramework
         return true;
     }
 
-    void PerforceComponent::TestConnectionTrust(bool attemptResolve)
+    void PerforceComponent::VerifyP4PortIsSet()
     {
         AZ_Assert(m_ProcessThreadID != AZStd::thread::id(), "The perforce worker thread has not started.");
         AZ_Assert(AZStd::this_thread::get_id() == m_ProcessThreadID, "You may only call this function from the perforce worker thread.");
@@ -1062,6 +839,30 @@ namespace AzToolsFramework
         {
             s_perforceConn = aznew PerforceConnection();
         }
+
+        if (m_testConnection)
+        {
+            bool p4PortSet = false;
+            if (ExecuteAndParseSet(nullptr, nullptr))
+            {
+                p4PortSet = !s_perforceConn->m_command.GetOutputValue("P4PORT").empty();
+            }
+
+            if (!p4PortSet)
+            {
+                // Disable any further connection status testing
+                AZ_WarningOnce(SCC_WINDOW, false, "Perforce - P4PORT (server address) is not set, Perforce not available!\n");
+                m_testTrust = false;
+                m_testConnection = false;
+                m_validConnection = false;
+            }
+        }
+    }
+
+    void PerforceComponent::TestConnectionTrust(bool attemptResolve)
+    {
+        AZ_Assert(m_ProcessThreadID != AZStd::thread::id(), "The perforce worker thread has not started.");
+        AZ_Assert(AZStd::this_thread::get_id() == m_ProcessThreadID, "You may only call this function from the perforce worker thread.");
 
         m_trustedKey = IsTrustKeyValid();
         if (!m_trustedKey && attemptResolve)
@@ -1084,15 +885,13 @@ namespace AzToolsFramework
                     if (AZ::TickBus::IsFunctionQueuing())
                     {
                         // Push to the main thread for convenience.
-                        AZStd::function<void()> trustNotify =
-                            [this, fingerprint]()
+                        AZStd::function<void()> trustNotify = [fingerprint]()
                         {
                             SourceControlNotificationBus::Broadcast(&SourceControlNotificationBus::Events::RequestTrust, fingerprint.c_str());
                         };
 
                         AZ::TickBus::QueueFunction(trustNotify);
                     }
-                    
                 }
             }
             else
@@ -1108,6 +907,12 @@ namespace AzToolsFramework
     bool PerforceComponent::IsConnectionValid() const
     {
         s_perforceConn->m_command.ExecuteTicketStatus();
+
+        if (!s_perforceConn->CommandApplicationFound())
+        {
+            return false;
+        }
+
         if (s_perforceConn->CommandHasError())
         {
             return false;
@@ -1191,6 +996,7 @@ namespace AzToolsFramework
         AZ_Assert(m_ProcessThreadID != AZStd::thread::id(), "The perforce worker thread has not started.");
         AZ_Assert(AZStd::this_thread::get_id() == m_ProcessThreadID, "You may only call this function from the perforce worker thread.");
 
+        SourceControlState prevState = m_connectionState;
         if (m_testConnection)
         {
             TestConnectionValid();
@@ -1202,15 +1008,27 @@ namespace AzToolsFramework
             currentState = (m_trustedKey && m_validConnection) ? SourceControlState::Active : SourceControlState::ConfigurationInvalid;
         }
 
-        if (currentState != m_connectionState)
+        m_connectionState = currentState;
+
+        if (m_connectionState != prevState)
         {
-            m_connectionState = currentState;
-           
+            switch (m_connectionState)
+            {
+            case SourceControlState::Disabled:
+                AZ_TracePrintf(SCC_WINDOW, "Perforce disabled");
+                break;
+            case SourceControlState::ConfigurationInvalid:
+                AZ_TracePrintf(SCC_WINDOW, "Perforce configuration invalid");
+                break;
+            case SourceControlState::Active:
+                AZ_TracePrintf(SCC_WINDOW, "Perforce connected");
+                break;
+            }
+
             if (AZ::TickBus::IsFunctionQueuing())
             {
                 // Push to the main thread for convenience.
-                AZStd::function<void()> connectivityNotify =
-                    [this, currentState]()
+                AZStd::function<void()> connectivityNotify = [currentState]()
                 {
                     SourceControlNotificationBus::Broadcast(&SourceControlNotificationBus::Events::ConnectivityStateChanged, currentState);
                 };
@@ -1329,6 +1147,9 @@ namespace AzToolsFramework
                 break; // abandon ship!
             }
 
+            // Verify P4PORT is set before running any commands
+            VerifyP4PortIsSet();
+
             // wait for trust issues to be resolved
             if (!UpdateTrust())
             {
@@ -1400,6 +1221,18 @@ namespace AzToolsFramework
             resp.m_fileInfo = AZStd::move(GetFileInfo(request.m_requestPath.c_str()));
         }
         break;
+        case PerforceJobRequest::PJR_Rename:
+        {
+            resp.m_succeeded = RequestRename(request.m_requestPath.c_str(), request.m_targetPath.c_str());
+            resp.m_fileInfo = AZStd::move(GetFileInfo(request.m_targetPath.c_str()));
+        }
+        break;
+        case PerforceJobRequest::PJR_Sync:
+        {
+            resp.m_succeeded = RequestLatest(request.m_requestPath.c_str());
+            resp.m_fileInfo = AZStd::move(GetFileInfo(request.m_requestPath.c_str()));
+        }
+        break;
         default:
         {
             validPerforceRequest = false;
@@ -1438,6 +1271,12 @@ namespace AzToolsFramework
             break;
         case PerforceJobRequest::PJR_Revert:
             m_localFileSCComponent.RequestRevert(request.m_requestPath.c_str(), request.m_callback);
+            break;
+        case PerforceJobRequest::PJR_Rename:
+            m_localFileSCComponent.RequestRename(request.m_requestPath.c_str(), request.m_targetPath.c_str(), request.m_callback);
+            break;
+        case PerforceJobRequest::PJR_Sync:
+            m_localFileSCComponent.RequestLatest(request.m_requestPath.c_str(), request.m_callback);
             break;
         default:
             AZ_Assert(false, "Invalid type of perforce job request.");

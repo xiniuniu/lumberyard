@@ -14,6 +14,8 @@
 
 #include <AzCore/base.h>
 
+#include <AzCore/std/string/string_view.h>
+
 //////////////////////////////////////////////////////////////////////////
 // Macros for pre-processor Crc32 conversion
 //
@@ -65,6 +67,8 @@ namespace AZ
          */
         explicit Crc32(const char* str);
 
+        explicit Crc32(AZStd::string_view view);
+
         /**
          * Calculates the value from a block of raw data.
          */
@@ -89,11 +93,6 @@ namespace AZ
         u32 m_value;
     };
 };
-
-#ifndef AZ_PLATFORM_WINDOWS // Remove this once all compilers support POD (MSVC already does)
-#   include <AzCore/std/typetraits/is_pod.h>
-AZSTD_DECLARE_POD_TYPE(AZ::Crc32);
-#endif
 
 #endif // AZCORE_CRC32_H
 #pragma once

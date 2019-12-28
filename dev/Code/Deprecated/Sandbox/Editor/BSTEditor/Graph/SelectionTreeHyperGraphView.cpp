@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "stdafx.h"
+#include "StdAfx.h"
 
 #include "SelectionTreeGraph.h"
 #include "SelectionTreeGraphManager.h"
@@ -20,7 +20,7 @@
 #include "Nodes/SelectionTree_TreeNode.h"
 
 #include "BSTEditor/SelectionTreeManager.h"
-#include "clipboard.h"
+#include "Clipboard.h"
 
 IMPLEMENT_DYNAMIC( CSelectionTreeHyperGraphView, CHyperGraphView )
 

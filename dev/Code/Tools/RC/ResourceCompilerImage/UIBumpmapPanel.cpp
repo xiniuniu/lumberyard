@@ -13,7 +13,7 @@
 
 #include <platform.h>
 
-#include "StdAfx.h"
+#include "stdafx.h"
 #include <assert.h>               // assert()
 #include "UIBumpmapPanel.h"       // CUIBumpmapPanel
 #include "resource.h"
@@ -80,7 +80,7 @@ void CUIBumpmapPanel::InitDialog(QWidget* hWndParent, const bool bShowBumpmapFil
         assert(hwnd);
 
         hwnd->setVisible(bShowBumpmapFileName);
-        QObject::connect(qobject_cast<QAbstractButton*>(hwnd), &QAbstractButton::clicked, [&](){ ChooseAddBump(m_hTab_Normalmapgen->window()); });
+        QObject::connect(qobject_cast<QAbstractButton*>(hwnd), &QAbstractButton::clicked, m_hTab_Normalmapgen, [&](){ ChooseAddBump(m_hTab_Normalmapgen->window()); });
     }
 
     {
@@ -185,7 +185,7 @@ void CUIBumpmapPanel::GetDataFromDialog(CBumpProperties& rBumpProp)
 
         str = dlgitem->text();
 
-        rBumpProp.SetBumpmapName(str.toLatin1().data());
+        rBumpProp.SetBumpmapName(str.toUtf8().data());
     }
 }
 

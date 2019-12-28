@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "StarterGameGem_precompiled.h"
 #include "StarterGameAIUtility.h"
 
 #include <AzCore/RTTI/BehaviorContext.h>
@@ -27,6 +27,11 @@ namespace StarterGameGem
 {
     bool StarterGameAIUtility::IsOnNavMesh(const AZ::Vector3& pos)
     {
+        if (!gEnv->pAISystem)
+        {
+            return false;
+        }
+
         INavigationSystem* navSystem = gEnv->pAISystem->GetNavigationSystem();
         NavigationAgentTypeID agentType = navSystem->GetAgentTypeID("MediumSizedCharacters");
         bool isValid = false;
@@ -44,6 +49,12 @@ namespace StarterGameGem
         {
             found = pos;
             return true;
+        }
+
+        if (!gEnv->pAISystem)
+        {
+            found = AZ::Vector3::CreateZero();
+            return false;
         }
 
         INavigationSystem* navSystem = gEnv->pAISystem->GetNavigationSystem();

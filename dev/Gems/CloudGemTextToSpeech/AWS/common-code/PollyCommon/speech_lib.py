@@ -14,13 +14,16 @@ import boto3
 import CloudCanvas
 
 from errors import ClientError
+from cgf_utils import custom_resource_utils
+
+
 
 SPEECH_TABLE = None
 
 def __get_table():
     global SPEECH_TABLE
     if SPEECH_TABLE == None:
-        SPEECH_TABLE = boto3.resource('dynamodb').Table(CloudCanvas.get_setting("SpeechLibTable"))
+        SPEECH_TABLE = boto3.resource('dynamodb').Table(custom_resource_utils.get_embedded_physical_id(CloudCanvas.get_setting("SpeechLibTable")))
     return SPEECH_TABLE
 
 def __get_all_speech_entries():
@@ -32,11 +35,21 @@ def __get_all_speech_entries():
         entries += response.get("Items", [])
     return entries
 
-def get_speech_lib(tags = []):
-    entries = __get_all_speech_entries()
-    exclude = []
-    for tag in tags:
-        entries = [e for e in entries if tag in e["tags"]]
+def get_speech_lib(tags = [], characters = [], logic = 'And'):
+    original_entries = __get_all_speech_entries()
+    if logic == 'And':
+        entries = original_entries
+        for tag in tags:
+            entries = [e for e in entries if tag in e["tags"]]
+    else:
+        if tags != []:
+            entries = []
+            for tag in tags:
+                entries = entries + [e for e in original_entries if tag in e["tags"]  and e not in entries]
+        else:
+            entries = original_entries
+    if characters:
+        entries = [e for e in entries if e["character"] in characters]
     return entries
 
 def add_speech_entry(speech):

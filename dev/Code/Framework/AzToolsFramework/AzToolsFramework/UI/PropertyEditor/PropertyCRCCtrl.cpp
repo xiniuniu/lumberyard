@@ -9,13 +9,15 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "PropertyCRCCtrl.h"
 #include "PropertyQTConstants.h"
 #include <QRegExp>
 #include <QRegExpValidator>
 #include <QLineEdit>
+AZ_PUSH_DISABLE_WARNING(4251, "-Wunknown-warning-option") // 4251: 'QLayoutItem::align': class 'QFlags<Qt::AlignmentFlag>' needs to have dll-interface to be used by clients of class 'QLayoutItem'
 #include <QHBoxLayout>
+AZ_POP_DISABLE_WARNING
 #include <QString>
 
 namespace AzToolsFramework
@@ -165,6 +167,7 @@ namespace AzToolsFramework
         auto requestWriteCall = [newCtrl](AZ::u32)
         {
             EBUS_EVENT(PropertyEditorGUIMessages::Bus, RequestWrite, newCtrl);
+            AzToolsFramework::PropertyEditorGUIMessages::Bus::Broadcast(&PropertyEditorGUIMessages::Bus::Handler::OnEditingFinished, newCtrl);
         };
 
         QObject::connect(newCtrl, &PropertyCRCCtrl::valueChanged, this, requestWriteCall);

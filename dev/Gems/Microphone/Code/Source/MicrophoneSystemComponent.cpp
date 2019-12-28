@@ -10,20 +10,12 @@
 *
 */
 
-#include "StdAfx.h"
+#include "Microphone_precompiled.h"
 
 #include <AzCore/Serialization/SerializeContext.h>
 #include <AzCore/Serialization/EditContext.h>
 
 #include "MicrophoneSystemComponent.h"
-
-// Pimpls...
-#if defined(AZ_PLATFORM_WINDOWS)
-    #include "MicrophoneSystemComponent_windows.inl"
-//#elif ...
-#else
-    #include "MicrophoneSystemComponent_null.h"
-#endif // AZ_PLATFORM_*
 
 namespace Audio
 {
@@ -33,7 +25,7 @@ namespace Audio
         {
             serializeContext->Class<MicrophoneSystemComponent, AZ::Component>()
                 ->Version(1)
-                ->SerializerForEmptyClass();
+                ;
 
             if (AZ::EditContext* editContext = serializeContext->GetEditContext())
             {
@@ -68,7 +60,7 @@ namespace Audio
     }
 
     MicrophoneSystemComponent::MicrophoneSystemComponent()
-        : m_impl(aznew Pimpl)
+        : m_impl(Implementation::Create())
     {
     }
 
@@ -140,7 +132,7 @@ namespace Audio
         }
     }
 
-    bool MicrophoneSystemComponent::IsCapturing() const
+    bool MicrophoneSystemComponent::IsCapturing()
     {
         if (m_impl && m_initialized)
         {

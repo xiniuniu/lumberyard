@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "CloudGemFramework_precompiled.h"
 
 #include <CloudGemFramework/HttpClientComponent.h>
 #include <CloudGemFramework/HttpRequestJob.h>
@@ -46,7 +46,7 @@ namespace CloudGemFramework
         AZ::SerializeContext* serializeContext = azrtti_cast<AZ::SerializeContext*>(reflection);
         if (serializeContext)
         {
-            serializeContext->Class<HttpClientComponent>()
+            serializeContext->Class<HttpClientComponent, AZ::Component>()
                 ->Version(1);
 
             AZ::EditContext* editContext = serializeContext->GetEditContext();

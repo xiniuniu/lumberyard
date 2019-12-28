@@ -131,6 +131,8 @@ bool CRenderMeshUtils::RayIntersection(IRenderMesh* pRenderMesh, SRayHitInfo& hi
 
 void CRenderMeshUtils::RayIntersectionAsync(SIntersectionData* pIntersectionRMData)
 {
+    AZ_PROFILE_FUNCTION(AZ::Debug::ProfileCategory::ThreeDEngine);
+
     // forward call to implementation
     SRayHitInfo& rHitInfo = *pIntersectionRMData->pHitInfo;
     SIntersectionData& rIntersectionData = *pIntersectionRMData;
@@ -577,7 +579,7 @@ bool CRenderMeshUtils::RayIntersectionFastImpl(SIntersectionData& rIntersectionR
             {
                 for (int nId = 0; nId < pTris->Count(); ++nId)
                 {
-                    std::pair<int, int>& t = pTris->GetAt(nId);
+                    const std::pair<int, int>& t = pTris->GetAt(nId);
 
                     if (t.first + 2 >= nInds)
                     {
@@ -809,7 +811,7 @@ bool CRenderMeshUtils::ProcessBoxIntersection(Ray& inRay, SRayHitInfo& hitInfo, 
     {
         for (int nId = 0; nId < pTris->Count(); ++nId)
         {
-            std::pair<int, int>& t = pTris->GetAt(nId);
+            const std::pair<int, int>& t = pTris->GetAt(nId);
 
             if (t.first + 2 >= nInds)
             {

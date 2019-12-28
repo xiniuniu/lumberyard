@@ -11,12 +11,9 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "StdAfx.h"
+#include "stdafx.h"
 
 //----- UI_ANIMATION_REVISIT - this is required to compile since something we include still uses MFC
-
-// turns off MFC's hiding of some common and often safely ignored warning messages
-#define _AFX_ALL_WARNINGS
 
 // prevent inclusion of conflicting definitions of INT8_MIN etc
 #define _INTSAFE_H_INCLUDED_
@@ -35,7 +32,6 @@
 #include "UiAVSequenceProps.h"
 #include "ViewManager.h"
 #include "AnimationContext.h"
-#include "AnimationSerializer.h"
 #include "UiAnimViewFindDlg.h"
 #include "UiAnimViewUndo.h"
 #include "UiAnimViewAnimNode.h"
@@ -196,32 +192,6 @@ CUiAnimViewDialog::~CUiAnimViewDialog()
     UiEditorAnimationStateBus::Handler::BusDisconnect();
     UiEditorAnimListenerBus::Handler::BusDisconnect();
 }
-
-#ifdef KDAB_TEMPORARILY_REMOVED
-void CUiAnimViewDialog::AddShortCutMenu(CustomizeKeyboardPage& pageKeyboard, CToolBar* pToolBar, const CString& sToolBarName)
-{
-    UINT nID = -1;
-    CString sButtonText;
-    CMenu pMenu;
-    pMenu.CreateMenu();
-
-    int nButtonCount = pToolBar->GetToolBarCtrl().GetButtonCount();
-
-    for (int i = 0; i < nButtonCount; ++i)
-    {
-        nID = pToolBar->GetItemID(i);
-        sButtonText.LoadString(nID);
-        sButtonText.Delete(sButtonText.Find("\n"), sButtonText.GetLength());
-        pMenu.AppendMenu(MF_STRING, nID, sButtonText);
-    }
-
-    if (pMenu.GetMenuItemCount() > 0)
-    {
-        CXTPControls* pControls =  pageKeyboard.InsertCategory(sToolBarName);
-        pControls->LoadMenu(&pMenu);
-    }
-}
-#endif
 
 //////////////////////////////////////////////////////////////////////////
 void CUiAnimViewDialog::OnAddEntityNodeMenu()
@@ -445,14 +415,14 @@ void CUiAnimViewDialog::InitToolbar()
     qaction = m_playToolBar->addAction(QIcon(":/Trackview/play/tvplay-09.png"), "Undo");
     qaction->setData(ID_UNDO);
     m_actions[ID_UNDO] = qaction;
-    connect(qaction, &QAction::triggered, []()
+    connect(qaction, &QAction::triggered, this, []()
         {
             UiAnimUndoManager::Get()->Undo();
         });
     qaction = m_playToolBar->addAction(QIcon(":/Trackview/play/tvplay-10.png"), "Redo");
     qaction->setData(ID_REDO);
     m_actions[ID_REDO] = qaction;
-    connect(qaction, &QAction::triggered, []()
+    connect(qaction, &QAction::triggered, this, []()
         {
             UiAnimUndoManager::Get()->Redo();
         });
@@ -677,6 +647,8 @@ void CUiAnimViewDialog::UpdateActions()
         }
 
         m_actions[ID_ADDNODE]->setEnabled(true);
+
+        m_actions[ID_TV_PLAY]->setShortcut(QKeySequence(Qt::Key_Space)); // re-enable the shortcut
     }
     else
     {
@@ -684,6 +656,8 @@ void CUiAnimViewDialog::UpdateActions()
         m_actions[ID_TV_EDIT_SEQUENCE]->setEnabled(false);
         m_actions[ID_TRACKVIEW_TOGGLE_DISABLE]->setEnabled(false);
         m_actions[ID_ADDNODE]->setEnabled(false);
+
+        m_actions[ID_TV_PLAY]->setShortcut(QKeySequence()); // clear the shortcut to give parent widgets a chance to handle the same shortcut
     }
 }
 

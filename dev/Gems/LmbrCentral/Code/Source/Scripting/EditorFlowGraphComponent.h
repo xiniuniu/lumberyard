@@ -45,10 +45,7 @@ namespace LmbrCentral
         FlowGraphWrapper();
         FlowGraphWrapper(const AZ::EntityId& id, const AZStd::string& flowGraphName);
         FlowGraphWrapper(FlowGraphWrapper&& rhs);
-    private:
-        // Workaround for VS2013 - Delete the copy constructor and make it private
-        // https://connect.microsoft.com/VisualStudio/feedback/details/800328/std-is-copy-constructible-is-broken
-        FlowGraphWrapper(const FlowGraphWrapper&) = delete;
+
     public:
         virtual ~FlowGraphWrapper();
 
@@ -96,8 +93,6 @@ namespace LmbrCentral
     class EditorFlowGraphComponent
         : public AzToolsFramework::Components::EditorComponentBase
         , private FlowGraphEditorRequestsBus::Handler
-        , private AZ::ComponentApplicationEventBus::Handler
-        , private AzFramework::EntityDebugDisplayEventBus::Handler
     {
     public:
 
@@ -115,11 +110,6 @@ namespace LmbrCentral
         void Init() override;
         void Activate() override;
         void Deactivate() override;
-        //////////////////////////////////////////////////////////////////////////
-
-        //////////////////////////////////////////////////////////////////////////
-        // AzFramework::EntityDebugDisplayEventBus interface implementation
-        void DisplayEntity(bool& handled) override;
         //////////////////////////////////////////////////////////////////////////
 
         //////////////////////////////////////////////////////////////////////////
@@ -143,10 +133,7 @@ namespace LmbrCentral
         static void Reflect(AZ::ReflectContext* context);
 
     private:
-        // Workaround for VS2013 - Delete the copy constructor and make it private
-        // https://connect.microsoft.com/VisualStudio/feedback/details/800328/std-is-copy-constructible-is-broken
         EditorFlowGraphComponent(const EditorFlowGraphComponent&) = delete;
-
         //! The FlowGraphs that are managed by this component
         AZStd::list<FlowGraphWrapper> m_flowGraphs;
     };

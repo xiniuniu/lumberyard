@@ -21,6 +21,8 @@
             "DataTypes/GraphData/IMeshData.h",
             "DataTypes/GraphData/IMeshVertexColorData.h",
             "DataTypes/GraphData/IMeshVertexUVData.h",
+            "DataTypes/GraphData/IMeshVertexTangentData.h",
+            "DataTypes/GraphData/IMeshVertexBitangentData.h",
             "DataTypes/GraphData/IMaterialData.h",
             "DataTypes/GraphData/ITransform.h",
             "DataTypes/GraphData/IBoneData.h",
@@ -51,7 +53,8 @@
             "DataTypes/Rules/IOriginRule.h",
             "DataTypes/Rules/IMaterialRule.h",
             "DataTypes/Rules/IPhysicsRule.h",
-            "DataTypes/Rules/ISkeletonProxyRule.h"
+            "DataTypes/Rules/ISkeletonProxyRule.h",
+            "DataTypes/Rules/ITouchBendingRule.h"
         ],
         "Components":
         [
@@ -59,6 +62,8 @@
             "Components/BehaviorComponent.cpp",
             "Components/ExportingComponent.h",
             "Components/ExportingComponent.cpp",
+            "Components/RCExportingComponent.h",
+            "Components/RCExportingComponent.cpp",
             "Components/LoadingComponent.h",
             "Components/LoadingComponent.cpp",
             "Components/SceneSystemComponent.h",
@@ -107,7 +112,8 @@
             "Containers/Utilities/Filters.h",
             "Containers/Utilities/Filters.inl",
             "Containers/Utilities/SceneGraphUtilities.h",
-            "Containers/Utilities/SceneGraphUtilities.inl"
+            "Containers/Utilities/SceneGraphUtilities.inl",
+            "Containers/Utilities/SceneGraphUtilities.cpp"
         ],
         "Events":
         [
@@ -137,11 +143,6 @@
         [
             "Import/ManifestImportRequestHandler.h",
             "Import/ManifestImportRequestHandler.cpp"
-        ],
-        "Import/Utilities":
-        [
-            "Import/Utilities/FileFinder.h",
-            "Import/Utilities/FileFinder.cpp"
         ],
         "Export":
         [

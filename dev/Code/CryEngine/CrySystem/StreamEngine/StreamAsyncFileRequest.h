@@ -19,6 +19,7 @@
 #pragma once
 
 #include <IStreamEngineDefs.h>
+#include <AzCore/Jobs/LegacyJobExecutor.h>
 #include "TimeValue.h"
 
 #define STREAMENGINE_LL_ALIGN _MS_ALIGN(MEMORY_ALLOCATION_ALIGNMENT)
@@ -35,8 +36,7 @@ class CAsyncIOFileRequest_TransferPtr;
 struct SStreamEngineTempMemStats;
 
 #ifdef SUPPORT_RSA_AND_STREAMCIPHER_PAK_ENCRYPTION  //Could check for INCLUDE_LIBTOMCRYPT here, but only decryption is implemented here, not signing
-#include "tomcrypt.h"
-#undef byte // tomcrypt defines a byte macro which conflicts with out byte data type
+#include "CryTomcrypt.h"
 #endif
 
 #if !defined(USE_EDGE_ZLIB)
@@ -276,9 +276,9 @@ public:
     IReadStreamPtr m_pReadStream;
 
 #if defined(STREAMENGINE_SUPPORT_DECRYPT)
-    JobManager::SJobState   m_DecryptJob;
+    AZStd::unique_ptr<AZ::LegacyJobExecutor> m_decryptJobExecutor;
 #endif  //STREAMENGINE_SUPPORT_DECRYPT
-    JobManager::SJobState   m_DecompJob;
+    AZStd::unique_ptr<AZ::LegacyJobExecutor> m_decompJobExecutor;
 
     // Only POD data should exist beyond this point - will be memsetted to 0 on Reset !
 

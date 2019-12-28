@@ -47,6 +47,7 @@
 #include <ui_TerrainDialog.h>
 
 #include <Cry3DEngine/Environment/OceanEnvironmentBus.h>
+#include <AzToolsFramework/Physics/EditorTerrainComponentBus.h>
 
 #include "QtUtil.h"
 
@@ -97,12 +98,14 @@ CTerrainDialog::CTerrainDialog()
     m_pHeightmap = GetIEditor()->GetHeightmap();
 
     GetIEditor()->RegisterNotifyListener(this);
+    LmbrCentral::WaterNotificationBus::Handler::BusConnect();
 
     OnInitDialog();
 }
 
 CTerrainDialog::~CTerrainDialog()
 {
+    LmbrCentral::WaterNotificationBus::Handler::BusDisconnect();
     GetIEditor()->UnregisterNotifyListener(this);
     GetIEditor()->SetEditTool(nullptr);
     delete m_sLastParam;
@@ -124,7 +127,11 @@ void CTerrainDialog::RegisterViewClass()
     options.canHaveMultipleInstances = true;
     options.sendViewPaneNameBackToAmazonAnalyticsServers = true;
 
-    AzToolsFramework::RegisterViewPane<CTerrainDialog>(LyViewPane::TerrainEditor, LyViewPane::CategoryTools, options);
+    if (!GetIEditor()->IsNewViewportInteractionModelEnabled())
+    {
+        AzToolsFramework::RegisterViewPane<CTerrainDialog>(
+            LyViewPane::TerrainEditor, LyViewPane::CategoryTools, options);
+    }
 }
 
 
@@ -233,40 +240,13 @@ void CTerrainDialog::OnTerrainLoad()
     ////////////////////////////////////////////////////////////////////////
 
     char szFilters[] = "All Image Files (*.bt *.asc *.tif *.pgm *.raw *.r16 *.bmp *.png);;32-bit BT files (*.bt);;32-bit ARCGrid ASCII files (*.asc);;32-bit TIFF Files (*.tif);;16-bit PGM Files (*.pgm);;16-bit RAW Files (*.raw);;16-bit RAW Files (*.r16);;8-bit Bitmap Files (*.bmp);;8-bit PNG Files (*.png);;All files (*)";
-    CAutoDirectoryRestoreFileDialog dlg(QFileDialog::AcceptOpen, QFileDialog::ExistingFile, {}, {}, szFilters, {}, {}, this);
+    CAutoDirectoryRestoreFileDialog dlg(QFileDialog::AcceptOpen, QFileDialog::ExistingFile, {}, Path::GetEditingGameDataFolder().c_str(), szFilters, {}, {}, this);
 
     if (dlg.exec())
     {
         QString fileName = dlg.selectedFiles().constFirst();
-        QFileInfo info(fileName);
-        const QString ext = info.completeSuffix().toLower();
-
         QWaitCursor wait;
-
-        if (ext == "asc")
-        {
-            // Treat 32-bit formats special to make sure we preserve full data precision
-            m_pHeightmap->LoadASC(fileName);
-        }
-        else if (ext == "bt")
-        {
-            // Treat 32-bit formats special to make sure we preserve full data precision
-            m_pHeightmap->LoadBT(fileName);
-        }
-        else if (ext == "tif")
-        {
-            // Treat 32-bit formats special to make sure we preserve full data precision
-            m_pHeightmap->LoadTIF(fileName);
-        }
-        else if (ext == "raw" || ext == "r16")
-        {
-            m_pHeightmap->LoadRAW(fileName);
-        }
-        else
-        {
-            // Assumes the input format is in 8-bit or 16-bit height values.  Not recommended, but supported.
-            m_pHeightmap->LoadImage(fileName);
-        }
+        m_pHeightmap->ImportHeightmap(fileName);
 
         InvalidateTerrain();
 
@@ -290,10 +270,31 @@ void CTerrainDialog::OnTerrainErase()
     }
 }
 
+void CTerrainDialog::closeEvent(QCloseEvent* ev)
+{
+    if (m_processing)
+    {
+        QMessageBox::information(this, "Terrain - Processing", "The terrain editor is still processing the last operation.  Please wait until complete before closing.", QMessageBox::StandardButton::Ok);
+        ev->ignore();
+    }
+    else
+    {
+        ev->accept();
+    }
+}
+
 void CTerrainDialog::OnTerrainResize()
 {
+    // Resizing can be a lengthy operation, so make sure we prevent the Terrain Dialog from closing
+    // while it's occurring.  (It can get closed because the terrain resize includes an export that
+    // updates a progress bar, which processes UI events.  These events can include closing this
+    // dialog)
+    m_processing = true;
+
     CCryEditApp::instance()->OnTerrainResizeterrain();
     UpdateTerrainDimensions();
+
+    m_processing = false;
 }
 
 void CTerrainDialog::OnTerrainInvert()
@@ -338,7 +339,6 @@ void CTerrainDialog::OnTerrainGenerate()
         sDefaultParam.fFrequency = 7.0f;  // Feature Size
         sDefaultParam.fFrequencyStep = 2.0f;
         sDefaultParam.fFade = 0.46f;  // Bumpiness
-        sDefaultParam.iCover = 0;
         sDefaultParam.iRandom = 1;  // Variation
         sDefaultParam.iSharpness = 0.999f;
         sDefaultParam.iSmoothness = 0;
@@ -381,41 +381,14 @@ void CTerrainDialog::OnTerrainGenerate()
 void CTerrainDialog::OnExportHeightmap()
 {
     char szFilters[] = "32-bit VTP BT (*.bt);;32-bit ARCGrid ASCII (*.asc);;32-bit TIF (*.tif);;16-bit PGM (*.pgm);;16-bit RAW (*.raw);;16-bit RAW (*.r16);;8-bit Bitmap (*.bmp);;8-bit PNG Files (*.png)";
-    CAutoDirectoryRestoreFileDialog dlg(QFileDialog::AcceptSave, QFileDialog::AnyFile, "bt", {}, szFilters, {}, {}, this);
+    CAutoDirectoryRestoreFileDialog dlg(QFileDialog::AcceptSave, QFileDialog::AnyFile, "bt", Path::GetEditingGameDataFolder().c_str(), szFilters, {}, {}, this);
     if (dlg.exec())
     {
         QWaitCursor wait;
         CLogFile::WriteLine("Exporting heightmap...");
 
         QString fileName = dlg.selectedFiles().first();
-        QFileInfo info(fileName);
-        const QString ext = info.completeSuffix().toLower();
-
-        if (ext == "asc")
-        {
-            m_pHeightmap->SaveASC(fileName);
-        }
-        else if (ext == "bt")
-        {
-            m_pHeightmap->SaveBT(fileName);
-        }
-        else if (ext == "tif")
-        {
-            m_pHeightmap->SaveTIF(fileName);
-        }
-        else if (ext == "pgm")
-        {
-            m_pHeightmap->SaveImage16Bit(fileName);
-        }
-        else if (ext == "raw" || ext == "r16")
-        {
-            m_pHeightmap->SaveRAW(fileName);
-        }
-        else
-        {
-            // BMP or others
-            m_pHeightmap->SaveImage(fileName.toLatin1().data());
-        }
+        m_pHeightmap->ExportHeightmap(fileName);
     }
 }
 
@@ -863,9 +836,16 @@ void CTerrainDialog::OnSetUnitSize()
         return;
     }
 
+    // Don't go further if a level hasn't been loaded, since the heightmap
+    // resolution will be 0, causing a divide by 0
+    uint64 terrainResolution = heightmap->GetWidth();
+    if (terrainResolution <= 0)
+    {
+        return;
+    }
+
     // Calculate valid unit sizes for the current terrain resolution
     int currentUnitSize = heightmap->GetUnitSize();
-    uint64 terrainResolution = heightmap->GetWidth();
     int maxUnitSize = IntegerLog2(Ui::MAXIMUM_TERRAIN_RESOLUTION / terrainResolution);
     int units = Ui::START_TERRAIN_UNITS;
     QStringList unitSizes;
@@ -885,11 +865,10 @@ void CTerrainDialog::OnSetUnitSize()
     }
 
     bool ok = false;
-    QString newUnitSize = QInputDialog::getItem(this, tr("Set Unit Size (Meters per texel)"), tr("Unit size (meters/texel)"), unitSizes, currentIndex, false, &ok);
+    QString newUnitSize = QInputDialog::getItem(this, tr("Set Unit Size"), tr("Unit size (meters/texel)"), unitSizes, currentIndex, false, &ok);
     if (ok)
     {
-        GetIEditor()->GetHeightmap()->SetUnitSize(newUnitSize.toInt());
-
+        heightmap->Resize(terrainResolution, terrainResolution, newUnitSize.toInt(), false);
         InvalidateTerrain();
     }
 }
@@ -905,16 +884,17 @@ void CTerrainDialog::InvalidateTerrain()
     {
         CTerrainBrush br;
         m_pTerrainTool->GetCurBrushParams(br);
+
+        if (br.bRepositionVegetation && GetIEditor()->GetVegetationMap())
+        {
+            GetIEditor()->GetVegetationMap()->PlaceObjectsOnTerrain();
+        }
+        // Make sure objects preserve height.
         if (br.bRepositionObjects)
         {
             AABB box;
             box.min = -Vec3(100000, 100000, 100000);
             box.max = Vec3(100000, 100000, 100000);
-            if (GetIEditor()->GetVegetationMap())
-            {
-                GetIEditor()->GetVegetationMap()->RepositionArea(box);
-            }
-            // Make sure objects preserve height.
             GetIEditor()->GetObjectManager()->SendEvent(EVENT_KEEP_HEIGHT, box);
         }
     }
@@ -923,6 +903,7 @@ void CTerrainDialog::InvalidateTerrain()
 
     InvalidateViewport();
     UpdateTerrainDimensions();
+    Physics::EditorTerrainComponentRequestsBus::Broadcast(&Physics::EditorTerrainComponentRequests::UpdateHeightFieldAsset);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -941,6 +922,7 @@ void CTerrainDialog::OnEditorNotifyEvent(EEditorNotifyEvent event)
     case eNotify_OnEndNewScene:
     case eNotify_OnEndSceneOpen:
     case eNotify_OnTerrainRebuild:
+        m_ui->actionResize_Terrain->setEnabled(true);
         m_ui->viewport->InitHeightmapAlignment();
         InvalidateViewport();
         UpdateTerrainDimensions();
@@ -964,6 +946,18 @@ void CTerrainDialog::OnEditorNotifyEvent(EEditorNotifyEvent event)
         */
     }
 }
+
+//////////////////////////////////////////////////////////////////////////
+void CTerrainDialog::OceanHeightChanged(float /*height*/)
+{
+    // If our ocean height has changed, and we're currently displaying water in our preview, 
+    // then we need to refresh the preview.
+    if (m_ui->viewport->GetShowWater())
+    {
+        InvalidateViewport();
+    }
+}
+
 
 //////////////////////////////////////////////////////////////////////////
 //void CTerrainDialog::OnCustomize()

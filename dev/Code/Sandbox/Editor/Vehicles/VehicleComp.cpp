@@ -164,7 +164,7 @@ void CVehicleComponent::GetLocalBounds(AABB& box)
             return;
         }
 
-        IVehicleComponent* pComponent = pVehicle->GetComponent(GetName().toLatin1().data());
+        IVehicleComponent* pComponent = pVehicle->GetComponent(GetName().toUtf8().data());
         if (pComponent == NULL)
         {
             return;
@@ -357,7 +357,7 @@ void CVehicleComponent::ResetPosition()
 //////////////////////////////////////////////////////////////////////////
 void CVehicleComponent::Done()
 {
-    VeedLog("[CVehicleComponent:Done] <%s>", GetName());
+    VeedLog("[CVehicleComponent:Done] <%s>", GetName().toUtf8().constData());
 
     // here Listeners are notified of deletion
     // ie. here parents must erase child's variable ptr, not before

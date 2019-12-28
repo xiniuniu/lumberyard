@@ -15,7 +15,8 @@
 #include <AzCore/base.h>
 #include <AzCore/std/parallel/lock.h>
 
-#if defined(AZ_PLATFORM_WINDOWS) // Currently only windows support
+#include <AzCore/IPC/SharedMemory_Common.h>
+#include <AzCore/IPC/SharedMemory_Platform.h>
 
 namespace AZ
 {
@@ -26,40 +27,23 @@ namespace AZ
     }
 
     /**
-     * Shared memory is a helper class to provide shared memory
-     * for IPC (Inter Process Communication). Technically this is
-     * the fastest way to communicate between two process on the same
-     * machine. Obviously for remote data exchange you will need to use
-     * Sockets/DCOM/etc.
-     */
-    class SharedMemory
+    * Shared memory is a helper class to provide shared memory
+    * for IPC (Inter Process Communication). Technically this is
+    * the fastest way to communicate between two process on the same
+    * machine. Obviously for remote data exchange you will need to use
+    * Sockets/DCOM/etc.
+    */
+    class SharedMemory : public SharedMemory_Platform
     {
     protected:
-        char                    m_name[128];
-        HANDLE                  m_mapHandle;
-        HANDLE                  m_globalMutex;
-        void*                   m_mappedBase;
+        using Platform = SharedMemory_Platform;
+
         void*                   m_data;
-        unsigned int            m_dataSize;
-        DWORD                   m_lastLockResult;
 
         SharedMemory(const SharedMemory&);
         SharedMemory& operator=(const SharedMemory&);
     public:
         typedef AZStd::lock_guard<SharedMemory> MemoryGuard;
-
-        enum AccessMode
-        {
-            ReadOnly,
-            ReadWrite
-        };
-
-        enum CreateResult
-        {
-            CreateFailed,
-            CreatedNew,
-            CreatedExisting,
-        };
 
         SharedMemory();
         ~SharedMemory();
@@ -68,12 +52,12 @@ namespace AZ
         CreateResult Create(const char* name, unsigned int size, bool openIfCreated = false);
         /// Open an existing shared memory block. If the block doesn't exist we will return false otherwise true.
         bool Open(const char* name);
-        bool IsReady() const            { return m_mapHandle != NULL; }
+        bool IsReady() const            { return Platform::IsReady(); }
         void Close();
 
         /// Maps to the created map. If size == 0 it will map the whole memory.
         bool Map(AccessMode mode = ReadWrite, unsigned int size = 0);
-        bool IsMapped() const;
+        bool IsMapped() const { return m_mappedBase != nullptr; }
         bool UnMap();
 
         /// Naming is conforming with AZStd::lock_guard/unique_lock/etc.
@@ -95,6 +79,11 @@ namespace AZ
         unsigned int DataSize() const   { return m_dataSize; }
         /// Sets all data (if mapped to 0)
         void  Clear();
+
+    private:
+        bool CheckMappedBaseValid();
+
+        friend SharedMemory_Platform;
     };
 
     /**
@@ -132,8 +121,6 @@ namespace AZ
         void  Clear();
     };
 }
-
-#endif // AZ_PLATFORM_WINDOWS
 
 #endif // AZCORE_SHARED_MEMORY_H
 #pragma once

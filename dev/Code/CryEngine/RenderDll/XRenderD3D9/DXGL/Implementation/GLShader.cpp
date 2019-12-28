@@ -445,6 +445,9 @@ namespace NCryOpenGL
             for (uElement = uPrevNumElements; uElement < kParameters.size(); ++uElement)
             {
                 SShaderReflectionParameter& kParameter(kParameters.at(uElement));
+                
+                memset(&kParameter.m_kDesc, 0, sizeof(kParameter.m_kDesc));
+                
                 // Only for extended parameters fxc adds two extra pieces of information, the stream index and the minimum precision.
                 if (extended && !DXBCReadUint32(*pContext, kParameter.m_kDesc.Stream))
                 {
@@ -457,7 +460,7 @@ namespace NCryOpenGL
                 {
                     return false;
                 }
-                memset(&kParameter, 0, sizeof(kParameter.m_kDesc));
+                
                 kParameter.m_kDesc.SemanticName = kParameter.m_acSemanticName;
                 if (!DXBCReadUint32(*pContext, kParameter.m_kDesc.SemanticIndex) ||
                     !DXBCReadUint32(*pContext, kParameter.m_kDesc.SystemValueType) ||
@@ -1150,6 +1153,7 @@ namespace NCryOpenGL
 
             if (!VerifyProgramStatus(pPipeline->m_uName, GL_LINK_STATUS))
             {
+                CryLogAlways("Shader did not link properly !! ");
                 return false;
             }
         }
@@ -2041,8 +2045,22 @@ namespace NCryOpenGL
         uint32 auSlotOffsets[D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT];
         memset(auSlotOffsets, 0, sizeof(auSlotOffsets));
 
-        uint32 uElement;
-        for (uElement = 0; uElement < uNumElements; ++uElement)
+        int attrMatchedNum = 0;
+        int reflectionAttrNum = 0;
+
+        //Calculate the number of attributes in the shader that does not start with 'SV_'
+        TShaderReflection::TParameters::const_iterator kInputSemanticIter(kReflection.m_kInputs.begin());
+        const TShaderReflection::TParameters::const_iterator kInputSemanticEnd(kReflection.m_kInputs.end());
+        while (kInputSemanticIter != kInputSemanticEnd)
+        {
+            if (strstr(kInputSemanticIter->m_kDesc.SemanticName, "SV_") == 0)
+            {
+                reflectionAttrNum++;
+            }
+            ++kInputSemanticIter;
+        }
+
+        for (uint32 uElement = 0; uElement < uNumElements; ++uElement)
         {
             const D3D11_INPUT_ELEMENT_DESC& kDesc(pInputElementDescs[uElement]);
             // Find a match within the input signatures of the shader reflection data
@@ -2072,16 +2090,20 @@ namespace NCryOpenGL
 
                     if (!PushInputLayoutAttribute(*spLayout, auSlotOffsets, kDesc, kInputSemanticIter->m_kDesc.Register, bInteger, pDevice))
                     {
+                        DXGL_ERROR("Failed to Push Input Layout");
                         return NULL;
                     }
+                    attrMatchedNum++;
                     break;
                 }
                 ++kInputSemanticIter;
             }
-            if (kInputSemanticIter == kInputSemanticEnd)
-            {
-                return NULL;
-            }
+        }
+
+        if (attrMatchedNum != reflectionAttrNum)
+        {
+            DXGL_ERROR("Shader input attributes count doesn not match with vertex format attributes count");
+            return NULL;
         }
 
         return spLayout;

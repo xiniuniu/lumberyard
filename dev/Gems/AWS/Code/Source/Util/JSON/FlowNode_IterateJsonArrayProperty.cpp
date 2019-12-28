@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include <StdAfx.h>
+#include <AWS_precompiled.h>
 #include <Util/JSON/FlowNode_IterateJsonArrayProperty.h>
 #include <aws/core/utils/memory/stl/AWSStringStream.h>
 
@@ -63,7 +63,7 @@ namespace LmbrAWS
                     return;
                 }
 
-                const Aws::Utils::Array<Aws::Utils::Json::JsonValue>& jsonArray = jsonValue.AsArray();
+                const Aws::Utils::Array<Aws::Utils::Json::JsonView>& jsonArray = jsonValue.View().AsArray();
                 if (!jsonArray.GetUnderlyingData())
                 {
                     SFlowAddress addr(pActInfo->myID, EOP_IsEmpty, true);
@@ -85,13 +85,12 @@ namespace LmbrAWS
                     return;
                 }
 
-                Aws::Utils::Json::JsonValue& jsonValue = m_array.GetItem(m_index);
+                const Aws::Utils::Json::JsonView& jsonValue = m_array.GetItem(m_index);
 
-                Aws::StringStream sstream;
-                jsonValue.WriteCompact(sstream);
+                Aws::String jsonString = jsonValue.WriteCompact();
 
                 SFlowAddress addrValue(pActInfo->myID, EOP_Value, true);
-                pActInfo->pGraph->ActivatePort(addrValue, string(sstream.str().c_str()));
+                pActInfo->pGraph->ActivatePort(addrValue, string(jsonString.c_str()));
 
                 SFlowAddress addrIndex(pActInfo->myID, EOP_Index, true);
                 pActInfo->pGraph->ActivatePort(addrIndex, m_index);

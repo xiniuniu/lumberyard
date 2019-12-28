@@ -12,27 +12,44 @@
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
 #include "StdAfx.h"
+
+#include <AzCore/std/string/wildcard.h>
+#include <AzToolsFramework/AssetBrowser/AssetBrowserEntry.h>
+
 #include "AlembicCompiler.h"
 #include "AlembicCompileDialog.h"
 #include "Util/FileUtil.h"
 
-// Attempt to add the file to source control if it is available
-bool TryAddFileToSourceControl(const QString& filename)
+namespace Internal
 {
-    if (!CFileUtil::CheckoutFile(filename.toUtf8().data(), nullptr))
+    // Attempt to add the file to source control if it is available
+    bool TryAddFileToSourceControl(const QString& filename)
     {
-        CryWarning(VALIDATOR_MODULE_EDITOR, VALIDATOR_ERROR, "Failed to add file %s to the source control provider", filename);
-        return false;
-    }
+        if (!CFileUtil::CheckoutFile(filename.toUtf8().data(), nullptr))
+        {
+        CryWarning(VALIDATOR_MODULE_EDITOR, VALIDATOR_ERROR, "Failed to add file %s to the source control provider", filename.toUtf8().constData());
+            return false;
+        }
 
-    return true;
+        return true;
+    }
+} // namespace Internal
+
+CAlembicCompiler::CAlembicCompiler()
+{
+    AzToolsFramework::AssetBrowser::AssetBrowserInteractionNotificationBus::Handler::BusConnect();
+}
+
+CAlembicCompiler::~CAlembicCompiler()
+{
+    AzToolsFramework::AssetBrowser::AssetBrowserInteractionNotificationBus::Handler::BusDisconnect();
 }
 
 bool CAlembicCompiler::CompileAlembic(const QString& fullPath)
 {
     bool compileConfigFileSaved = false;
     const QString configPath = Path::ReplaceExtension(fullPath, "cbc");
-    XmlNodeRef config = XmlHelpers::LoadXmlFromFile(configPath.toLatin1().data());
+    XmlNodeRef config = XmlHelpers::LoadXmlFromFile(configPath.toUtf8().data());
 
     CAlembicCompileDialog dialog(config);
 
@@ -55,19 +72,19 @@ bool CAlembicCompiler::CompileAlembic(const QString& fullPath)
             configChanged = true;
         }
 
-        if (strcmp(config->getAttr("UpAxis"), upAxis.toLatin1().data()) != 0)
+        if (strcmp(config->getAttr("UpAxis"), upAxis.toUtf8().data()) != 0)
         {
-            config->setAttr("UpAxis", upAxis.toLatin1().data());
+            config->setAttr("UpAxis", upAxis.toUtf8().data());
             configChanged = true;
         }
-        if (strcmp(config->getAttr("MeshPrediction"), meshPrediction.toLatin1().data()) != 0)
+        if (strcmp(config->getAttr("MeshPrediction"), meshPrediction.toUtf8().data()) != 0)
         {
-            config->setAttr("MeshPrediction", meshPrediction.toLatin1().data());
+            config->setAttr("MeshPrediction", meshPrediction.toUtf8().data());
             configChanged = true;
         }
-        if (strcmp(config->getAttr("UseBFrames"), useBFrames.toLatin1().data()) != 0)
+        if (strcmp(config->getAttr("UseBFrames"), useBFrames.toUtf8().data()) != 0)
         {
-            config->setAttr("UseBFrames", useBFrames.toLatin1().data());
+            config->setAttr("UseBFrames", useBFrames.toUtf8().data());
             configChanged = true;
         }
         if (atoi(config->getAttr("IndexFrameDistance")) != indexFrameDistance)
@@ -75,14 +92,14 @@ bool CAlembicCompiler::CompileAlembic(const QString& fullPath)
             config->setAttr("IndexFrameDistance", indexFrameDistance);
             configChanged = true;
         }
-        if (strcmp(config->getAttr("BlockCompressionFormat"), blockCompressionFormat.toLatin1().data()) != 0)
+        if (strcmp(config->getAttr("BlockCompressionFormat"), blockCompressionFormat.toUtf8().data()) != 0)
         {
-            config->setAttr("BlockCompressionFormat", blockCompressionFormat.toLatin1().data());
+            config->setAttr("BlockCompressionFormat", blockCompressionFormat.toUtf8().data());
             configChanged = true;
         }
-        if (strcmp(config->getAttr("PlaybackFromMemory"), playbackFromMemory.toLatin1().data()) != 0)
+        if (strcmp(config->getAttr("PlaybackFromMemory"), playbackFromMemory.toUtf8().data()) != 0)
         {
-            config->setAttr("PlaybackFromMemory", playbackFromMemory.toLatin1().data());
+            config->setAttr("PlaybackFromMemory", playbackFromMemory.toUtf8().data());
             configChanged = true;
         }
         if (atof(config->getAttr("PositionPrecision")) != positionPrecision)
@@ -103,10 +120,30 @@ bool CAlembicCompiler::CompileAlembic(const QString& fullPath)
             {
                 // If we just created the file above, or the cbc file was not previously managed, attempt to add it to perforce now.
                 // Note that XmlHelpers::SaveXmlNode will prompt the user to checkout or overwrite the file
-                TryAddFileToSourceControl(configPath);
+                Internal::TryAddFileToSourceControl(configPath);
             }
         }       
     }
 
     return compileConfigFileSaved;
+}
+
+void CAlembicCompiler::AddSourceFileOpeners(const char* fullSourceFileName, const AZ::Uuid& sourceUUID, AzToolsFramework::AssetBrowser::SourceFileOpenerList& openers)
+{
+    using namespace AzToolsFramework;
+    using namespace AzToolsFramework::AssetBrowser;
+
+    if (AZStd::wildcard_match("*.abc", fullSourceFileName))
+    {
+        auto alembicCallback = [this](const char* fullSourceFileNameInCall, const AZ::Uuid& sourceUUIDInCall)
+        {
+            const SourceAssetBrowserEntry* fullDetails = SourceAssetBrowserEntry::GetSourceByUuid(sourceUUIDInCall);
+            if (fullDetails)
+            {
+                CompileAlembic(fullDetails->GetRelativePath().c_str());
+            }
+        };
+
+        openers.push_back({ "Lumberyard_AlembicCompiler", "Open In Alembic Compiler...", QIcon(), alembicCallback });
+    }
 }

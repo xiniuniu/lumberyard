@@ -10,12 +10,12 @@
 *
 */
 
-#include "StdAfx.h"
+#include "LightningArc_precompiled.h"
 #include "LightningArcComponent.h"
 
 #include <AzCore/RTTI/BehaviorContext.h>
 
-#include "LightningGameEffectAZ.h"
+#include "LightningGameEffectAz.h"
 
 namespace Lightning
 {
@@ -324,7 +324,7 @@ namespace Lightning
             LightningGameEffectAZ::Target(targetId));
 
         //Trigger OnSpark event
-        LightningArcComponentNotificationBus::Broadcast(&LightningArcComponentNotificationBus::Events::OnSpark);
+        LightningArcComponentNotificationBus::Event(GetEntityId(), &LightningArcComponentNotificationBus::Events::OnSpark);
     }
 
 } //namespace Lightning

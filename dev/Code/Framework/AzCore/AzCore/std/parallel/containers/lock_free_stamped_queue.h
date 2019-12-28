@@ -30,11 +30,7 @@ namespace AZStd
         template<typename T>
         struct lock_free_stamped_node_ptr
         {
-#if defined(AZ_PLATFORM_WINDOWS) && !defined(AZ_PLATFORM_WINDOWS_X64)
-            struct lock_free_stamped_queue_node<T>* m_node;
-#else
             AZ_ALIGN(struct lock_free_stamped_queue_node<T>* m_node, 8);
-#endif
             unsigned int m_stamp;
         };
 
@@ -104,7 +100,7 @@ namespace AZStd
         //allocator must allow stale read access, as queue can access a node which has been deallocated
         AZ_Assert(m_allocator.is_stale_read_allowed(), "Allocator for lock_free_queue must allow stale reads");
 
-        node_type* sentinel = reinterpret_cast<node_ptr_type>(m_allocator.allocate(sizeof(node_type), alignment_of<node_type>::value));
+        node_type* sentinel = create_node();
         stamped_node_ptr nullStamp;
         nullStamp.m_node = NULL;
         nullStamp.m_stamp = 0;

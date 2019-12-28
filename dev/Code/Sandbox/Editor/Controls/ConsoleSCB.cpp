@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "ConsoleSCB.h"
 #include "QtViewPaneManager.h"
 #include "Core/QtEditorApplication.h"
@@ -27,6 +27,7 @@
 #include <QtUtil.h>
 #include <QtUtilWin.h>
 
+#include <QHeaderView>
 #include <QLabel>
 #include <QSortFilterProxyModel>
 #include <QtCore/QStringList>
@@ -40,9 +41,56 @@
 #include <QtWidgets/QScrollBar>
 #include <QtWidgets/QVBoxLayout>
 #include <QtWidgets/QTableView>
+#include <QtGui/QSyntaxHighlighter>
 
 #include <vector>
 #include <iostream>
+
+class CConsoleSCB::SearchHighlighter : public QSyntaxHighlighter
+{
+public:
+    SearchHighlighter(QObject *parent)
+        : QSyntaxHighlighter(parent)
+    {
+
+    }
+
+    SearchHighlighter(QTextDocument *parent)
+        : QSyntaxHighlighter(parent)
+    {
+
+    }
+
+    void setSearchTerm(const QString &term)
+    {
+        m_searchTerm = term;
+        rehighlight();
+    }
+
+protected:
+    void highlightBlock(const QString &text)
+    {
+        auto pos = -1;
+        QTextCharFormat myClassFormat;
+        myClassFormat.setFontWeight(QFont::Bold);
+        myClassFormat.setBackground(Qt::yellow);
+
+        while (1)
+        {
+            pos = text.indexOf(m_searchTerm, pos+1, Qt::CaseInsensitive);
+
+            if (pos == -1)
+            {
+                break;
+            }
+
+            setFormat(pos, m_searchTerm.length(), myClassFormat);
+        }
+    }
+
+private:
+    QString m_searchTerm;
+};
 
 static CConsoleSCB* s_consoleSCB = nullptr;
 // Constant for the modified console variable color
@@ -98,16 +146,6 @@ ConsoleLineEdit::ConsoleLineEdit(QWidget* parent)
 {
 }
 
-void ConsoleLineEdit::mousePressEvent(QMouseEvent* ev)
-{
-    if (ev->type() == QEvent::MouseButtonPress && ev->button() & Qt::RightButton)
-    {
-        Q_EMIT variableEditorRequested();
-    }
-
-    QLineEdit::mousePressEvent(ev);
-}
-
 void ConsoleLineEdit::mouseDoubleClickEvent(QMouseEvent* ev)
 {
     Q_EMIT variableEditorRequested();
@@ -139,16 +177,16 @@ bool ConsoleLineEdit::event(QEvent* ev)
     QString cstring = inputStr;
     if (ctrlPressed)
     {
-        newStr = console->AutoCompletePrev(cstring.toLatin1().data());
+        newStr = console->AutoCompletePrev(cstring.toUtf8().data());
     }
     else
     {
-        newStr = console->ProcessCompletion(cstring.toLatin1().data());
-        newStr = console->AutoComplete(cstring.toLatin1().data());
+        newStr = console->ProcessCompletion(cstring.toUtf8().data());
+        newStr = console->AutoComplete(cstring.toUtf8().data());
 
         if (newStr.isEmpty())
         {
-            newStr = GetIEditor()->GetCommandManager()->AutoComplete(newStr.toLatin1().data());
+            newStr = GetIEditor()->GetCommandManager()->AutoComplete(cstring.toUtf8().data());
         }
     }
 
@@ -177,14 +215,14 @@ void ConsoleLineEdit::keyPressEvent(QKeyEvent* ev)
         QString str = text().trimmed();
         if (!str.isEmpty())
         {
-            if (commandManager->IsRegistered(str.toLatin1().data()))
+            if (commandManager->IsRegistered(str.toUtf8().data()))
             {
                 commandManager->Execute(QtUtil::ToString(str));
             }
             else
             {
-                CLogFile::WriteLine(str.toLatin1().data());
-                GetIEditor()->GetSystem()->GetIConsole()->ExecuteString(str.toLatin1().data());
+                CLogFile::WriteLine(str.toUtf8().data());
+                GetIEditor()->GetSystem()->GetIConsole()->ExecuteString(str.toUtf8().data());
             }
 
             // If a history command was reused directly via up arrow enter, do not reset history index
@@ -273,7 +311,12 @@ CConsoleSCB::CConsoleSCB(QWidget* parent)
     s_pendingLines.clear();
     s_consoleSCB = this;
     ui->setupUi(this);
+    m_highlighter = new SearchHighlighter(ui->textEdit);
+    m_highlighter->setDocument(ui->textEdit->document());
+
     setMinimumHeight(120);
+
+    ui->findBar->setVisible(false);
     
     // Setup the color table for the default (light) theme
     m_colorTable << QColor(0, 0, 0)
@@ -288,7 +331,39 @@ CConsoleSCB::CConsoleSCB(QWidget* parent)
         << QColor(0x008f8f8f);
     OnStyleSettingsChanged();
 
+    auto findNextAction = new QAction(this);
+    findNextAction->setShortcut(QKeySequence::FindNext);
+    connect(findNextAction, &QAction::triggered, this, &CConsoleSCB::findNext);
+    ui->findNextButton->addAction(findNextAction);
+
+    auto findPreviousAction = new QAction(this);
+    findPreviousAction->setShortcut(QKeySequence::FindPrevious);
+    connect(findPreviousAction, &QAction::triggered, this, &CConsoleSCB::findPrevious);
+    ui->findPrevButton->addAction(findPreviousAction);
+
     connect(ui->button, &QPushButton::clicked, this, &CConsoleSCB::showVariableEditor);
+    connect(ui->findButton, &QPushButton::clicked, this, &CConsoleSCB::toggleConsoleSearch);
+    connect(ui->textEdit, &ConsoleTextEdit::searchBarRequested, this, [this]
+    {
+        this->ui->findBar->setVisible(true);
+        this->ui->lineEditFind->setFocus();
+    });
+
+    connect(ui->lineEditFind, &QLineEdit::returnPressed, this, &CConsoleSCB::findNext);
+
+    connect(ui->closeButton, &QPushButton::clicked, [=]
+    {
+        ui->findBar->setVisible(false);
+    });
+
+    connect(ui->findPrevButton, &QPushButton::clicked, this, &CConsoleSCB::findPrevious);
+    connect(ui->findNextButton, &QPushButton::clicked, this, &CConsoleSCB::findNext);
+
+    connect(ui->lineEditFind, &QLineEdit::textChanged, [=](auto text)
+    {
+        m_highlighter->setSearchTerm(text);
+    });
+
     connect(ui->lineEdit, &ConsoleLineEdit::variableEditorRequested, this, &CConsoleSCB::showVariableEditor);
     connect(Editor::EditorQtApplication::instance(), &Editor::EditorQtApplication::skinChanged, this, &CConsoleSCB::OnStyleSettingsChanged);
 
@@ -322,6 +397,8 @@ void CConsoleSCB::RegisterViewClass()
 void CConsoleSCB::OnStyleSettingsChanged()
 {
     ui->button->setIcon(QIcon(QString(":/controls/img/cvar_dark.bmp")));
+    ui->findButton->setIcon(QIcon(QString(":/stylesheet/img/search.png")));
+    ui->closeButton->setIcon(QIcon(QString(":/stylesheet/img/lineedit-clear.png")));
 
     // Set the debug/warning text colors appropriately for the background theme
     // (e.g. not have black text on black background)
@@ -464,7 +541,7 @@ static void OnVariableUpdated(int row, ICVar* pCVar)
         return;
     }
 
-    variableEditor->HandleVariableRowUpdated(row, pCVar);
+    variableEditor->HandleVariableRowUpdated(pCVar);
 }
 
 static CVarBlock* VarBlockFromConsoleVars()
@@ -535,7 +612,7 @@ static void OnConsoleVariableUpdated(IVariable* pVar)
         return;
     }
     QString varName = pVar->GetName();
-    ICVar* pCVar = GetIEditor()->GetSystem()->GetIConsole()->GetCVar(varName.toLatin1().data());
+    ICVar* pCVar = GetIEditor()->GetSystem()->GetIConsole()->GetCVar(varName.toUtf8().data());
     if (!pCVar)
     {
         return;
@@ -556,7 +633,7 @@ static void OnConsoleVariableUpdated(IVariable* pVar)
     {
         QString val;
         pVar->Get(val);
-        pCVar->Set(val.toLatin1().data());
+        pCVar->Set(val.toUtf8().data());
     }
 }
 
@@ -572,24 +649,55 @@ ConsoleTextEdit::ConsoleTextEdit(QWidget* parent)
     QAction* copyAction = m_contextMenu->addAction(tr("&Copy"));
     copyAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
     copyAction->setShortcut(QKeySequence::Copy);
+    copyAction->setEnabled(false);
     connect(copyAction, &QAction::triggered, this, &QPlainTextEdit::copy);
     addAction(copyAction);
 
     QAction* selectAllAction = m_contextMenu->addAction(tr("Select &All"));
     selectAllAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
     selectAllAction->setShortcut(QKeySequence::SelectAll);
+    selectAllAction->setEnabled(false);
     connect(selectAllAction, &QAction::triggered, this, &QPlainTextEdit::selectAll);
     addAction(selectAllAction);
 
     m_contextMenu->addSeparator();
 
+    QAction* deleteAction = m_contextMenu->addAction(tr("Delete"));
+    deleteAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    deleteAction->setShortcut(QKeySequence::Delete);
+    deleteAction->setEnabled(false);
+    connect(deleteAction, &QAction::triggered, this, [=]() { textCursor().removeSelectedText(); } );
+    addAction(deleteAction);
+
     QAction* clearAction = m_contextMenu->addAction(tr("Clear"));
     clearAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
-    clearAction->setShortcut(QKeySequence::Delete);
+    clearAction->setShortcut(Qt::CTRL + Qt::SHIFT + Qt::Key_C);
+    clearAction->setEnabled(false);
     connect(clearAction, &QAction::triggered, this, &QPlainTextEdit::clear);
     addAction(clearAction);
 
+    QAction* findAction = m_contextMenu->addAction(tr("Find"));
+    findAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    findAction->setShortcut(QKeySequence::Find);
+    findAction->setEnabled(true);
+    connect(findAction, &QAction::triggered, this, &ConsoleTextEdit::searchBarRequested);
+    addAction(findAction);
+
     connect(this, &QPlainTextEdit::copyAvailable, copyAction, &QAction::setEnabled);
+    connect(this, &QPlainTextEdit::copyAvailable, deleteAction, &QAction::setEnabled);
+    connect(this, &QPlainTextEdit::textChanged, selectAllAction, [=]
+        {
+            if (document() && !document()->isEmpty())
+            {
+                clearAction->setEnabled(true);
+                selectAllAction->setEnabled(true);
+            }
+            else
+            {
+                clearAction->setEnabled(false);
+                selectAllAction->setEnabled(false);
+            }
+        });
 }
 
 bool ConsoleTextEdit::event(QEvent* theEvent)
@@ -639,7 +747,9 @@ void ConsoleVariableItemDelegate::setEditorData(QWidget* editor, const QModelInd
         // If this is a float variable, we need to set the decimal precision of
         // our spin box to fit the precision of the variable's default value
         QVariant value = index.data();
-        if (value.canConvert<float>())
+        IVariable* var = index.data(ConsoleVariableModel::VariableCustomRole).value<IVariable*>();
+        IVariable::EType type = var->GetType();
+        if (type == IVariable::FLOAT)
         {
             QString valStr = QString::number(value.toFloat());
             int decimalIndex = valStr.indexOf('.');
@@ -651,7 +761,7 @@ void ConsoleVariableItemDelegate::setEditorData(QWidget* editor, const QModelInd
         }
 
         // Set the initial value to our spin box
-        spinBox->setValue(value.toDouble());
+        spinBox->setValue(value.toDouble()); 
     }
     // Otherwise the value is a string, so the editor will be our styled line edit
     else
@@ -715,13 +825,15 @@ QWidget* ConsoleVariableItemDelegate::createEditor(QWidget* parent, const QStyle
         // Create the proper styled spin box for the int or float value
         AzQtComponents::StyledDoubleSpinBox* spinBox = nullptr;
         QVariant value = index.data();
-        QVariant::Type type = value.type();
+
+        // Use the IVariable type; it's more stable than Qt's
+        IVariable::EType type = var->GetType();
         bool hasCustomLimits = var->HasCustomLimits();
-        if (type == QVariant::Int)
+        if (type == IVariable::INT)
         {
             // We need to make sure this is casted to the regular StyledSpinBox
-            // instead of the StyledDoubleSpinBox base class becuase when we
-            // set the min/max it has overriden that method to update the validator
+            // instead of the StyledDoubleSpinBox base class because when we
+            // set the min/max it has overridden that method to update the validator
             AzQtComponents::StyledSpinBox* spinBoxInt = new AzQtComponents::StyledSpinBox(parent);
             spinBox = spinBoxInt;
 
@@ -732,7 +844,7 @@ QWidget* ConsoleVariableItemDelegate::createEditor(QWidget* parent, const QStyle
                 spinBoxInt->setMaximum(INT_MAX);
             }
         }
-        else if (value.canConvert<float>())
+        else if (type == IVariable::FLOAT)
         {
             spinBox = new AzQtComponents::StyledDoubleSpinBox(parent);
 
@@ -782,7 +894,7 @@ QWidget* ConsoleVariableItemDelegate::createEditor(QWidget* parent, const QStyle
             {
                 spinBox->setSingleStep(step);
             }
-            else if (value.canConvert<float>())
+            else if (type == IVariable::FLOAT)
             {
                 spinBox->setSingleStep(0.1);
             }
@@ -832,7 +944,7 @@ QVariant ConsoleVariableModel::data(const QModelIndex& index, int role) const
         switch (col)
         {
         case ColumnType:
-            if (type == IVariable::EType::STRING)
+            if (type == IVariable::STRING)
             {
                 return QString("ab");
             }
@@ -843,13 +955,13 @@ QVariant ConsoleVariableModel::data(const QModelIndex& index, int role) const
         case ColumnName:
             return QString(var->GetName());
         case ColumnValue:
-            if (type == IVariable::EType::INT)
+            if (type == IVariable::INT)
             {
                 int value;
                 var->Get(value);
                 return value;
             }
-            else if (type == IVariable::EType::FLOAT)
+            else if (type == IVariable::FLOAT)
             {
                 float value;
                 var->Get(value);
@@ -870,13 +982,13 @@ QVariant ConsoleVariableModel::data(const QModelIndex& index, int role) const
         QString typeName;
         switch (type)
         {
-        case IVariable::EType::INT:
+        case IVariable::INT:
             typeName = tr("Int");
             break;
-        case IVariable::EType::FLOAT:
+        case IVariable::FLOAT:
             typeName = tr("Float");
             break;
-        case IVariable::EType::STRING:
+        case IVariable::STRING:
             typeName = tr("String");
             break;
         }
@@ -934,7 +1046,7 @@ bool ConsoleVariableModel::setData(const QModelIndex& index, const QVariant& val
     bool ok = false;
     switch (var->GetType())
     {
-    case IVariable::EType::INT:
+    case IVariable::INT:
     {
         int intValue = value.toInt(&ok);
         if (ok)
@@ -943,7 +1055,7 @@ bool ConsoleVariableModel::setData(const QModelIndex& index, const QVariant& val
         }
         break;
     }
-    case IVariable::EType::FLOAT:
+    case IVariable::FLOAT:
     {
         float floatValue = value.toFloat(&ok);
         if (ok)
@@ -952,7 +1064,7 @@ bool ConsoleVariableModel::setData(const QModelIndex& index, const QVariant& val
         }
         break;
     }
-    case IVariable::EType::STRING:
+    case IVariable::STRING:
     {
         ok = true;
         QString strValue = value.toString();
@@ -1043,10 +1155,10 @@ ConsoleVariableEditor::ConsoleVariableEditor(QWidget* parent)
     setWindowTitle(tr("Console Variables"));
 
     // Disable the vertical scroll bar when we have an edit in progress
-    QObject::connect(m_itemDelegate, &ConsoleVariableItemDelegate::editInProgress, [this]() {
+    QObject::connect(m_itemDelegate, &ConsoleVariableItemDelegate::editInProgress, this, [this]() {
         m_tableView->verticalScrollBar()->setDisabled(true);
     });
-    QObject::connect(m_itemDelegate, &ConsoleVariableItemDelegate::closeEditor, [this]() {
+    QObject::connect(m_itemDelegate, &ConsoleVariableItemDelegate::closeEditor, this, [this]() {
         m_tableView->verticalScrollBar()->setEnabled(true);
     });
 
@@ -1125,32 +1237,40 @@ void ConsoleVariableEditor::RegisterViewClass()
  * Update the IVariable in our var block when the corresponding ICVar has been
  * changed
  */
-void ConsoleVariableEditor::HandleVariableRowUpdated(int row, ICVar* pCVar)
+void ConsoleVariableEditor::HandleVariableRowUpdated(ICVar* pCVar)
 {
-    IVariable* var = m_varBlock->GetVariable(row);
-    if (!var)
+    const int varCount = m_varBlock->GetNumVariables();
+    for (int row = 0; row < varCount; ++row)
     {
-        return;
-    }
+        IVariable* var = m_varBlock->GetVariable(row);
+        if (var == nullptr)
+        {
+            continue;
+        }
 
-    int varType = pCVar->GetType();
-    switch (varType)
-    {
-    case CVAR_INT:
-        var->Set(pCVar->GetIVal());
-        break;
-    case CVAR_FLOAT:
-        var->Set(pCVar->GetFVal());
-        break;
-    case CVAR_STRING:
-        var->Set(pCVar->GetString());
-        break;
-    }
+        if (var->GetName() == pCVar->GetName())
+        {
+            int varType = pCVar->GetType();
+            switch (varType)
+            {
+            case CVAR_INT:
+                var->Set(pCVar->GetIVal());
+                break;
+            case CVAR_FLOAT:
+                var->Set(pCVar->GetFVal());
+                break;
+            case CVAR_STRING:
+                var->Set(pCVar->GetString());
+                break;
+            }
 
-    // We need to let our model know that the underlying data has changed so
-    // that the view will be updated
-    QModelIndex index = m_model->index(row, ColumnValue);
-    Q_EMIT m_model->dataChanged(index, index);
+            // We need to let our model know that the underlying data has changed so
+            // that the view will be updated
+            QModelIndex index = m_model->index(row, ColumnValue);
+            Q_EMIT m_model->dataChanged(index, index);
+            return;
+        }
+    }
 }
 
 void ConsoleVariableEditor::showEvent(QShowEvent* event)
@@ -1165,6 +1285,55 @@ void CConsoleSCB::showVariableEditor()
 {
     // Open the console variables pane
     QtViewPaneManager::instance()->OpenPane(LyViewPane::ConsoleVariables);
+}
+
+void CConsoleSCB::toggleConsoleSearch()
+{
+    if (!ui->findBar->isVisible())
+    {
+        ui->findBar->setVisible(true);
+        ui->lineEditFind->setFocus();
+    }
+    else
+    {
+        ui->findBar->setVisible(false);
+    }
+}
+
+void CConsoleSCB::findPrevious()
+{
+    const auto text = ui->lineEditFind->text();
+    auto found = ui->textEdit->find(text, QTextDocument::FindBackward);
+
+    if (!found)
+    {
+        auto prevCursor = ui->textEdit->textCursor();
+        ui->textEdit->moveCursor(QTextCursor::End);
+        found = ui->textEdit->find(text, QTextDocument::FindBackward);
+
+        if (!found)
+        {
+            ui->textEdit->setTextCursor(prevCursor);
+        }
+    }
+}
+
+void CConsoleSCB::findNext()
+{
+    const auto text = ui->lineEditFind->text();
+    auto found = ui->textEdit->find(text);
+
+    if (!found)
+    {
+        auto prevCursor = ui->textEdit->textCursor();
+        ui->textEdit->moveCursor(QTextCursor::Start);
+        found = ui->textEdit->find(text);
+
+        if (!found)
+        {
+            ui->textEdit->setTextCursor(prevCursor);
+        }
+    }
 }
 
 CConsoleSCB* CConsoleSCB::GetCreatedInstance()

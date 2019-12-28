@@ -14,6 +14,7 @@
 #include "StdAfx.h"
 #include "CheckOutDialog.h"
 #include "ui_CheckOutDialog.h"
+#include "Util/BoostPythonHelpers.h"
 
 #include <AzToolsFramework/SourceControl/SourceControlAPI.h>
 
@@ -126,4 +127,4 @@ bool CCheckOutDialog::EnableForAll(bool isEnable)
     return bPrevEnable;
 }
 
-#include <CheckoutDialog.moc>
+#include <CheckOutDialog.moc>

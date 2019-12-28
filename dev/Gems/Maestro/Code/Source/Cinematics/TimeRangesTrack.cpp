@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "StdAfx.h"
+#include "Maestro_precompiled.h"
 #include <AzCore/Serialization/SerializeContext.h>
 #include "TimeRangesTrack.h"
 
@@ -104,11 +104,12 @@ template<>
 inline void TAnimTrack<ITimeRangeKey>::Reflect(AZ::SerializeContext* serializeContext)
 {
     serializeContext->Class<TAnimTrack<ITimeRangeKey> >()
-        ->Version(1)
+        ->Version(2)
         ->Field("Flags", &TAnimTrack<ITimeRangeKey>::m_flags)
         ->Field("Range", &TAnimTrack<ITimeRangeKey>::m_timeRange)
         ->Field("ParamType", &TAnimTrack<ITimeRangeKey>::m_nParamType)
-        ->Field("Keys", &TAnimTrack<ITimeRangeKey>::m_keys);
+        ->Field("Keys", &TAnimTrack<ITimeRangeKey>::m_keys)
+        ->Field("Id", &TAnimTrack<ITimeRangeKey>::m_id);
 }
 
 //////////////////////////////////////////////////////////////////////////

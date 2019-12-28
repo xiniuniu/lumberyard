@@ -11,9 +11,9 @@
 */
 #include "precompiled.h"
 
-#include <qcombobox.h>
-#include <qgraphicsproxywidget.h>
-#include <qpushbutton.h>
+#include <QComboBox>
+#include <QGraphicsProxyWidget>
+#include <QPushButton>
 
 #include <Components/NodePropertyDisplays/BooleanNodePropertyDisplay.h>
 
@@ -59,18 +59,18 @@ namespace GraphCanvas
         m_checkBox->SetChecked(value);
     }
 
-    QGraphicsLayoutItem* BooleanNodePropertyDisplay::GetDisabledGraphicsLayoutItem() const
-    {
+    QGraphicsLayoutItem* BooleanNodePropertyDisplay::GetDisabledGraphicsLayoutItem()
+{
         return m_disabledLabel;
     }
 
-    QGraphicsLayoutItem* BooleanNodePropertyDisplay::GetDisplayGraphicsLayoutItem() const
-    {
+    QGraphicsLayoutItem* BooleanNodePropertyDisplay::GetDisplayGraphicsLayoutItem()
+{
         return m_checkBox;
     }
 
-    QGraphicsLayoutItem* BooleanNodePropertyDisplay::GetEditableGraphicsLayoutItem() const
-    {
+    QGraphicsLayoutItem* BooleanNodePropertyDisplay::GetEditableGraphicsLayoutItem()
+{
         return m_checkBox;
     }
 

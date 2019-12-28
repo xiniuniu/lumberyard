@@ -18,15 +18,6 @@
 
 #include "PostProcess/PostEffects.h"
 
-#include <IJobManager_JobDelegator.h>
-
-
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-DECLARE_JOB("CreateSubsetRenderMesh", TCreateSubsetRenderMesh, SMeshSubSetIndicesJobEntry::CreateSubSetRenderMesh);
-
-
-
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 namespace
@@ -65,7 +56,7 @@ void CRenderMesh::Render(CRenderObject* pObj, const SRenderingPassInfo& passInfo
     {
         char szMesh[1024];
         cry_strcpy(szMesh, this->m_sSource);
-        strlwr(szMesh);
+        azstrlwr(szMesh, AZ_ARRAY_SIZE(szMesh));
         if (szExcl[0] == '!')
         {
             if (!strstr(&szExcl[1], m_sSource))
@@ -248,6 +239,11 @@ bool CRenderMesh::RenderChunkMergeAbleInShadowPass(CRenderChunk* pPreviousChunk,
     CShader* pCurrentShader       = (CShader*)rCurrentShaderItem.m_pShader;
     CShader* pPreviousShader    = (CShader*)rPreviousShaderItem.m_pShader;
 
+    if (!pCurrentShaderResource || !pPreviousShaderResource || !pCurrentShader || !pPreviousShader)
+    {
+        return false;
+    }
+
     bool bCurrentAlphaTested        = pCurrentShaderResource->CShaderResources::IsAlphaTested();
     bool bPreviousAlphaTested       = pPreviousShaderResource->CShaderResources::IsAlphaTested();
 
@@ -318,11 +314,10 @@ IRenderMesh* CRenderMesh::GetRenderMeshForSubsetMask(SRenderObjData* pOD, uint64
     pSubSetJob->m_pIndexRM = NULL;
     pSubSetJob->m_nMeshSubSetMask = nMeshSubSetMask;
 
-    TCreateSubsetRenderMesh job;
-    job.SetClassInstance(pSubSetJob);
-    job.RegisterJobState(&pSubSetJob->jobState);
-    job.SetBlocking();
-    job.Run();
+    pSubSetJob->jobExecutor.StartJob([pSubSetJob]()
+    {
+        pSubSetJob->CreateSubSetRenderMesh();
+    }); // Legacy JobManager used SJobState::SetBlocking
 
     return NULL;
 }
@@ -346,7 +341,7 @@ void CRenderMesh::FinalizeRendItems(int nThreadID)
     for (size_t i = 0; i < nNumSubSetRenderMeshJobs; ++i)
     {
         SMeshSubSetIndicesJobEntry& rSubSetJob = m_meshSubSetRenderMeshJobs[nThreadID][i];
-        if (rSubSetJob.jobState.IsRunning())
+        if (rSubSetJob.jobExecutor.IsRunning())
         {
             bJobsStillRunning = true;
         }
@@ -386,7 +381,7 @@ void CRenderMesh::ClearJobResources()
 
         for (size_t j = 0; j < m_deferredSubsetGarbageCollection[i].size(); ++j)
         {
-            gEnv->pJobManager->WaitForJob(m_meshSubSetRenderMeshJobs[i][j].jobState);
+            m_meshSubSetRenderMeshJobs[i][j].jobExecutor.WaitForCompletion();
         }
         stl::free_container(m_meshSubSetRenderMeshJobs[i]);
     }

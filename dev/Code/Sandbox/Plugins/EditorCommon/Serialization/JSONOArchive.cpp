@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "StdAfx.h"
+#include "stdafx.h"
 #include "JSONOArchive.h"
 #include "MemoryWriter.h"
 #include "Serialization/KeyValue.h"
@@ -352,7 +352,9 @@ namespace Serialization {
         YASLI_ESCAPE(buffer_.get() != 0, return false);
         YASLI_ESCAPE(buffer_->position() <= buffer_->size(), return false);
         stack_.pop_back();
-        if (FILE* file = fopen(fileName, "wb"))
+        FILE* file = nullptr;
+        azfopen(&file, fileName, "wb");
+        if (file)
         {
             if (fwrite(buffer_->c_str(), 1, buffer_->position(), file) != buffer_->position())
             {

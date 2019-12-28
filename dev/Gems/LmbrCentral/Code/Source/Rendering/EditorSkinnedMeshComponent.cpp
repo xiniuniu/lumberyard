@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 
 #include "EditorSkinnedMeshComponent.h"
 #include <AzCore/Serialization/SerializeContext.h>
@@ -56,7 +56,7 @@ namespace LmbrCentral
                 editContext->Class<EditorSkinnedMeshComponent>("Skinned Mesh", "The Skinned Mesh component is the primary way to add animated visual geometry to entities")
                     ->ClassElement(AZ::Edit::ClassElements::EditorData, "")
                         ->Attribute(AZ::Edit::Attributes::Category, "Animation (Legacy)")
-                        ->Attribute(AZ::Edit::Attributes::Icon, "Editor/Icons/Components/SkinnedMesh.png")
+                        ->Attribute(AZ::Edit::Attributes::Icon, "Editor/Icons/Components/SkinnedMesh.svg")
                         ->Attribute(AZ::Edit::Attributes::PrimaryAssetType, AZ::AzTypeInfo<LmbrCentral::CharacterDefinitionAsset>::Uuid())
                         ->Attribute(AZ::Edit::Attributes::ViewportIcon, "Editor/Icons/Components/Viewport/SkinnedMesh.png")
                         ->Attribute(AZ::Edit::Attributes::PreferNoViewportIcon, true)
@@ -149,9 +149,9 @@ namespace LmbrCentral
         RenderNodeRequestBus::Handler::BusConnect(GetEntityId());
         AZ::TransformNotificationBus::Handler::BusConnect(GetEntityId());
         AzToolsFramework::EditorVisibilityNotificationBus::Handler::BusConnect(GetEntityId());
-        AzFramework::EntityDebugDisplayEventBus::Handler::BusConnect(GetEntityId());
         SkinnedMeshComponentRequestBus::Handler::BusConnect(GetEntityId());
         SkeletalHierarchyRequestBus::Handler::BusConnect(GetEntityId());
+        AzToolsFramework::EditorComponentSelectionRequestsBus::Handler::BusConnect(GetEntityId());
 
         auto renderOptionsChangeCallback =
             [this]()
@@ -160,7 +160,14 @@ namespace LmbrCentral
         };
         m_mesh.m_renderOptions.m_changeCallback = renderOptionsChangeCallback;
 
-        m_mesh.CreateMesh();
+        if (m_mesh.m_isQueuedForDestroyMesh)
+        {
+            m_mesh.m_isQueuedForDestroyMesh = false;
+        }
+        else
+        {
+            m_mesh.CreateMesh();
+        }
     }
 
     void EditorSkinnedMeshComponent::Deactivate()
@@ -173,13 +180,21 @@ namespace LmbrCentral
         RenderNodeRequestBus::Handler::BusDisconnect();
         AZ::TransformNotificationBus::Handler::BusDisconnect();
         AzToolsFramework::EditorVisibilityNotificationBus::Handler::BusDisconnect();
-        AzFramework::EntityDebugDisplayEventBus::Handler::BusDisconnect();
+        AzToolsFramework::EditorComponentSelectionRequestsBus::Handler::BusDisconnect();
 
         DestroyEditorPhysics();
 
         m_mesh.m_renderOptions.m_changeCallback = 0;
 
-        m_mesh.DestroyMesh();
+        if (!m_mesh.GetMeshAsset().IsReady())
+        {
+            m_mesh.m_isQueuedForDestroyMesh = true;
+        }
+        else
+        {
+            m_mesh.DestroyMesh();
+        }
+
         m_mesh.AttachToEntity(AZ::EntityId());
 
         EditorComponentBase::Deactivate();
@@ -274,22 +289,18 @@ namespace LmbrCentral
         m_mesh.RefreshRenderState();
     }
 
-    void EditorSkinnedMeshComponent::DisplayEntity(bool& handled)
-    {
-        if (m_mesh.HasMesh())
-        {
-            // Only allow Sandbox to draw the default sphere if we don't have a
-            // visible mesh.
-            handled = true;
-        }
-    }
-
     void EditorSkinnedMeshComponent::BuildGameEntity(AZ::Entity* gameEntity)
     {
         if (SkinnedMeshComponent* meshComponent = gameEntity->CreateComponent<SkinnedMeshComponent>())
         {
             m_mesh.CopyPropertiesTo(meshComponent->m_skinnedMeshRenderNode);
         }
+    }
+
+    AZ::Aabb EditorSkinnedMeshComponent::GetEditorSelectionBoundsViewport(
+        const AzFramework::ViewportInfo& /*viewportInfo*/)
+    {
+        return GetWorldBounds();
     }
 
     void EditorSkinnedMeshComponent::CreateEditorPhysics()

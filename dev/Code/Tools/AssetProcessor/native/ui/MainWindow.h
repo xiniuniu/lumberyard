@@ -17,12 +17,16 @@
 #include "native/utilities/LogPanel.h"
 #include <QPointer>
 #include "native/assetprocessor.h"
+#include <AzQtComponents/Components/FilteredSearchWidget.h>
+#include <QElapsedTimer>
 
 namespace Ui {
     class MainWindow;
 }
 class GUIApplicationManager;
 class QListWidgetItem;
+class QFileSystemWatcher;
+class QSettings;
 namespace AssetProcessor
 {
     class JobSortFilterProxyModel;
@@ -35,6 +39,32 @@ class MainWindow
     Q_OBJECT
 
 public:
+    struct Config
+    {
+        // These default values are used if the values can't be read from AssetProcessorConfig.ini,
+        // and the call to defaultConfig fails.
+
+        // Asset Status
+        int jobStatusColumnWidth = -1;
+        int jobSourceColumnWidth = -1;
+        int jobPlatformColumnWidth = -1;
+        int jobKeyColumnWidth = -1;
+        int jobCompletedColumnWidth = -1;
+
+        // Event Log Details
+        int logTypeColumnWidth = -1;
+    };
+
+    /*!
+     * Loads the button config data from a settings object.
+     */
+    static Config loadConfig(QSettings& settings);
+
+    /*!
+     * Returns default button config data.
+     */
+    static Config defaultConfig();
+
     explicit MainWindow(GUIApplicationManager* guiApplicationManager, QWidget* parent = 0);
     void Activate();
     ~MainWindow();
@@ -47,21 +77,48 @@ public Q_SLOTS:
     void SaveLogPanelState();
     void OnAssetProcessorStatusChanged(const AssetProcessor::AssetProcessorStatusEntry entry);
 
+    void OnRescanButtonClicked();
+    void HighlightAsset(QString assetPath);
+
+protected Q_SLOTS:
+    void ApplyConfig();
+
 private:
+
+    class LogSortFilterProxy : public QSortFilterProxyModel
+    {
+    public:
+        LogSortFilterProxy(QObject* parentOjbect);
+        bool filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const override;
+        void onTypeFilterChanged(const AzQtComponents::SearchTypeFilterList& activeTypeFilters);
+
+    private:
+        QSet<AzToolsFramework::Logging::LogLine::LogType> m_logTypes;
+    };
+
     Ui::MainWindow* ui;
     GUIApplicationManager* m_guiApplicationManager;
-    AssetProcessor::JobSortFilterProxyModel* m_sortFilterProxy;
+    AzToolsFramework::Logging::LogTableModel* m_logsModel;
+    AssetProcessor::JobSortFilterProxyModel* m_jobSortFilterProxy;
+    LogSortFilterProxy* m_logSortFilterProxy;
     AssetProcessor::JobsModel* m_jobsModel;
     QPointer<AssetProcessor::LogPanel> m_loggingPanel;
     int m_processJobsCount = 0;
     int m_createJobCount = 0;
+    QFileSystemWatcher* m_fileSystemWatcher;
+    Config m_config;
 
-    void OnPaneChanged(QListWidgetItem* current, QListWidgetItem* previous);
+    void SetContextLogDetailsVisible(bool visible);
+    void SetContextLogDetails(const QMap<QString, QString>& details);
+    void ClearContextLogDetails();
+
+    void EditConnection(const QModelIndex& index);
+    void OnConnectionContextMenu(const QPoint& point);
+    void OnEditConnection(bool checked);
     void OnAddConnection(bool checked);
     void OnRemoveConnection(bool checked);
-    void OnJobFilterClear(bool checked);
-    void OnJobFilterRegExpChanged();
     void OnSupportClicked(bool checked);
+    void OnConnectionSelectionChanged(const QItemSelection& selected, const QItemSelection& deselected);
 
     QStringListModel m_rejectedAddresses;
     QStringListModel m_whitelistedAddresses;
@@ -76,5 +133,29 @@ private:
 
     void OnToWhiteListButtonClicked();
     void OnToRejectedListButtonClicked();
+
+    void JobSelectionChanged(const QItemSelection& selected, const QItemSelection& deselected);
+    void JobLogSelectionChanged(const QItemSelection& selected, const QItemSelection& deselected);
+    void DesktopOpenJobLogs();
+
+    void ResetLoggingPanel();
+    void ShowJobViewContextMenu(const QPoint& pos);
+    void ShowLogLineContextMenu(const QPoint& pos);
+    void ShowJobLogContextMenu(const QPoint& pos);
+
+    void ResetTimers();
+    void CheckStartAnalysisTimers();
+    void CheckEndAnalysisTimer();
+    void CheckStartProcessTimers();
+    void CheckEndProcessTimer();
+    QString FormatStringTime(qint64 timeMs) const;
+
+    QElapsedTimer m_scanTimer;
+    QElapsedTimer m_analysisTimer;
+    QElapsedTimer m_processTimer;
+
+    qint64 m_scanTime{ 0 };
+    qint64 m_analysisTime{ 0 };
+    qint64 m_processTime{ 0 };
 };
 

@@ -338,8 +338,6 @@ typedef int64 __time64_t;     /* 64-bit time value */
 // Need to include this before using it's used in finddata, but after the strnicmp definition
 #include "CryString.h"
 
-#if defined(ANDROID) || defined (APPLE) || defined(LINUX)
-
 typedef struct __finddata64_t
 {
     //!< atributes set by find request
@@ -390,10 +388,6 @@ extern intptr_t _findfirst64(const char* pFileName, __finddata64_t* pFindData);
 extern DWORD GetFileAttributes(LPCSTR lpFileName);
 
 extern const bool GetFilenameNoCase(const char* file, char*, const bool cCreateNew = false);
-
-
-#endif //defined(ANDROID) || defined (APPLE)
-
 
 extern BOOL GetUserName(LPSTR lpBuffer, LPDWORD nSize);
 
@@ -505,26 +499,6 @@ extern void adaptFilenameToLinux(char* rAdjustedFilename);
 extern const int comparePathNames(const char* cpFirst, const char* cpSecond, unsigned int len);//returns 0 if identical
 extern void replaceDoublePathFilename(char* szFileName);//removes "\.\" to "\" and "/./" to "/"
 
-
-//////////////////////////////////////////////////////////////////////////
-inline LONG _InterlockedCompareExchange(LONG volatile* Destination, LONG Exchange, LONG Comperand)
-{
-    LONG prev = *Destination;
-    if (*Destination == Comperand)
-    {
-        *Destination = Exchange;
-    }
-    return prev;
-}
-
-//////////////////////////////////////////////////////////////////////////
-inline LONG _InterlockedExchangeAdd(LONG volatile* Addend, LONG Value)
-{
-    LONG prev = *Addend;
-    *Addend += Value;
-    return prev;
-}
-
 //////////////////////////////////////////////////////////////////////////
 extern char* _fullpath(char* absPath, const char* relPath, size_t maxLength);
 //////////////////////////////////////////////////////////////////////////
@@ -533,7 +507,6 @@ extern void _splitpath(const char* inpath, char* drv, char* dir, char* fname, ch
 
 //////////////////////////////////////////////////////////////////////////
 extern int memicmp(LPCSTR s1, LPCSTR s2, DWORD len);
-extern int strcmpi(const char* str1, const char* str2);
 
 extern "C" char* strlwr (char* str);
 extern "C" char* strupr(char* str);

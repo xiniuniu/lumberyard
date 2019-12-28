@@ -79,9 +79,9 @@ namespace GraphicsReflectContext
             AZ_Warning("Editor", false, "TimeOfDayLoadDefinitionFileNode: tod file name is empty.");
             return false;
         }
-        ILevel* currentLevel = gEnv->pGame->GetIGameFramework()->GetILevelSystem()->GetCurrentLevel();
+        ILevel* currentLevel = gEnv->pSystem->GetILevelSystem()->GetCurrentLevel();
         AZStd::string path = currentLevel ? currentLevel->GetLevelInfo()->GetPath() : "";
-        pathAndfileName = AZStd::string::format("%s/%s", path.c_str(), fileName.to_string().c_str());
+        pathAndfileName = AZStd::string::format("%s/%s", path.c_str(), fileName.data());
 
         // try to load it
         XmlNodeRef root = GetISystem()->LoadXmlFromFile(pathAndfileName.c_str());
@@ -115,8 +115,8 @@ namespace GraphicsReflectContext
                 ->Method("SetTime",
                     &TimeOfDay::SetTime,
                     { {
-                        { "Time",           "Current time [0-24] (in hours)",                             AZ::BehaviorMakeDefaultValue(0.0f)  },
-                        { "ForceUpdate",    "Indicates whether the whole sky should be updated immediately",        AZ::BehaviorMakeDefaultValue(false) }
+                        { "Time",           "Current time [0-24] (in hours)",                             behaviorContext->MakeDefaultValue(0.0f)  },
+                        { "ForceUpdate",    "Indicates whether the whole sky should be updated immediately",        behaviorContext->MakeDefaultValue(false) }
                     } })
                 ->Attribute(AZ::Script::Attributes::ToolTip, "Sets the current time of day")
 
@@ -126,7 +126,7 @@ namespace GraphicsReflectContext
                 ->Method("SetSpeed",
                     &TimeOfDay::SetSpeed,
                     { {
-                        { "Speed",          "Current speed",                                             AZ::BehaviorMakeDefaultValue(0.0f) }
+                        { "Speed",          "Current speed",                                             behaviorContext->MakeDefaultValue(0.0f) }
                     } })
                 ->Attribute(AZ::Script::Attributes::ToolTip, "Sets the current time of day speed multiplier")
 
@@ -136,7 +136,7 @@ namespace GraphicsReflectContext
                 ->Method("LoadDefinitionFile",
                     &TimeOfDay::LoadDefinitionFile,
                     { {
-                        { "FileName",         "Name of the xml file to be read (must be in level folder)", AZ::BehaviorMakeDefaultValue(AZStd::string_view()) }
+                        { "FileName",         "Name of the xml file to be read (must be in level folder)", behaviorContext->MakeDefaultValue(AZStd::string_view()) }
                         } })
                 ->Attribute(AZ::Script::Attributes::ToolTip, "Load a TimeOfDay xml file and update the sky accordingly")
                 ;

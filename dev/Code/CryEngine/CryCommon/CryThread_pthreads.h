@@ -11,8 +11,6 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#ifndef CRYINCLUDE_CRYCOMMON_CRYTHREAD_PTHREADS_H
-#define CRYINCLUDE_CRYCOMMON_CRYTHREAD_PTHREADS_H
 #pragma once
 
 
@@ -26,8 +24,42 @@
 #include <ILog.h>
 #include <errno.h>
 
+// Section dictionary
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define CRYTHREAD_PTHREADS_H_SECTION_REGISTER_THREAD 1
+#define CRYTHREAD_PTHREADS_H_SECTION_TRAITS 2
+#define CRYTHREAD_PTHREADS_H_SECTION_PTHREADCOND 3
+#define CRYTHREAD_PTHREADS_H_SECTION_SEMAPHORE_CONSTRUCT 4
+#define CRYTHREAD_PTHREADS_H_SECTION_SEMAPHORE_DESTROY 5
+#define CRYTHREAD_PTHREADS_H_SECTION_SEMAPHORE_ACQUIRE 6
+#define CRYTHREAD_PTHREADS_H_SECTION_SEMAPHORE_RELEASE 7
+#define CRYTHREAD_PTHREADS_H_SECTION_TRY_RLOCK 8
+#define CRYTHREAD_PTHREADS_H_SECTION_TRY_WLOCK 9
+#define CRYTHREAD_PTHREADS_H_SECTION_START_RUNNABLE 10
+#define CRYTHREAD_PTHREADS_H_SECTION_START_CPUMASK 11
+#define CRYTHREAD_PTHREADS_H_SECTION_START_CPUMASK_POSTCREATE 12
+#define CRYTHREAD_PTHREADS_H_SECTION_SETCPUMASK 13
+#define CRYTHREAD_PTHREADS_H_SECTION_START_RUNNABLE_CPUMASK_POSTCREATE 14
+#endif
+
+#if defined(AZ_RESTRICTED_PLATFORM)
+    #define AZ_RESTRICTED_SECTION CRYTHREAD_PTHREADS_H_SECTION_REGISTER_THREAD
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/CryThread_pthreads_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/CryThread_pthreads_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/CryThread_pthreads_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+    #undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#endif
+
+#if !defined(RegisterThreadName)
     #define RegisterThreadName(id, name)
     #define UnRegisterThreadName(id)
+#endif
 
 #if defined(APPLE) || defined(ANDROID)
 // PTHREAD_MUTEX_FAST_NP is only defined by Pthreads-w32, thus not on MAC
@@ -35,15 +67,15 @@
 #endif
 
 // Define LARGE_THREAD_STACK to use larger than normal per-thread stack
-#if defined(_DEBUG) && (defined(MAC) || defined(LINUX))
+#if defined(_DEBUG) && (defined(MAC) || defined(LINUX) || defined(AZ_PLATFORM_IOS))
 #define LARGE_THREAD_STACK
 #endif
 
 #if defined(LINUX)
 #undef RegisterThreadName
-ILINE void RegisterThreadName(threadID id, const char* name)
+ILINE void RegisterThreadName(pthread_t id, const char* name)
 {
-    if (!name)
+    if ((!name) || (!id))
     {
         return;
     }
@@ -187,7 +219,25 @@ public:
     CryLockT() { }
 };
 
-#if !defined(LINUX) && !defined(APPLE) && !defined(ORBIS)
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION CRYTHREAD_PTHREADS_H_SECTION_TRAITS
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/CryThread_pthreads_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/CryThread_pthreads_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/CryThread_pthreads_h_salem.inl"
+    #endif
+#else
+#if !defined(LINUX) && !defined(APPLE)
+#define CRYTHREAD_PTHREADS_H_TRAIT_DEFINE_CRYMUTEX 1
+#endif
+#if !defined(LINUX) && !defined(APPLE)
+#define CRYTHREAD_PTHREADS_H_TRAIT_SET_THREAD_NAME 1
+#endif
+#endif
+
+#if CRYTHREAD_PTHREADS_H_TRAIT_DEFINE_CRYMUTEX
 #if defined CRYLOCK_HAVE_FASTLOCK
 class CryMutex
     : public CryLockT<CRYLOCK_FAST>
@@ -199,7 +249,7 @@ class CryMutex
 {
 };
 #endif
-#endif // !LINUX !MAC
+#endif // CRYTHREAD_PTHREADS_TRAIT_DEFINE_CRYMUTEX
 
 template<class LockClass>
 class _PthreadCond
@@ -229,6 +279,19 @@ public:
                 nsec %= 1000000000;
             }
             timeout.tv_nsec = (long)nsec;
+#if defined(AZ_RESTRICTED_PLATFORM)
+            #define AZ_RESTRICTED_SECTION CRYTHREAD_PTHREADS_H_SECTION_PTHREADCOND
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/CryThread_pthreads_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/CryThread_pthreads_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/CryThread_pthreads_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+            #undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#else
             err = pthread_cond_timedwait(&m_Cond, &Lock.m_Lock, &timeout);
             if (err == EINTR)
             {
@@ -239,6 +302,7 @@ public:
             {
                 return false;
             }
+#endif
             else
             {
                 assert(err == 0);
@@ -254,7 +318,7 @@ public:
     pthread_cond_t& Get_pthread_cond_t() { return m_Cond; }
 };
 
-#if defined(LINUX) || defined(APPLE) || defined(ORBIS)
+#if AZ_LEGACY_CRYCOMMON_TRAIT_USE_PTHREADS
 template <class LockClass>
 class CryConditionVariableT
     : public _PthreadCond<LockClass>
@@ -341,7 +405,7 @@ public:
 
 private:
 #if defined(APPLE)
-    // Apple only supports named semaphores so have to use sem_open/unlink instead
+    // Apple only supports named semaphores so have to use sem_open/unlink/sem_close instead
     // of sem_open/sem_destroy, passing in this array for the name.
     char m_semaphoreName[L_tmpnam];
 #endif
@@ -351,7 +415,19 @@ private:
 //////////////////////////////////////////////////////////////////////////
 inline CrySemaphore::CrySemaphore(int nMaximumCount, int nInitialCount)
 {
-#if   defined(APPLE)
+#if defined(AZ_RESTRICTED_PLATFORM)
+    #define AZ_RESTRICTED_SECTION CRYTHREAD_PTHREADS_H_SECTION_SEMAPHORE_CONSTRUCT
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/CryThread_pthreads_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/CryThread_pthreads_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/CryThread_pthreads_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+    #undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#elif defined(APPLE)
 #   pragma clang diagnostic push
 #   pragma clang diagnostic ignored "-Wdeprecated-declarations"
     tmpnam(m_semaphoreName);
@@ -366,7 +442,20 @@ inline CrySemaphore::CrySemaphore(int nMaximumCount, int nInitialCount)
 //////////////////////////////////////////////////////////////////////////
 inline CrySemaphore::~CrySemaphore()
 {
-#if   defined(APPLE)
+#if defined(AZ_RESTRICTED_PLATFORM)
+    #define AZ_RESTRICTED_SECTION CRYTHREAD_PTHREADS_H_SECTION_SEMAPHORE_DESTROY
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/CryThread_pthreads_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/CryThread_pthreads_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/CryThread_pthreads_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+    #undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#elif defined(APPLE)
+    sem_close(m_Semaphore);
     sem_unlink(m_semaphoreName);
 #else
     sem_destroy(m_Semaphore);
@@ -377,16 +466,44 @@ inline CrySemaphore::~CrySemaphore()
 //////////////////////////////////////////////////////////////////////////
 inline void CrySemaphore::Acquire()
 {
+#if defined(AZ_RESTRICTED_PLATFORM)
+    #define AZ_RESTRICTED_SECTION CRYTHREAD_PTHREADS_H_SECTION_SEMAPHORE_ACQUIRE
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/CryThread_pthreads_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/CryThread_pthreads_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/CryThread_pthreads_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+    #undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#else
     while (sem_wait(m_Semaphore) != 0 && errno == EINTR)
     {
         ;
     }
+#endif
 }
 
 //////////////////////////////////////////////////////////////////////////
 inline void CrySemaphore::Release()
 {
+#if defined(AZ_RESTRICTED_PLATFORM)
+    #define AZ_RESTRICTED_SECTION CRYTHREAD_PTHREADS_H_SECTION_SEMAPHORE_RELEASE
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/CryThread_pthreads_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/CryThread_pthreads_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/CryThread_pthreads_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+    #undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#else
     sem_post(m_Semaphore);
+#endif
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -466,13 +583,41 @@ public:
     void RLock() { pthread_rwlock_rdlock(&m_Lock); }
     bool TryRLock()
     {
+#if defined(AZ_RESTRICTED_PLATFORM)
+        #define AZ_RESTRICTED_SECTION CRYTHREAD_PTHREADS_H_SECTION_TRY_RLOCK
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/CryThread_pthreads_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/CryThread_pthreads_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/CryThread_pthreads_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+        #undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#else
         return pthread_rwlock_tryrdlock(&m_Lock) != EBUSY;
+#endif
     }
     void RUnlock() { Unlock(); }
     void WLock() { pthread_rwlock_wrlock(&m_Lock); }
     bool TryWLock()
     {
+#if defined(AZ_RESTRICTED_PLATFORM)
+        #define AZ_RESTRICTED_SECTION CRYTHREAD_PTHREADS_H_SECTION_TRY_RLOCK
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/CryThread_pthreads_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/CryThread_pthreads_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/CryThread_pthreads_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+        #undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#else
         return pthread_rwlock_trywrlock(&m_Lock) != EBUSY;
+#endif
     }
     void WUnlock() { Unlock(); }
     void Lock() { WLock(); }
@@ -880,7 +1025,7 @@ public:
         {
             this->m_Info.m_Name = name;
         }
-#if !defined(LINUX) && !defined(APPLE) && !defined(ORBIS)
+#if CRYTHREAD_PTHREADS_H_TRAIT_SET_THREAD_NAME
         threadAttr.name = (char*)name;
 #endif
         m_CpuMask = cpuMask;
@@ -898,6 +1043,15 @@ public:
             }
             pthread_attr_setaffinity_np(&threadAttr, sizeof cpuSet, &cpuSet);
         }
+#elif defined(AZ_RESTRICTED_PLATFORM)
+        #define AZ_RESTRICTED_SECTION CRYTHREAD_PTHREADS_H_SECTION_START_RUNNABLE
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/CryThread_pthreads_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/CryThread_pthreads_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/CryThread_pthreads_h_salem.inl"
+    #endif
 #endif
         m_Runnable = &runnable;
         int err = pthread_create(
@@ -905,7 +1059,18 @@ public:
                 &threadAttr,
                 PthreadRunRunnable,
                 this);
+        pthread_attr_destroy(&threadAttr);
         RegisterThreadName(m_ThreadID, name);
+#if defined(AZ_RESTRICTED_PLATFORM)
+        #define AZ_RESTRICTED_SECTION CRYTHREAD_PTHREADS_H_SECTION_START_RUNNABLE_CPUMASK_POSTCREATE
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/CryThread_pthreads_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/CryThread_pthreads_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/CryThread_pthreads_h_salem.inl"
+    #endif
+#endif
         assert(err == 0);
     }
 
@@ -927,7 +1092,7 @@ public:
         {
             this->m_Info.m_Name = name;
         }
-#if !defined(LINUX) && !defined(APPLE) && !defined(ORBIS)
+#if CRYTHREAD_PTHREADS_H_TRAIT_SET_THREAD_NAME
         threadAttr.name = (char*)name;
 #endif
         m_CpuMask = cpuMask;
@@ -945,13 +1110,33 @@ public:
             }
             pthread_attr_setaffinity_np(&threadAttr, sizeof cpuSet, &cpuSet);
         }
+#elif defined(AZ_RESTRICTED_PLATFORM)
+        #define AZ_RESTRICTED_SECTION CRYTHREAD_PTHREADS_H_SECTION_START_CPUMASK
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/CryThread_pthreads_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/CryThread_pthreads_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/CryThread_pthreads_h_salem.inl"
+    #endif
 #endif
         int err = pthread_create(
                 &m_ThreadID,
                 &threadAttr,
                 PthreadRunThis,
                 this);
+        pthread_attr_destroy(&threadAttr);
         RegisterThreadName(m_ThreadID, name);
+#if defined(AZ_RESTRICTED_PLATFORM)
+        #define AZ_RESTRICTED_SECTION CRYTHREAD_PTHREADS_H_SECTION_START_CPUMASK_POSTCREATE
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/CryThread_pthreads_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/CryThread_pthreads_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/CryThread_pthreads_h_salem.inl"
+    #endif
+#endif
         assert(err == 0);
     }
 
@@ -1021,6 +1206,15 @@ public:
                 }
             }
             pthread_attr_setaffinity_np(&threadAttr, sizeof cpuSet, &cpuSet);
+#elif defined(AZ_RESTRICTED_PLATFORM)
+        #define AZ_RESTRICTED_SECTION CRYTHREAD_PTHREADS_H_SECTION_SETCPUMASK
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/CryThread_pthreads_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/CryThread_pthreads_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/CryThread_pthreads_h_salem.inl"
+    #endif
 #endif
             return oldCpuMask;
         }
@@ -1219,8 +1413,3 @@ public:
             }
         } // namespace detail
     } // namespace CryMT
-
-#endif // CRYINCLUDE_CRYCOMMON_CRYTHREAD_PTHREADS_H
-
-// vim:ts=2
-

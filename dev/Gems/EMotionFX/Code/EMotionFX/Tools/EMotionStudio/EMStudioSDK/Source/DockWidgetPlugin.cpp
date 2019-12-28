@@ -10,27 +10,28 @@
 *
 */
 
-// include the required headers
 #include "EMStudioManager.h"
 #include "MainWindow.h"
 #include "DockWidgetPlugin.h"
 #include "RemovePluginOnCloseDockWidget.h"
 #include <MysticQt/Source/DockHeader.h>
 #include <MCore/Source/LogManager.h>
+#include <QHBoxLayout>
+
 
 namespace EMStudio
 {
     // constructor
     DockWidgetPlugin::DockWidgetPlugin()
         : EMStudioPlugin()
+        , mDock()
     {
-        mDock = nullptr;
     }
 
     // destructor
     DockWidgetPlugin::~DockWidgetPlugin()
     {
-        if (mDock)
+        if (!mDock.isNull())
         {
             // Disconnecting all signals from mDock to this object since we are
             // destroying it. Some plugins connect to visibility change that gets
@@ -43,35 +44,67 @@ namespace EMStudio
         }
     }
 
+    void DockWidgetPlugin::OnMainWindowClosed()
+    {
+        GetPluginManager()->RemoveActivePlugin(this);
+    }
 
     // check if we have a window that uses this object name
-    bool DockWidgetPlugin::GetHasWindowWithObjectName(const MCore::String& objectName)
+    bool DockWidgetPlugin::GetHasWindowWithObjectName(const AZStd::string& objectName)
     {
-        if (mDock == nullptr)
+        if (mDock.isNull())
         {
             return false;
         }
 
         // check if the object name is equal to the one of the dock widget
-        return (objectName.CheckIfIsEqual(FromQtString(mDock->objectName()).AsChar()));
+        return objectName == FromQtString(mDock->objectName());
     }
 
 
     // create the base interface
     void DockWidgetPlugin::CreateBaseInterface(const char* objectName)
     {
+        if (!objectName)
+        {
+            QString newName = GetPluginManager()->GenerateObjectName();
+            SetObjectName(newName);
+        }
+        else
+        {
+            SetObjectName(objectName);
+        }
+    }
+
+
+    // set the interface title
+    void DockWidgetPlugin::SetInterfaceTitle(const char* name)
+    {
+        if (!mDock.isNull())
+        {
+            mDock->setWindowTitle(name);
+        }
+    }
+
+    MysticQt::DockWidget* DockWidgetPlugin::GetDockWidget() 
+    { 
+        if (!mDock.isNull())
+        {
+            return mDock;
+        }
+        
         // get the main window
         QMainWindow* mainWindow = GetMainWindow();
 
         // create a window for the plugin
-        mDock = new RemovePluginOnCloseDockWidget(GetName(), this);
+        mDock = new RemovePluginOnCloseDockWidget(mainWindow, GetName(), this);
         mDock->setAllowedAreas(Qt::AllDockWidgetAreas);
 
         // set the custom dock widget header
         MysticQt::DockHeader* titleBar = new MysticQt::DockHeader(mDock);
         mDock->setTitleBarWidget(titleBar);
 
-        QDockWidget::DockWidgetFeatures features  = QDockWidget::NoDockWidgetFeatures;
+        QDockWidget::DockWidgetFeatures features = QDockWidget::NoDockWidgetFeatures;
         if (GetIsClosable())
         {
             features |= QDockWidget::DockWidgetClosable;
@@ -91,31 +124,26 @@ namespace EMStudio
 
         mDock->setFeatures(features);
 
-        if (objectName == nullptr)
-        {
-            QString newName = GetPluginManager()->GenerateObjectName();
-            SetObjectName(newName);
-        }
-        else
-        {
-            SetObjectName(objectName);
-        }
-
         //  mDock->setFloating( true );
         mainWindow->addDockWidget(Qt::RightDockWidgetArea, mDock);
+        mainWindow->setTabPosition(Qt::AllDockWidgetAreas, QTabWidget::North); // put tabs on top?
 
         titleBar->UpdateIcons();
+
+        return mDock;
     }
 
-
-    // set the interface title
-    void DockWidgetPlugin::SetInterfaceTitle(const char* name)
+    QWidget* DockWidgetPlugin::CreateErrorContentWidget(const char* errorMessage) const
     {
-        if (mDock)
-        {
-            mDock->setWindowTitle(name);
-        }
-    }
-}   // namespace EMStudio
+        QWidget* widget = new QWidget();
+        QHBoxLayout* layout = new QHBoxLayout();
+        layout->setMargin(32);
+        widget->setLayout(layout);
 
-#include <EMotionFX/Tools/EMotionStudio/EMStudioSDK/Source/DockWidgetPlugin.moc>
+        QLabel* label = new QLabel(errorMessage);
+        label->setWordWrap(true);
+        layout->addWidget(label);
+
+        return widget;
+    }
+} // namespace EMStudio

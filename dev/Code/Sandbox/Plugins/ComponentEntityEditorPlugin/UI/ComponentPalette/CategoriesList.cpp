@@ -10,7 +10,8 @@
 *
 */
 
-#include "stdafx.h"
+#include "ComponentEntityEditorPlugin_precompiled.h"
+
 #include "CategoriesList.h"
 
 ComponentCategoryList::ComponentCategoryList(QWidget* parent /*= nullptr*/) 
@@ -32,8 +33,8 @@ void ComponentCategoryList::Init()
     headers << tr("Categories");
     setHeaderLabels(headers);
 
-    const QString parentCategoryIconPath = QString("Editor/Icons/PropertyEditor/browse_on.png");
-    const QString categoryIconPath = QString("Editor/Icons/PropertyEditor/browse.png");
+    const QString parentCategoryIconPath = QString("Editor/Icons/PropertyEditor/Browse_on.png");
+    const QString categoryIconPath = QString("Editor/Icons/PropertyEditor/Browse.png");
 
     QTreeWidgetItem* allCategory = new QTreeWidgetItem(this);
     allCategory->setText(0, "All");

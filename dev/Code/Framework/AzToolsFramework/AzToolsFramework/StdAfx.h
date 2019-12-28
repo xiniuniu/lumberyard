@@ -23,15 +23,29 @@
 #endif
 
 // QT
-#include <QtWidgets/qwidget.h>
-#include <QtWidgets/qframe.h>
-#include <QtGui/qevent.h>
-#include <QtWidgets/qcombobox.h>
+AZ_PUSH_DISABLE_WARNING(4127, "-Wunknown-warning-option") // conditional expression is constant
+#include <QtWidgets/QWidget>
+AZ_POP_DISABLE_WARNING
+#include <QtWidgets/QFrame>
+#include <QtCore/QEvent>
+AZ_PUSH_DISABLE_WARNING(4251, "-Wunknown-warning-option") // 'QVariant::d': struct 'QVariant::Private' needs to have dll-interface to be used by clients of class 'QVariant'
+#include <QtWidgets/QComboBox>
+AZ_POP_DISABLE_WARNING
 #include <QtWidgets/qtoolbutton.h>
 #include <QtWidgets/qlabel.h>
 #include <QtWidgets/qcolordialog.h>
 #include <QtWidgets/qapplication.h>
 #include <QtWidgets/qscrollarea.h>
+AZ_PUSH_DISABLE_WARNING(4251, "-Wunknown-warning-option") // 'QTextFormat::d': class 'QSharedDataPointer<QTextFormatPrivate>' needs to have dll-interface to be used by clients of class 'QTextFormat'
 #include <QtWidgets/qinputdialog.h>
+AZ_POP_DISABLE_WARNING
 #include <QtCore/qbasictimer.h>
 #include <QtCore/qobjectdefs.h>
+
+#ifdef Q_OS_MACOS
+typedef void* HWND;
+typedef void* HMODULE;
+typedef quint32 DWORD;
+#define _MAX_PATH 260
+#define MAX_PATH 260
+#endif

@@ -90,14 +90,5 @@
 
 #include <IItem.h>
 
-
-#ifdef WIN64
-#if (_MSC_VER == 1900)
-#pragma comment(lib, "../../../../Bin64vc140/Editor.lib")
-#else // _MSC_VER == 1900
-#pragma comment(lib, "../../../../Bin64vc120/Editor.lib")
-#endif // _MSC_VER == 1900
-#else
-#pragma comment(lib, "../../../../Bin32/Editor.lib")
-#endif
+#pragma comment(lib, "../../../../Bin64vc141/Editor.lib")
 

@@ -46,7 +46,6 @@ _EXCLUDED_PATH_PATTERNS = [
     re.compile('dev/Gems/PBSreferenceMaterials($|/.*)', re.I),
     re.compile('dev/Gems/LyShineExamples($|/.*)', re.I),
     re.compile('dev/Gems/Clouds($|/.*)', re.I),
-    re.compile('dev/Gems/Boids($|/.*)', re.I),
     re.compile('dev/Gems/EMotionFX($|/.*)', re.I),
     re.compile('dev/Tools/3dsmax($|/.*)', re.I),
     re.compile('dev/Tools/AWSNativeSDK($|/.*)', re.I),
@@ -60,11 +59,24 @@ _EXCLUDED_PATH_PATTERNS = [
     re.compile('dev/Tools/maya($|/.*)', re.I),
     re.compile('dev/Tools/melscript($|/.*)', re.I),
     re.compile('dev/Tools/photoshop($|/.*)', re.I),
-    re.compile('dev/Tools/Python($|/.*)', re.I),
+    re.compile('dev/Tools/Python/2.7.12/windows($|/.*)', re.I),
+    re.compile('dev/Tools/Python/2.7.13($|/.*)', re.I),
     re.compile('dev/Tools/Redistributables($|/.*)', re.I),
     re.compile('dev/Tools/RemoteConsole($|/.*)', re.I),
-    re.compile('(3rdparty|dev)/.+?/(lib|bin)/(ios|steamos|android|appletv|mac|osx|vc120|vc140|x86|x64|win|msvc)($|/.*)', re.I),
+    re.compile('(3rdparty|dev)/.+?/(lib|bin)/(ios|steamos|android|appletv|mac|osx|vc12|vc14|x86|x64|win|msvc)([^/]*?)($|/.*)', re.I),
 ]
+
+try:
+    import provo.access
+    _EXCLUDED_PATH_PATTERNS.append(re.compile(provo.access._get_provo_regex(), re.I))
+except ImportError:
+    pass
+
+try:
+    import xenia.access
+    _EXCLUDED_PATH_PATTERNS.append(re.compile(xenia.access._get_xenia_regex(), re.I))
+except ImportError:
+    pass
 
 _EXCLUDED_EXTENSIONS = set([
     '.0svn',
@@ -270,6 +282,8 @@ def _build_dev_sources_map(source_root, destination_root):
         'engine.json',
         'engineroot.txt',
         'lmbr_waf.sh',
+        'lmbr_test.sh',
+        'lmbr_test_blacklist.txt',
         'LyzardConfig.xml',
         'SetupAssistantConfig.json',
         'SetupAssistantUserPreferences.ini',

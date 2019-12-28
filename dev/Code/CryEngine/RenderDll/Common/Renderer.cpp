@@ -17,13 +17,12 @@
 #include "StdAfx.h"
 
 #include <AzCore/Debug/Profiler.h>
-#include <CryEngineAPI.h>
 #include "Shadow_Renderer.h"
 #include "IStatObj.h"
 #include "I3DEngine.h"
 #include "IMovieSystem.h"
 #include "IIndexedMesh.h"
-#include "BitFiddling.h"                                                            // IntegerLog2()
+#include "BitFiddling.h"                                                    // IntegerLog2()
 #include "ImageExtensionHelper.h"                                           // CImageExtensionHelper
 #include "Textures/Image/CImage.h"
 #include "Textures/TextureManager.h"
@@ -31,6 +30,7 @@
 #include "../CryCommon/branchmask.h"
 #include "../CryCommon/CREParticleGPU.h"
 #include "../CryCommon/IGPUParticleEngine.h"
+#include "../CryCommon/ParticleParams.h"
 #include "PostProcess/PostEffects.h"
 #include "RendElements/CRELensOptics.h"
 #include "IStereoRenderer.h"
@@ -39,20 +39,49 @@
 
 #include <LoadScreenBus.h>
 
+#if AZ_RENDER_TO_TEXTURE_GEM_ENABLED && !defined(NULL_RENDERER)
+#include <RTT/RTTContextManager.h>
+#endif // if AZ_RENDER_TO_TEXTURE_GEM_ENABLED && !defined(NULL_RENDERER)
+
 #include "RendElements/OpticsFactory.h"
 
 #include "GraphicsPipeline/FurBendData.h"
 
+#ifdef LY_TERRAIN_RUNTIME
+#include "RendElements/TerrainUtils/TerrainRenderingParameters.h"
+#include "CRETerrain.h"
+#endif
 #include "IGeomCache.h"
 #include "ITimeOfDay.h"
 #include <AzCore/Math/Crc.h>
 
-#include <IJobManager_JobDelegator.h>
-
 #include "StatObjBus.h"
+#include "RenderBus.h"
 
 #include "RenderCapabilities.h"
 #include "RenderView.h"
+
+#if !defined(NULL_RENDERER)
+#include "DriverD3D.h"  //Needed for eGT_256bpp_PATH
+#endif
+
+#if defined(AZ_RESTRICTED_PLATFORM)
+#undef AZ_RESTRICTED_SECTION
+#define RENDERER_CPP_SECTION_1 1
+#define RENDERER_CPP_SECTION_2 2
+#define RENDERER_CPP_SECTION_4 4
+#define RENDERER_CPP_SECTION_5 5
+#define RENDERER_CPP_SECTION_7 7
+#define RENDERER_CPP_SECTION_8 8
+#define RENDERER_CPP_SECTION_9 9
+#define RENDERER_CPP_SECTION_10 10
+#define RENDERER_CPP_SECTION_11 11
+#define RENDERER_CPP_SECTION_12 12
+#define RENDERER_CPP_SECTION_13 13
+#define RENDERER_CPP_SECTION_14 14
+#define RENDERER_CPP_SECTION_15 15
+#endif
+
 #ifdef WIN64
     #pragma warning(disable: 4244)
 #endif
@@ -66,6 +95,7 @@
 #include <AzCore/Component/ComponentApplicationBus.h>
 #include <Common/Memory/VRAMDriller.h>
 #include "Maestro/Types/AnimParamType.h"
+#include <MainThreadRenderRequestBus.h>
 
 #if defined(AZ_PLATFORM_WINDOWS) // Scrubber friendly define negation
     #if defined(OPENGL) // Scrubber friendly define negation
@@ -113,10 +143,20 @@ string D3DDebug_GetLastMessage();
 //////////////////////////////////////////////////////////////////////////
 // Globals.
 //////////////////////////////////////////////////////////////////////////
-ENGINE_API CRenderer* gRenDev = nullptr;
+CRenderer* gRenDev = nullptr;
 
 #define RENDERER_DEFAULT_FONT "Fonts/default.xml"
 
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERER_CPP_SECTION_1
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/Renderer_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/Renderer_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/Renderer_cpp_salem.inl"
+    #endif
+#endif
 #if !defined(RENDERER_DEFAULT_MESHPOOLSIZE)
 # define RENDERER_DEFAULT_MESHPOOLSIZE (0U)
 #endif
@@ -124,11 +164,9 @@ ENGINE_API CRenderer* gRenDev = nullptr;
 # define RENDERER_DEFAULT_MESHINSTANCEPOOLSIZE (0U)
 #endif
 
-#if defined(AZ_MONOLITHIC_BUILD)
-extern int g_CpuFlags;
-#else
-int g_CpuFlags;
-#endif
+int g_CpuFlags = 0;
+
+CNameTableR* CCryNameR::ms_table = nullptr;
 
 //////////////////////////////////////////////////////////////////////////
 // Pool allocators.
@@ -220,12 +258,22 @@ AllocateConstIntCVar(CRenderer, CV_r_statsMinDrawcalls);
 AllocateConstIntCVar(CRenderer, CV_r_stats);
 AllocateConstIntCVar(CRenderer, CV_r_profiler);
 float CRenderer::CV_r_profilerTargetFPS;
-AllocateConstIntCVar(CRenderer, CV_r_log);
+int CRenderer::CV_r_log = 0;
 AllocateConstIntCVar(CRenderer, CV_r_logTexStreaming);
 AllocateConstIntCVar(CRenderer, CV_r_logShaders);
 int CRenderer::CV_r_logVBuffers;
 AllocateConstIntCVar(CRenderer, CV_r_logVidMem);
 AllocateConstIntCVar(CRenderer, CV_r_predicatedtiling);
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERER_CPP_SECTION_2
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/Renderer_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/Renderer_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/Renderer_cpp_salem.inl"
+    #endif
+#endif
 int CRenderer::CV_r_DeferredShadingSortLights;
 int CRenderer::CV_r_DeferredShadingAmbientSClear;
 int CRenderer::CV_r_msaa;
@@ -283,9 +331,6 @@ float CRenderer::CV_r_texturesstreamingResidencyThrottle;
 AllocateConstIntCVar(CRenderer, CV_r_texturesstreamingmipfading);
 int CRenderer::CV_r_TexturesStreamPoolSize;
 int CRenderer::CV_r_TexturesStreamPoolSecondarySize;
-int CRenderer::CV_r_texturesstreampooldefragmentation;
-int CRenderer::CV_r_texturesstreampooldefragmentationmaxmoves;
-int CRenderer::CV_r_texturesstreampooldefragmentationmaxamount;
 int CRenderer::CV_r_texturesskiplowermips;
 int CRenderer::CV_r_rendertargetpoolsize;
 float CRenderer::CV_r_TexturesStreamingMaxRequestedMB;
@@ -323,6 +368,7 @@ AllocateConstIntCVar(CRenderer, CV_r_texBlockOnLoad);
 AllocateConstIntCVar(CRenderer, CV_r_debugrendermode);
 AllocateConstIntCVar(CRenderer, CV_r_debugrefraction);
 
+int CRenderer::CV_r_VRAMDebug;
 int CRenderer::CV_r_DebugLightLayers;
 
 int CRenderer::CV_r_DeferredShadingTiled;
@@ -396,7 +442,7 @@ float CRenderer::CV_r_ChromaticAberration;
 AllocateConstIntCVar(CRenderer, CV_r_geominstancing);
 AllocateConstIntCVar(CRenderer, CV_r_geominstancingdebug);
 AllocateConstIntCVar(CRenderer, CV_r_materialsbatching);
-#if defined(WIN32) || defined(WIN64) || defined(APPLE) || defined(LINUX)
+#if defined(WIN32) || defined(WIN64) || defined(APPLE) || defined(LINUX) || defined(USE_SILHOUETTEPOM_CVAR)
 int CRenderer::CV_r_SilhouettePOM;
 #endif
 #ifdef WATER_TESSELLATION_RENDERER
@@ -463,21 +509,31 @@ int CRenderer::CV_r_impostersupdateperframe;
 AllocateConstIntCVar(CRenderer, CV_r_shaderslazyunload);
 AllocateConstIntCVar(CRenderer, CV_r_shadersdebug);
 #if !defined(CONSOLE)
-int CRenderer::CV_r_shadersorbis; // ACCEPTED_USE
-int CRenderer::CV_r_shadersdurango; // ACCEPTED_USE
+int CRenderer::CV_r_shadersorbis;
+int CRenderer::CV_r_shadersdurango;
 int CRenderer::CV_r_shadersdx10;
 int CRenderer::CV_r_shadersdx11;
 int CRenderer::CV_r_shadersGL4;
 int CRenderer::CV_r_shadersGLES3;
-// Confetti Nicholas Baldwin: adding metal shader language support
 int CRenderer::CV_r_shadersMETAL;
+
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERER_CPP_SECTION_14
+#if defined(AZ_PLATFORM_XENIA)
+#include "Xenia/Renderer_cpp_xenia.inl"
+#elif defined(AZ_PLATFORM_PROVO)
+#include "Provo/Renderer_cpp_provo.inl"
+#endif
+#endif
+
+int CRenderer::CV_r_shadersPlatform;
 #endif
 AllocateConstIntCVar(CRenderer, CV_r_shadersignoreincludeschanging);
 int CRenderer::CV_r_shaderspreactivate;
 int CRenderer::CV_r_shadersAllowCompilation;
 AllocateConstIntCVar(CRenderer, CV_r_shadersediting);
 AllocateConstIntCVar(CRenderer, CV_r_shaderscompileautoactivate);
-int CRenderer::CV_r_shadersremotecompiler;
+AllocateConstIntCVar(CRenderer, CV_r_shadersremotecompiler);
 int CRenderer::CV_r_shadersasynccompiling;
 int CRenderer::CV_r_shadersasyncactivation;
 int CRenderer::CV_r_shadersasyncmaxthreads;
@@ -490,6 +546,7 @@ int CRenderer::CV_r_shaderslogcachemisses;
 int CRenderer::CV_r_shadersImport;
 int CRenderer::CV_r_shadersExport;
 int CRenderer::CV_r_shadersCacheUnavailableShaders;
+AllocateConstIntCVar(CRenderer, CV_r_ShadersUseLLVMDirectXCompiler);
 
 AllocateConstIntCVar(CRenderer, CV_r_meshprecache);
 int CRenderer::CV_r_meshpoolsize;
@@ -511,9 +568,11 @@ AllocateConstIntCVar(CRenderer, CV_r_ParticlesHalfResAmount);
 AllocateConstIntCVar(CRenderer, CV_r_ParticlesHalfResBlendMode);
 AllocateConstIntCVar(CRenderer, CV_r_ParticlesInstanceVertices);
 float CRenderer::CV_r_ParticlesAmountGI;
+int CRenderer::CV_r_ParticlesGpuMaxEmitCount;
 
 int CRenderer::CV_r_AntialiasingMode_CB;
 int CRenderer::CV_r_AntialiasingMode;
+float CRenderer::CV_r_AntialiasingNonTAASharpening;
 int CRenderer::CV_r_AntialiasingTAAJitterPattern;
 float CRenderer::CV_r_AntialiasingTAAClampingFactor;
 float CRenderer::CV_r_AntialiasingTAANewFrameWeight;
@@ -532,6 +591,7 @@ AllocateConstIntCVar(CRenderer, CV_r_MotionVectorsTransparency);
 AllocateConstIntCVar(CRenderer, CV_r_MotionVectorsDebug);
 float CRenderer::CV_r_MotionVectorsTransparencyAlphaThreshold;
 int CRenderer::CV_r_MotionBlur;
+int CRenderer::CV_r_RenderMotionBlurAfterHDR;
 int CRenderer::CV_r_MotionBlurScreenShot;
 int CRenderer::CV_r_MotionBlurQuality;
 int CRenderer::CV_r_MotionBlurGBufferVelocity;
@@ -583,6 +643,12 @@ AllocateConstIntCVar(CRenderer, CV_r_PostProcessFilters);
 AllocateConstIntCVar(CRenderer, CV_r_PostProcessGameFx);
 
 int CRenderer::CV_r_colorRangeCompression;
+
+#if AZ_RENDER_TO_TEXTURE_GEM_ENABLED
+int CRenderer::CV_r_FinalOutputsRGB;
+int CRenderer::CV_r_FinalOutputAlpha;
+int CRenderer::CV_r_RTT;
+#endif // if AZ_RENDER_TO_TEXTURE_GEM_ENABLED
 
 int CRenderer::CV_r_colorgrading;
 int CRenderer::CV_r_colorgrading_selectivecolor;
@@ -744,13 +810,16 @@ AllocateConstIntCVar(CRenderer, CV_r_ParticlesDebug);
 // Confetti David Srour: Upscaling Quality for Metal
 AllocateConstIntCVar(CRenderer, CV_r_UpscalingQuality);
 
-// Confetti David Srour: Clears GMEM G-Buffer
+//Clears GMEM G-Buffer
 AllocateConstIntCVar(CRenderer, CV_r_ClearGMEMGBuffer);
 
-// Confetti David Srour: 0 = disable, 1= resolves LDR GMEM path to an RGBA8 target after deferred composition
-AllocateConstIntCVar(CRenderer, CV_r_GMEM_LDR_ForceResolvePostComposition);
+// Enables fast math for metal shaders
+AllocateConstIntCVar(CRenderer, CV_r_MetalShadersFastMath);
 
 int CRenderer::CV_r_CubeDepthMapResolution;
+
+int CRenderer::CV_r_SkipNativeUpscale;
+int CRenderer::CV_r_SkipRenderComposites;
 
 // Confetti David Srour: Global VisArea/Portals blend weight for GMEM path
 float CRenderer::CV_r_GMEMVisAreasBlendWeight;
@@ -765,7 +834,6 @@ int CRenderer::CV_r_EnableGMEMPostProcCS;
 int CRenderer::CV_r_GMEM_DOF_Gather1_Quality;
 int CRenderer::CV_r_GMEM_DOF_Gather2_Quality;
 
-//  Confetti BEGIN: Igor Lobanchikov :END
 int CRenderer::CV_r_RainUseStencilMasking;
 
 // Confetti Thomas Zeng: 0 = diable, 1 = enable
@@ -774,7 +842,6 @@ int CRenderer::CV_r_EnableComputeDownSampling;
 // Confetti Vera
 float CRenderer::CV_r_CubeDepthMapFarPlane;
 
-//  Confetti BEGIN: Igor Lobanchikov :END is respected by OpenGL ES only
 int CRenderer::CV_r_ForceFixedPointRenderTargets;
 
 // Fur control parameters
@@ -812,6 +879,24 @@ int CRenderer::CV_r_OutputShaderSourceFiles = 0;
 // Specular antialiasing
 int CRenderer::CV_r_SpecularAntialiasing = 1;
 
+// Console
+float CRenderer::CV_r_minConsoleFontSize;
+float CRenderer::CV_r_maxConsoleFontSize;
+
+
+// Graphics programmers: Use these in your code for local tests/debugging.
+// Delete all references in your code before you submit
+int CRenderer::CV_r_GraphicsTest00;
+int CRenderer::CV_r_GraphicsTest01;
+int CRenderer::CV_r_GraphicsTest02;
+int CRenderer::CV_r_GraphicsTest03;
+int CRenderer::CV_r_GraphicsTest04;
+int CRenderer::CV_r_GraphicsTest05;
+int CRenderer::CV_r_GraphicsTest06;
+int CRenderer::CV_r_GraphicsTest07;
+int CRenderer::CV_r_GraphicsTest08;
+int CRenderer::CV_r_GraphicsTest09;
+
 //////////////////////////////////////////////////////////////////////
 
 #if !defined(CONSOLE) && !defined(NULL_RENDERER)
@@ -824,14 +909,18 @@ static void ShadersStatsList(IConsoleCmdArgs* Cmd)
 {
     gRenDev->m_cEF.mfPrecacheShaders(true);
 }
+static void GetShaderList(IConsoleCmdArgs* Cmd)
+{
+    gRenDev->m_cEF.mfGetShaderList();
+}
 
 template<typename CallableT>
 void ShadersOptimizeHelper(CallableT setupParserBin, const char* logString)
 {
     setupParserBin();
     CryLogAlways("\nStarting shaders optimizing for %s...", logString);
-    string str = string("@cache@/") + string(gRenDev->m_cEF.m_ShadersCache);
-    iLog->Log("Optimize shader cache folder: '%s'", gRenDev->m_cEF.m_ShadersCache);
+    AZStd::string str = "@cache@/" + gRenDev->m_cEF.m_ShadersCache;
+    iLog->Log("Optimize shader cache folder: '%s'", gRenDev->m_cEF.m_ShadersCache.c_str());
     gRenDev->m_cEF.mfOptimiseShaders(str.c_str(), false);
 }
 
@@ -849,13 +938,13 @@ static void ShadersOptimise(IConsoleCmdArgs* Cmd)
     {
         ShadersOptimizeHelper(CParserBin::SetupForGLES3, " GLSL-ES 3");
     }
-    if (CRenderer::CV_r_shadersdurango) // ACCEPTED_USE
+    if (CRenderer::CV_r_shadersdurango)
     {
-        ShadersOptimizeHelper(CParserBin::SetupForDurango, "Durango"); // ACCEPTED_USE
+        ShadersOptimizeHelper(CParserBin::SetupForDurango, "Durango");
     }
-    if (CRenderer::CV_r_shadersorbis) // ACCEPTED_USE
+    if (CRenderer::CV_r_shadersorbis)
     {
-        ShadersOptimizeHelper(CParserBin::SetupForOrbis, "Orbis"); // ACCEPTED_USE
+        ShadersOptimizeHelper(CParserBin::SetupForOrbis, "Orbis");
     }
     if (CRenderer::CV_r_shadersMETAL)
     {
@@ -897,14 +986,30 @@ static void OnChange_CV_r_AntialiasingMode(ICVar* pCVar)
         gRenDev->m_pRT->FlushAndWait();
     }
 
-    gRenDev->CV_r_AntialiasingMode = pCVar->GetIVal();
+
+    int32 nVal = pCVar->GetIVal();
+    nVal = min(eAT_AAMODES_COUNT - 1, nVal);
+#if defined(OPENGL_ES)
+    if (nVal == static_cast<int32>(eAT_SMAA1TX))
+    {
+        AZ_Warning("Rendering", false, "SMAA is not supported on this platform. Fallback to FXAA");
+        nVal = eAT_FXAA;
+    }
+#endif
+
+#if defined (CRY_USE_METAL) || defined (OPENGL_ES)
+    // We don't support switching to 128bpp after initialization of the gmem path.
+    if (CD3D9Renderer::EGmemPath::eGT_256bpp_PATH == gcpRendD3D->FX_GetEnabledGmemPath(nullptr) && nVal == static_cast<int32>(eAT_TAA))
+    {
+        AZ_Warning("Rendering", pCVar->GetIVal() == 0, "TAA is not supported on 256bpp mode. Either switch to 128bpp or enable TAA at init so that the correct gmem mode is picked during initialization");
+        nVal = eAT_FXAA;
+    }
+#endif
 
     ICVar* pMSAA = gEnv->pConsole->GetCVar("r_MSAA");
     ICVar* pMSAASamples = gEnv->pConsole->GetCVar("r_MSAA_samples");
-
-    int32 nVal = gRenDev->CV_r_AntialiasingMode;
-    nVal = min(eAT_AAMODES_COUNT - 1, nVal);
-
+    AZ_Assert(pMSAA, "r_MSAA is not a valid cvar");
+    AZ_Assert(pMSAASamples, "r_MSAA_samples is not a valid cvar");
     pMSAA->Set(0);
     pMSAASamples->Set(0);
 
@@ -1097,7 +1202,7 @@ void CRenderer::Cmd_ShowRenderTarget(IConsoleCmdArgs* pArgs)
                     rt.bFiltered = bFiltered;
                     rt.bRGBKEncoded = bRGBKEncoded;
                     rt.bAliased = bAliased;
-                    rt.pTexture = allRTs[k];
+                    rt.textureID = allRTs[k]->GetID();
                     rt.channelWeight = channelWeight;
 
                     if (bSplitChannels)
@@ -1133,7 +1238,7 @@ void CRenderer::Cmd_ShowRenderTarget(IConsoleCmdArgs* pArgs)
         {
             SShowRenderTargetInfo::RT rt;
             rt.bFiltered = true; // Doesn't matter, actually.
-            rt.pTexture = allRTs[k];
+            rt.textureID = allRTs[k]->GetID();
             gRenDev->m_showRenderTargetInfo.rtList.push_back(rt);
         }
     }
@@ -1178,6 +1283,14 @@ static void OnChange_CV_r_CubeDepthMapResolution(ICVar* pCVar)
         gRenDev->GetGPUParticleEngine()->OnCubeDepthMapResolutionChanged(pCVar);
     }
 #endif
+}
+
+static void OnChange_CV_r_SkipRenderComposites(ICVar* pCVar)
+{
+    int value = pCVar->GetIVal();
+
+    AZ_Warning("Rendering", value == 0 || (value == 1 && CRenderer::CV_r_flares == 0), "r_SkipRenderComposites was set to 1 while r_Flares was enabled, setting r_Flares to 0.");
+    CRenderer::CV_r_flares = 0;
 }
 
 static void OnChange_CV_r_DebugLightLayers(ICVar* pCVar)
@@ -1257,6 +1370,83 @@ static void OnChange_CV_r_DebugLightLayers(ICVar* pCVar)
     }
 }
 
+static void OnChange_CV_r_DeferredShadingTiled(ICVar* pCVar)
+{
+#if defined (AZ_PLATFORM_MAC)
+    // We don't support deferred shading tiled on macOS yet so always force the cvar to 0
+    AZ_Warning("Rendering", pCVar->GetIVal() == 0, "Deferred Shading Tiled is not supported on macOS");
+    CRenderer::CV_r_DeferredShadingTiled = 0;
+#endif
+}
+
+static void OnChange_CV_r_Fur(ICVar* pCVar)
+{
+
+#if defined (CRY_USE_METAL) || defined (OPENGL_ES)
+    // We don't support fur on gmem/pls path yet so always force the cvar to 0
+    if (CD3D9Renderer::EGmemPath::eGT_REGULAR_PATH != gcpRendD3D->FX_GetEnabledGmemPath(nullptr))
+    {
+        AZ_Warning("Rendering", pCVar->GetIVal() == 0, "Fur is not supported on gmem/pls for mobile");
+        CRenderer::CV_r_Fur = 0;
+    }
+#endif
+}
+
+static void OnChange_CV_r_SunShafts(ICVar* pCVar)
+{
+#if defined (AZ_PLATFORM_MAC)
+    // We don't support sunshaft settings greater than 1 on macOS yet so always force the cvar to 1
+    AZ_Warning("Rendering", pCVar->GetIVal() > 1, "Sunshaft value settings above 1 are not supported on macOS");
+    if (pCVar->GetIVal() >= 1)
+    {
+        CRenderer::CV_r_sunshafts = 1;
+    }
+    else
+    {
+        CRenderer::CV_r_sunshafts = 0;
+    }
+#endif
+}
+
+static void OnChange_CV_r_SSDO(ICVar* pCVar)
+{
+    
+#if defined (CRY_USE_METAL) || defined (OPENGL_ES)
+    // We don't support switching to 128bpp after initialization of the gmem path.
+    if (CD3D9Renderer::EGmemPath::eGT_256bpp_PATH == gcpRendD3D->FX_GetEnabledGmemPath(nullptr))
+    {
+        AZ_Warning("Rendering", pCVar->GetIVal() == 0, "SSDO is not supported on 256bpp mode. Either switch to 128bpp or enable r_ssdo at init so that the correct gmem mode is picked during initialization");
+        CRenderer::CV_r_ssdo = 0;
+    }
+#endif
+}
+
+static void OnChange_CV_r_SSReflections(ICVar* pCVar)
+{
+
+#if defined (CRY_USE_METAL) || defined (OPENGL_ES)
+    // We don't support switching to 128bpp after initialization of the gmem path.
+    if (CD3D9Renderer::EGmemPath::eGT_256bpp_PATH == gcpRendD3D->FX_GetEnabledGmemPath(nullptr))
+    {
+        AZ_Warning("Rendering", pCVar->GetIVal() == 0, "SSReflections are not supported on 256bpp mode. Either switch to 128bpp or enable r_SSReflections at init so that the correct gmem mode is picked during initialization");
+        CRenderer::CV_r_SSReflections = 0;
+    }
+#endif
+}
+
+static void OnChange_CV_r_MotionBlur(ICVar* pCVar)
+{
+
+#if defined (CRY_USE_METAL) || defined (OPENGL_ES)
+    // We don't support switching to 128bpp after initialization of the gmem path.
+    if (CD3D9Renderer::EGmemPath::eGT_256bpp_PATH == gcpRendD3D->FX_GetEnabledGmemPath(nullptr))
+    {
+        AZ_Warning("Rendering", pCVar->GetIVal() == 0, "MotionBlur is not supported on 256bpp mode. Either switch to 128bpp or enable r_MotionBlur at init so that the correct gmem mode is picked during initialization");
+        CRenderer::CV_r_MotionBlur = 0;
+    }
+#endif
+}
+
 static void OnChange_CV_r_TexelsPerMeter(ICVar* pCVar)
 {
     if (pCVar && pCVar->GetFVal() == CRenderer::s_previousTexelsPerMeter)
@@ -1280,6 +1470,11 @@ static void OnChange_CV_r_ShadersAllowCompiliation(ICVar* pCVar)
     CryWarning(VALIDATOR_MODULE_RENDERER, VALIDATOR_ERROR, "Changing r_ShadersAllowCompilation at runtime can cause problems. Please set it in your system.cfg or user.cfg instead.");
 }
 
+static void OnChange_CV_r_flares(ICVar* pCVar)
+{
+    AZ_Warning("Rendering", pCVar->GetIVal() == 0 || (pCVar->GetIVal() == 1 && CRenderer::CV_r_SkipRenderComposites == 0), "r_SkipRenderComposites is set to 1, r_flares will have no effect.");
+}
+
 static void OnChange_CV_r_FlaresTessellationRatio(ICVar* pCVar)
 {
     gEnv->pOpticsManager->Invalidate();
@@ -1298,8 +1493,11 @@ static void OnChangeShadowJitteringCVar(ICVar* pCVar)
 static void OnChange_CachedShadows(ICVar* pCVar)
 {
     CTexture::GenerateCachedShadowMaps();
-    gEnv->p3DEngine->SetShadowsGSMCache(true);
-    gEnv->p3DEngine->SetRecomputeCachedShadows(ShadowMapFrustum::ShadowCacheData::eFullUpdate);
+    if (gEnv && gEnv->p3DEngine)
+    {
+        gEnv->p3DEngine->SetShadowsGSMCache(true);
+        gEnv->p3DEngine->SetRecomputeCachedShadows(ShadowMapFrustum::ShadowCacheData::eFullUpdate);
+    }
 }
 
 void CRenderer::ChangeGeomInstancingThreshold(ICVar* pVar)
@@ -1337,10 +1535,10 @@ RendererAssetListener::RendererAssetListener(IRenderer* renderer)
 
 void RendererAssetListener::Connect()
 {
-    BusConnect(AZ_CRC("dds"));
-    BusConnect(AZ_CRC("cgf"));
-    BusConnect(AZ_CRC("cfx"));
-    BusConnect(AZ_CRC("cfi"));
+    BusConnect(AZ_CRC("dds", 0x780234cb));
+    BusConnect(AZ_CRC("cgf", 0x3bbd9566));
+    BusConnect(AZ_CRC("cfx", 0xd8a99944));
+    BusConnect(AZ_CRC("cfi", 0xb219b9b6));
 }
 
 void RendererAssetListener::Disconnect()
@@ -1359,7 +1557,13 @@ void RendererAssetListener::OnFileChanged(AZStd::string assetName)
 
 CRenderer::CRenderer()
     : m_assetListener(this)
-{}
+#if AZ_RENDER_TO_TEXTURE_GEM_ENABLED && !defined(NULL_RENDERER)
+    , m_contextManager(new AzRTT::RenderContextManager())
+#endif // if AZ_RENDER_TO_TEXTURE_GEM_ENABLED && !defined(NULL_RENDERER)
+{
+    static_assert(LegacyInternal::JobExecutorPool::NumPools == AZ_ARRAY_SIZE(CRenderer::m_SkinningDataPool), "JobExecutorPool and Skinning data pool size mismatch");
+    CCryNameR::CreateNameTable();
+}
 
 void CRenderer::InitRenderer()
 {
@@ -1368,6 +1572,16 @@ void CRenderer::InitRenderer()
         gRenDev = this;
     }
 
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERER_CPP_SECTION_4
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/Renderer_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/Renderer_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/Renderer_cpp_salem.inl"
+    #endif
+#endif
 
     m_cEF.m_Bin.m_pCEF = &m_cEF;
 
@@ -1436,12 +1650,13 @@ void CRenderer::InitRenderer()
         "7 - Add tone mapping / bloom / color grading.\n",
         OnChange_CV_r_DebugLightLayers);
 
-    REGISTER_CVAR3("r_DeferredShadingTiled", CV_r_DeferredShadingTiled, 0, VF_DUMPTODISK,
+    REGISTER_CVAR3_CB("r_DeferredShadingTiled", CV_r_DeferredShadingTiled, 0, VF_DUMPTODISK,
         "Toggles tiled shading using a compute shader\n"
         "1 - Tiled forward shading for transparent objects\n"
         "2 - Tiled deferred and forward shading\n"
         "3 - Tiled deferred and forward shading with debug info\n"
-        "4 - Light coverage visualization\n");
+        "4 - Light coverage visualization\n",
+        OnChange_CV_r_DeferredShadingTiled);
 
     REGISTER_CVAR3("r_DeferredShadingTiledHairQuality", CV_r_DeferredShadingTiledHairQuality, 2, VF_DUMPTODISK,
         "Tiled shading hair quality\n"
@@ -1509,8 +1724,8 @@ void CRenderer::InitRenderer()
 
     DefineConstIntCVar3("r_DeferredShadingLBuffersFmt", CV_r_DeferredShadingLBuffersFmt, 1, VF_NULL,
         "Toggles light buffers format.\n"
-        "Usage: r_DeferredShadingLBuffersFmt [0/1]\n"
-        "Default is 1 (R11G11B10F), 0: R16G16B16A16F");
+        "Usage: r_DeferredShadingLBuffersFmt [0/1/2] \n"
+        "Default is 1 (R11G11B10F), 0: R16G16B16A16F 2: Use optimized format for gmem : diffuseAcc 8 (R8) bits instead of 64 and SpeculaAcc 32 bits (R10G10B10A2) instead of 64.");
 
 
     DefineConstIntCVar3("r_DeferredShadingDepthBoundsTest", CV_r_DeferredShadingDepthBoundsTest, DEF_SHAD_DBT_DEFAULT_VAL,
@@ -1580,8 +1795,12 @@ void CRenderer::InitRenderer()
 
 
     REGISTER_CVAR3("r_DeferredShadingSortLights", CV_r_DeferredShadingSortLights, 0, VF_CHEAT,
-        "Sorts light by influence\n"
-        "Usage: r_DeferredShadingSortLights [0/1]\n"
+        "Sorts deferred lights\n"
+        "Usage: r_DeferredShadingSortLights [0/1/2/3]\n"
+        " 0: no sorting\n"
+        " 1: sort by screen space influence area\n"
+        " 2: lights that are already in the shadowmap pool are processed first\n"
+        " 3: first sort by presence in the shadowmap pool and then by screen space influence area\n"
         "Default is 0 (off)");
 
     REGISTER_CVAR3("r_DeferredShadingAmbientSClear", CV_r_DeferredShadingAmbientSClear, 1, VF_NULL,
@@ -1698,7 +1917,7 @@ void CRenderer::InitRenderer()
         "1 - GPU friendly.\n"
         "2 - Automatic.\n");
 
-#if defined(WIN32) || defined(WIN64) || defined(APPLE) || defined(LINUX)
+#if defined(WIN32) || defined(WIN64) || defined(APPLE) || defined(LINUX) || defined(USE_SILHOUETTEPOM_CVAR)
     REGISTER_CVAR3("r_SilhouettePOM", CV_r_SilhouettePOM, 0, VF_NULL,
         "Enables use of silhouette parallax occlusion mapping.\n"
         "Usage: r_SilhouettePOM [0/1]");
@@ -1816,6 +2035,11 @@ void CRenderer::InitRenderer()
         "Global illumination amount for particles without material.\n"
         "Usage: r_ParticlesAmountGI [n]");
 
+    ICVar* particlesMaxEmitCount = REGISTER_CVAR3("r_ParticlesGpuMaxEmitCount", CV_r_ParticlesGpuMaxEmitCount, 10000, VF_NULL,
+        "Max GPU particle count per emission.\n"
+        "Usage: r_ParticlesGpuMaxEmitCount [n]");
+    particlesMaxEmitCount->SetLimits(0, PARTICLE_PARAMS_MAX_COUNT_GPU);
+
     REGISTER_CVAR3("r_MSAA", CV_r_msaa, 0, VF_NULL,
         "Enables hw multisampling antialiasing.\n"
         "Usage: r_MSAA [0/1]\n"
@@ -1859,6 +2083,9 @@ void CRenderer::InitRenderer()
 
     REGISTER_CVAR3_CB("r_AntialiasingMode", CV_r_AntialiasingMode_CB, eAT_DEFAULT_AA, VF_NULL, aaModesDesc.c_str(), OnChange_CV_r_AntialiasingMode);
     CV_r_AntialiasingMode = CV_r_AntialiasingMode_CB;
+
+    REGISTER_CVAR3("r_AntialiasingNonTAASharpening", CV_r_AntialiasingNonTAASharpening, 0.f, VF_NULL,
+        "Enables non-TAA sharpening.\n");
 
     REGISTER_CVAR3("r_AntialiasingTAAJitterPattern", CV_r_AntialiasingTAAJitterPattern, 7, VF_NULL,
         "Selects TAA sampling pattern.\n"
@@ -1908,13 +2135,20 @@ void CRenderer::InitRenderer()
     DefineConstIntCVar3("r_MotionVectorsDebug", CV_r_MotionVectorsDebug, 0, VF_NULL,
         "Enables motion vector debug visualization.\n");
 
-    REGISTER_CVAR3("r_MotionBlur", CV_r_MotionBlur, 2, VF_NULL,
+    REGISTER_CVAR3_CB("r_MotionBlur", CV_r_MotionBlur, 2, VF_NULL,
         "Enables per object and camera motion blur.\n"
         "Usage: r_MotionBlur [0/1/2/3]\n"
         "Default is 1 (camera motion blur on).\n"
         "1: camera motion blur\n"
         "2: camera and object motion blur\n"
-        "3: debug mode\n");
+        "3: debug mode\n", OnChange_CV_r_MotionBlur);
+
+    REGISTER_CVAR3("r_RenderMotionBlurAfterHDR", CV_r_RenderMotionBlurAfterHDR, 0, VF_NULL,
+        "Forces Motion Blur To Render After HDR processing.\n"
+        "Usage: r_MotionBlur [0/1]\n"
+        "Default is 0 (Motion Blur Before HDR).\n"
+        "0: Motion Blur Applied Before HDR Processing (Luminance Measurement, Bloom, Tonemapping)\n"
+        "1: Motion Blur Applied After HDR Processing (Luminance Measurement, Bloom, Tonemapping)\n");
 
     REGISTER_CVAR3("r_MotionBlurScreenShot", CV_r_MotionBlurScreenShot, 0, VF_NULL,
         "Enables motion blur during high res screen captures"
@@ -2001,11 +2235,11 @@ void CRenderer::InitRenderer()
 
     REGISTER_CVAR3("r_RainOccluderSizeTreshold", CV_r_rainOccluderSizeTreshold, 25.f, VF_NULL, "Only objects bigger than this size will occlude rain");
 
-    REGISTER_CVAR3("r_SSReflections", CV_r_SSReflections, 0, VF_NULL,
-        "Glossy screen space reflections [0/1]\n");
+    REGISTER_CVAR3_CB("r_SSReflections", CV_r_SSReflections, 0, VF_NULL,
+        "Glossy screen space reflections [0/1]\n", OnChange_CV_r_SSReflections);
     REGISTER_CVAR3("r_SSReflHalfRes", CV_r_SSReflHalfRes, 1, VF_NULL,
         "Toggles rendering reflections in half resolution\n");
-    REGISTER_CVAR3("r_ssdo", CV_r_ssdo, 1, VF_NULL, "Screen Space Directional Occlusion [0/1]\n");
+    REGISTER_CVAR3_CB("r_ssdo", CV_r_ssdo, 1, VF_NULL, "Screen Space Directional Occlusion [0/1]\n", OnChange_CV_r_SSDO);
     REGISTER_CVAR3("r_ssdoHalfRes", CV_r_ssdoHalfRes, 2, VF_NULL,
         "Apply SSDO bandwidth optimizations\n"
         "0 - Full resolution (not recommended)\n"
@@ -2203,7 +2437,7 @@ void CRenderer::InitRenderer()
 
         char versionString[128];
         memset(versionString, 0, sizeof(versionString));
-        sprintf(versionString, "Build Version: %d.%d.%d.%d", ver.v[3], ver.v[2], ver.v[1], ver.v[0]);
+        azsprintf(versionString, "Build Version: %d.%d.%d.%d", ver.v[3], ver.v[2], ver.v[1], ver.v[0]);
 
         CV_r_ShaderEmailTags = REGISTER_STRING("r_ShaderEmailTags", versionString, VF_NULL,
                 "Adds optional tags to shader error emails e.g. own name or build run\n"
@@ -2247,12 +2481,14 @@ void CRenderer::InitRenderer()
         "Usage: r_Refraction [0/1]\n"
         "Default is 1 (on). Set to 0 to disable.");
 
-    REGISTER_CVAR3("r_sunshafts", CV_r_sunshafts, SUNSHAFTS_DEFAULT_VAL, VF_NULL,
+    REGISTER_CVAR3_CB("r_sunshafts", CV_r_sunshafts, SUNSHAFTS_DEFAULT_VAL, VF_NULL,
         "Enables sun shafts.\n"
-        "Usage: r_sunshafts [0/1]\n"
-        "Default is 1 (on). Set to 0 to disable.");
+        "Usage: r_sunshafts [0/1/2]\n"
+        "Usage: r_sunshafts = 2: enabled with occlusion\n"
+        "Default is 1 (on). Set to 0 to disable.",
+        OnChange_CV_r_SunShafts);
 
-    REGISTER_CVAR3_CB("r_PostProcessEffects", CV_r_PostProcess_CB, 1, VF_CHEAT,
+    REGISTER_CVAR3_CB("r_PostProcessEffects", CV_r_PostProcess_CB, 1, VF_NULL,
         "Enables post processing special effects.\n"
         "Usage: r_PostProcessEffects [0/1/2]\n"
         "Default is 1 (enabled). 2 enables and displays active effects",
@@ -2278,6 +2514,23 @@ void CRenderer::InitRenderer()
     DefineConstIntCVar3("r_MergeShadowDrawcalls", CV_r_MergeShadowDrawcalls, 1, VF_NULL,
         "Enabled Merging of RenderChunks for ShadowRendering\n"
         "Default is 1 (enabled). 0 disabled");
+
+#if AZ_RENDER_TO_TEXTURE_GEM_ENABLED
+    REGISTER_CVAR3("r_FinalOutputsRGB", CV_r_FinalOutputsRGB, 1, VF_NULL,
+        "Enables sRGB final output.\n"
+        "Usage: r_FinalOutputsRGB [0/1]");
+
+    REGISTER_CVAR3("r_FinalOutputAlpha", CV_r_FinalOutputAlpha, 0, VF_NULL,
+        "Enables alpha in final output. 0\n"
+        "Usage: r_FinalOutputAlpha [0/1/2]\n"
+        "Usage: r_FinalOutputAlpha = 0: no alpha (default)\n"
+        "Usage: r_FinalOutputAlpha = 1: full opaque\n"
+        "Usage: r_FinalOutputAlpha = 2: depth-based\n");
+
+    REGISTER_CVAR3("r_RTT", CV_r_RTT, 1, VF_NULL,
+        "Enables render scene to texture. \n"
+        "Usage: r_RTT [0/1]\n");
+#endif // if AZ_RENDER_TO_TEXTURE_GEM_ENABLED
 
     REGISTER_CVAR3("r_ColorRangeCompression", CV_r_colorRangeCompression, 0, VF_NULL,
         "Enables color range compression to account for the limited RGB range of TVs.\n"
@@ -2355,36 +2608,27 @@ void CRenderer::InitRenderer()
         "Disables anisotropic filtering on alpha-tested geometry like vegetation.\n");
     DefineConstIntCVar3("r_TexLog", CV_r_texlog, 0, VF_NULL,
         "Configures texture information logging.\n"
-        "Usage:	r_TexLog #\n"
+        "Usage: r_TexLog #\n"
         "where # represents:\n"
-        "	0: Texture logging off\n"
-        "	1: Texture information logged to screen\n"
-        "	2: All loaded textures logged to 'UsedTextures.txt'\n"
-        "	3: Missing textures logged to 'MissingTextures.txt");
+        " 0: Texture logging off\n"
+        " 1: Texture information logged to screen\n"
+        " 2: All loaded textures logged to 'UsedTextures.txt'\n"
+        " 3: Missing textures logged to 'MissingTextures.txt");
     DefineConstIntCVar3("r_TexNoLoad", CV_r_texnoload, 0, VF_NULL,
         "Disables loading of textures.\n"
-        "Usage:	r_TexNoLoad [0/1]\n"
+        "Usage: r_TexNoLoad [0/1]\n"
         "When 1 texture loading is disabled.");
     DefineConstIntCVar3("r_TexBlockOnLoad", CV_r_texBlockOnLoad, 0, VF_NULL,
         "When loading a texture, block until resource compiler has finished compiling it.\n"
-        "Usage:	r_TexBlockOnLoad [0/1]\n"
+        "Usage: r_TexBlockOnLoad [0/1]\n"
         "When 1 renderer will block and wait on the resource compiler.");
 
     REGISTER_CVAR3("r_RenderTargetPoolSize", CV_r_rendertargetpoolsize, 0, VF_NULL,
         "Size of pool for render targets in MB.\n"
         "Default is 50(MB).");
 
-    int nDefaultDefragState = 0;
-
-    REGISTER_CVAR3("r_texturesstreampooldefragmentation", CV_r_texturesstreampooldefragmentation, nDefaultDefragState, VF_NULL,
-        "Enabled CPU (1), GPU(2) and disable (0) textures stream pool defragmentation.\n");
-    REGISTER_CVAR3("r_texturesstreampooldefragmentationmaxmoves", CV_r_texturesstreampooldefragmentationmaxmoves, 8, VF_NULL,
-        "Specify the maximum number of blocks to move per defragmentation update");
-    REGISTER_CVAR3("r_texturesstreampooldefragmentationmaxamount", CV_r_texturesstreampooldefragmentationmaxamount, 512 * 1024, VF_NULL,
-        "Specify the limit (in bytes) that defrag update will stop");
-
     REGISTER_CVAR3("r_texturesskiplowermips", CV_r_texturesskiplowermips, 0, VF_NULL,
-        "Enabled skipping lower mips for X360.\n"); // ACCEPTED_USE
+        "Enabled skipping lower mips for deprecated platform.\n");
 
     int nDefaultTexPoolSize = 512;
 
@@ -2570,8 +2814,8 @@ void CRenderer::InitRenderer()
     DefineConstIntCVar3("r_ShowTimeGraph", CV_r_showtimegraph, 0, VF_NULL,
         "Configures graphic display of frame-times.\n"
         "Usage: r_ShowTimeGraph [0/1/2]\n"
-        "	1: Graph displayed as points."
-        "	2: Graph displayed as lines."
+        "\t1: Graph displayed as points."
+        "\t2: Graph displayed as lines."
         "Default is 0 (off).");
 #ifndef EXCLUDE_DOCUMENTATION_PURPOSE
     DefineConstIntCVar3("r_DebugFontRendering", CV_r_DebugFontRendering, 0, VF_CHEAT,
@@ -2580,8 +2824,8 @@ void CRenderer::InitRenderer()
     DefineConstIntCVar3("profileStreaming", CV_profileStreaming, 0, VF_NULL,
         "Profiles streaming of different assets.\n"
         "Usage: profileStreaming [0/1/2]\n"
-        "	1: Graph displayed as points."
-        "	2: Graph displayed as lines."
+        "\t1: Graph displayed as points."
+        "\t2: Graph displayed as lines."
         "Default is 0 (off).");
     DefineConstIntCVar3("r_GraphStyle", CV_r_graphstyle, 0, VF_NULL, "");
     DefineConstIntCVar3("r_ShowBufferUsage", CV_r_showbufferusage, 0, VF_NULL,
@@ -2627,13 +2871,21 @@ void CRenderer::InitRenderer()
         "Default is 0 (off)");
 
 #if !defined(CONSOLE)
-    REGISTER_CVAR3("r_ShadersOrbis", CV_r_shadersorbis, 0, VF_NULL, ""); // ACCEPTED_USE
-    REGISTER_CVAR3("r_ShadersDX11", CV_r_shadersdx11, 1, VF_NULL, "");
-    REGISTER_CVAR3("r_ShadersGL4", CV_r_shadersGL4, 1, VF_NULL, "");
-    REGISTER_CVAR3("r_ShadersGLES3", CV_r_shadersGLES3, 1, VF_NULL, "");
-    REGISTER_CVAR3("r_ShadersDurango", CV_r_shadersdurango, 1, VF_NULL, ""); // ACCEPTED_USE
-    // Confetti Nicholas Baldwin: adding metal shader language support
-    REGISTER_CVAR3("r_ShadersMETAL", CV_r_shadersMETAL, 1, VF_NULL, "");
+    REGISTER_CVAR3("r_ShadersOrbis", CV_r_shadersorbis, 0, VF_NULL, "");
+    REGISTER_CVAR3("r_ShadersDX11", CV_r_shadersdx11, 0, VF_NULL, "");
+    REGISTER_CVAR3("r_ShadersGL4", CV_r_shadersGL4, 0, VF_NULL, "");
+    REGISTER_CVAR3("r_ShadersGLES3", CV_r_shadersGLES3, 0, VF_NULL, "");
+    REGISTER_CVAR3("r_ShadersDurango", CV_r_shadersdurango, 0, VF_NULL, "");
+    REGISTER_CVAR3("r_ShadersMETAL", CV_r_shadersMETAL, 0, VF_NULL, "");
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERER_CPP_SECTION_15
+#if defined(AZ_PLATFORM_XENIA)
+#include "Xenia/Renderer_cpp_xenia.inl"
+#elif defined(AZ_PLATFORM_PROVO)
+#include "Provo/Renderer_cpp_provo.inl"
+#endif
+#endif
+    REGISTER_CVAR3("r_ShadersPlatform", CV_r_shadersPlatform, AZ::PLATFORM_MAX, VF_NULL, "");
 #endif
 
     DefineConstIntCVar3("r_ShadersIgnoreIncludesChanging", CV_r_shadersignoreincludeschanging, 0, VF_NULL, "");
@@ -2643,7 +2895,7 @@ void CRenderer::InitRenderer()
 
     REGISTER_CVAR3_CB("r_ShadersAllowCompilation", CV_r_shadersAllowCompilation, SHADERS_ALLOW_COMPILATION_DEFAULT_VAL, VF_NULL, "", OnChange_CV_r_ShadersAllowCompiliation);
 
-    REGISTER_CVAR3("r_ShadersRemoteCompiler", CV_r_shadersremotecompiler, 0, VF_DUMPTODISK, "Enables remote shader compilation on dedicated machine");
+    DefineConstIntCVar3("r_ShadersRemoteCompiler", CV_r_shadersremotecompiler, 0, VF_DUMPTODISK, "Enables remote shader compilation on dedicated machine");
     REGISTER_CVAR3("r_ShadersAsyncCompiling", CV_r_shadersasynccompiling, 1, VF_NULL,
         "Enable asynchronous shader compiling\n"
         "Usage: r_ShadersAsyncCompiling [0/1/2/3]\n"
@@ -2680,19 +2932,27 @@ void CRenderer::InitRenderer()
     bShaderLogCacheMisses = false;
 #endif
     REGISTER_CVAR3("r_ShadersLogCacheMisses", CV_r_shaderslogcachemisses, bShaderLogCacheMisses ? 2 : 0, VF_NULL,
-        "Log all shader caches misses on HD (both level and global shader cache misses).\n"
+        "Log all shader caches misses on HD (both level and global shader cache misses).\n" 
         "0 = No logging to disk or TTY\n"
         "1 = Logging to disk only\n"
         "2 = Logging to disk and TTY (default)");
 
     REGISTER_CVAR3("r_ShadersImport", CV_r_shadersImport, 0, VF_NULL,
-        "0 off, 1 import and allow fallback to getBinShader, 2 import, no fallback if import fails (optimal).");
+        "0 = Off\n"
+        "1 = Import pre-parsed shader reflection information from .fxb files if they exist for a related .cfx which skips expensive parsing of .cfx files in RT_ParseShader. If a .fxb exists for a shader but an individual permutation is missing, then fallback to the slow .cfx parsing for that permutation."
+        "2 = Import from the .fxb files, but do not fallback if import fails.  Missing shader permutations from .fxb files will be ignored."
+        "3 = Same behavior as 1, but only when running Performance/Release configurations.  Debug/Profile builds will disable this and set it to 0 (for an improved development experience).  This allows us to continue compiling shaders in Debug/Profile configurations and run optimally in Performance/Release");
 
     REGISTER_CVAR3("r_ShadersExport", CV_r_shadersExport, 1, VF_NULL,
-        "0 off, 1 allow shader export during shader cache generation - Currently 360 only.");
+        "0 off, 1 allow export of .fxb files during shader cache generation.");
 
     REGISTER_CVAR3("r_ShadersCacheUnavailableShaders", CV_r_shadersCacheUnavailableShaders, 0, VF_NULL,
         "0 off (default), 1 cache unavailable shaders to avoid requesting their compilation in future executions.");
+
+    DefineConstIntCVar3("r_ShadersUseLLVMDirectXCompiler", CV_r_ShadersUseLLVMDirectXCompiler, 0, VF_NULL,
+        "Shaders will be compiled using the LLVM DirectX Shader Compiler (GL4, GLES3 and METAL).\n"
+        "Usage: r_ShadersUseLLVMDirectXCompiler 1\n"
+        "Default is 0 (disabled)");
 
     DefineConstIntCVar3("r_DebugRenderMode", CV_r_debugrendermode, 0, VF_CHEAT, "");
     DefineConstIntCVar3("r_DebugRefraction", CV_r_debugrefraction, 0, VF_CHEAT,
@@ -2744,19 +3004,19 @@ void CRenderer::InitRenderer()
         "Sets resolution for target environment cubemap, in pixels.\n"
         "Usage: r_EnvCMResolution #\n"
         "where # represents:\n"
-        "	0: 64\n"
-        "	1: 128\n"
-        "	2: 256\n"
+        "\t0: 64\n"
+        "\t1: 128\n"
+        "\t2: 256\n"
         "Default is 2 (256 by 256 pixels).");
 
     REGISTER_CVAR3("r_EnvTexResolution", CV_r_envtexresolution, ENVTEXRES_DEFAULT_VAL, VF_DUMPTODISK,
         "Sets resolution for 2d target environment texture, in pixels.\n"
         "Usage: r_EnvTexResolution #\n"
         "where # represents:\n"
-        "	0: 64\n"
-        "	1: 128\n"
-        "	2: 256\n"
-        "	3: 512\n"
+        " 0: 64\n"
+        " 1: 128\n"
+        " 2: 256\n"
+        " 3: 512\n"
         "Default is 3 (512 by 512 pixels).");
 
     REGISTER_CVAR3("r_WaterUpdateDistance", CV_r_waterupdateDistance, 2.0f, VF_NULL, "");
@@ -2902,10 +3162,11 @@ void CRenderer::InitRenderer()
         "Usage: r_DrawNearFoV [n]\n"
         "Default is 60.");
 
-    REGISTER_CVAR3("r_Flares", CV_r_flares, FLARES_DEFAULT_VAL, VF_DUMPTODISK,
+    REGISTER_CVAR3_CB("r_Flares", CV_r_flares, FLARES_DEFAULT_VAL, VF_DUMPTODISK,
         "Toggles lens flare effect.\n"
         "Usage: r_Flares [0/1]\n"
-        "Default is 1 (on).");
+        "Default is 1 (on).",
+        OnChange_CV_r_flares);
 
     DefineConstIntCVar3("r_FlareHqShafts", CV_r_flareHqShafts, FLARES_HQSHAFTS_DEFAULT_VAL, VF_DUMPTODISK,
         "Toggles high quality mode for point light shafts.\n"
@@ -2963,15 +3224,15 @@ void CRenderer::InitRenderer()
 
     DefineConstIntCVar3("r_Character_NoDeform", CV_r_character_nodeform, 0, VF_NULL, "");
 
-    DefineConstIntCVar3("r_Log", CV_r_log, 0, VF_CHEAT,
+    REGISTER_CVAR3("r_Log", CV_r_log, 0, VF_CHEAT,
         "Logs rendering information to Direct3DLog.txt.\n"
         "Use negative values to log a single frame.\n"
         "Usage: r_Log +/-[0/1/2/3/4]\n"
-        "	1: Logs a list of all shaders without profile info.\n"
-        "	2: Log contains a list of all shaders with profile info.\n"
-        "	3: Logs all API function calls.\n"
-        "	4: Highly detailed pipeline log, including all passes,\n"
-        "			states, lights and pixel/vertex shaders.\n"
+        "\t1: Logs a list of all shaders without profile info.\n"
+        "\t2: Log contains a list of all shaders with profile info.\n"
+        "\t3: Logs all API function calls.\n"
+        "\t4: Highly detailed pipeline log, including all passes,\n"
+        "\t\t\tstates, lights and pixel/vertex shaders.\n"
         "Default is 0 (off). Use this function carefully, because\n"
         "log files grow very quickly.");
 
@@ -3007,7 +3268,7 @@ void CRenderer::InitRenderer()
         "Toggles vertical sync.\n"
         "0: Disabled\n"
         "1: Enabled\n"
-        "2: Enabled, use asynchronous swaps on X360"); // ACCEPTED_USE
+        "2: Enabled, use asynchronous swaps on deprecated platform");
 
     REGISTER_CVAR3("r_OldBackendSkip", CV_r_OldBackendSkip, 0, VF_RESTRICTEDMODE | VF_DUMPTODISK,
         "Ignores old backend processing.\n"
@@ -3035,15 +3296,25 @@ void CRenderer::InitRenderer()
         "While in fullscreen activities like notification pop ups of other applications won't cause a mode switch back into windowed mode.");
 #endif
     DefineConstIntCVar3("r_PredicatedTiling", CV_r_predicatedtiling, 0, VF_REQUIRE_APP_RESTART,
-        "Toggles predicated tiling mode (X360 only)\n" // ACCEPTED_USE
+        "Toggles predicated tiling mode (deprecated platform only)\n"
         "Usage: r_PredicatedTiling [0/1]");
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERER_CPP_SECTION_5
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/Renderer_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/Renderer_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/Renderer_cpp_salem.inl"
+    #endif
+#endif
     DefineConstIntCVar3("r_MeasureOverdraw", CV_r_measureoverdraw, 0, VF_CHEAT,
         "Activate a special rendering mode that visualize the rendering cost of each pixel by color.\n"
         "0=off,\n"
         "1=pixel shader instructions,\n"
         "2=pass count,\n"
         "3=vertex shader instructions,\n"
-        "4=overdraw estimation with 360 Hi-Z,\n"
+        "4=overdraw estimation with Hi-Z (deprecated),\n"
         "Usage: r_MeasureOverdraw [0/1/2/3/4]");
     REGISTER_CVAR3("r_MeasureOverdrawScale", CV_r_measureoverdrawscale, 1.5f, VF_CHEAT, "");
 
@@ -3052,6 +3323,11 @@ void CRenderer::InitRenderer()
 
     REGISTER_CVAR3("r_ShowVideoMemoryStats", CV_r_ShowVideoMemoryStats, 0, VF_NULL, "");
     REGISTER_COMMAND("r_ShowRenderTarget", &Cmd_ShowRenderTarget, VF_CHEAT, showRenderTargetHelp);
+
+    REGISTER_CVAR3("r_VRAMDebug", CV_r_VRAMDebug, 0, VF_NULL,
+        "Display debug information for VRAM heaps on platforms where we have direct access to video memory\n"
+        "\t0: Disabled\n"
+        "\t1: VRAM heap statistics and occupancy visualization enabled");
 
     REGISTER_CVAR3("r_BreakOnError", CV_r_BreakOnError, 0, VF_NULL, "calls debugbreak on illegal behaviour");
     REGISTER_CVAR3("r_D3D12SubmissionThread", CV_r_D3D12SubmissionThread, 1, VF_NULL, "run DX12 command queue submission tasks from a dedicated thread");
@@ -3109,7 +3385,7 @@ void CRenderer::InitRenderer()
         "Usage: r_StereoOutput [0=off/1/2/3/4/5/6/...]\n"
         "0: Standard\n"
         "1: IZ3D\n"
-        "2: Checkerboard (not supported on X360)\n" // ACCEPTED_USE
+        "2: Checkerboard\n"
         "3: Above and Below (not supported)\n"
         "4: Side by Side\n"
         "5: Line by Line (Interlaced)\n"
@@ -3144,8 +3420,22 @@ void CRenderer::InitRenderer()
         "Usage: r_StereoGammaAdjustment [offset]"
         "0: off");
 
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERER_CPP_SECTION_7
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/Renderer_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/Renderer_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/Renderer_cpp_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#else
     const int DEVICE_WIDTH  =   1152;
     const int   DEVICE_HEIGHT   =   720;
+#endif
 
     REGISTER_CVAR3("r_ConsoleBackbufferWidth", CV_r_ConsoleBackbufferWidth, DEVICE_WIDTH, VF_DUMPTODISK,
         "console specific backbuffer resolution - width");
@@ -3171,6 +3461,7 @@ void CRenderer::InitRenderer()
     REGISTER_COMMAND("r_PrecacheShaderList", &ShadersPrecacheList, VF_NULL, "");
     REGISTER_COMMAND("r_StatsShaderList", &ShadersStatsList, VF_NULL, "");
     REGISTER_COMMAND("r_OptimiseShaders", &ShadersOptimise, VF_NULL, "");
+    REGISTER_COMMAND("r_GetShaderList", &GetShaderList, VF_NULL, "");
 #endif
 
     DefineConstIntCVar3("r_TextureCompressor", CV_r_TextureCompressor, 1, VF_DUMPTODISK,
@@ -3234,6 +3525,16 @@ void CRenderer::InitRenderer()
         "Stops the sun being drawn during cubemap generation.\n");
 
     // more details: http://en.wikipedia.org/wiki/Overscan
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERER_CPP_SECTION_8
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/Renderer_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/Renderer_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/Renderer_cpp_salem.inl"
+    #endif
+#endif
     REGISTER_COMMAND("r_OverscanBorders", &cmd_OverscanBorders, VF_NULL,
         "Changes the size of the overscan borders for the left/right and top/bottom\n"
         "of the screen for adjusting the title safe area. This is for logo placements\n"
@@ -3319,13 +3620,22 @@ void CRenderer::InitRenderer()
         "2 Bicubic\n"
         "3 Lanczos\n");
 
-    // Confetti David Srour: Clears GMEM G-Buffer
+    //Clears GMEM G-Buffer through a shader. Has support for fixed point
     DefineConstIntCVar3("r_ClearGMEMGBuffer", CV_r_ClearGMEMGBuffer, 0, VF_NULL,
         "GMEM G-Buffer Clear\n"
         "Usage: \n"
         "0 no clearing\n"
-        "1 full screen clear pass before Z-Pass\n");
+        "1 full screen clear pass before Z-Pass. Done through a shader and supports fixed point\n"
+        "2 full screen clear pass before Z-Pass. Done through loadactions (faster)\n");
+    
+    // Enables fast math for metal shaders
+    DefineConstIntCVar3("r_MetalShadersFastMath", CV_r_MetalShadersFastMath, 1, VF_NULL,
+        "Metal shaders fast math. Default is 1.\n"
+        "Usage: \n"
+        "0 Dont use fast math\n"
+        "1 Use fast math\n");
 
+    
     // Confetti David Srour: GMEM paths
     REGISTER_CVAR3("r_EnableGMEMPath", CV_r_EnableGMEMPath, 0, VF_REQUIRE_APP_RESTART,
         "Mobile GMEM Paths\n"
@@ -3350,25 +3660,11 @@ void CRenderer::InitRenderer()
         "0 Compute disabled with postprocessing on GMEM path\n"
         "1 Compute enabled with postprocessing on GMEM path\n");
 
-    //  Confetti BEGIN: Igor Lobanchikov :END
     REGISTER_CVAR3("r_RainUseStencilMasking", CV_r_RainUseStencilMasking, 0, VF_REQUIRE_APP_RESTART,
         "GMEM Deferred Rain enable stencil masking\n"
         "Usage: \n"
         "0 Use single pass rain on GMEM path\n"
         "1 Generate stencil mask for rain on GMEM path\n");
-
-    /* Confetti David Srour:
-     * Setting this variable to 1 will cause the output to be resolved into an RGBA8 buffer
-     * after deferred shading when in the LDR GMEM path.
-     * Trade off is that we are going from a floating point buffer into an unormalized one.
-     * However this will cause opaque and transparent passes to be rendered in a new command encoder.
-     * This might be useful in some situation when the app is GPU bound.
-     */
-    DefineConstIntCVar3("r_GMEM_LDR_ForceResolvePostComposition", CV_r_GMEM_LDR_ForceResolvePostComposition, 0, VF_NULL,
-        "Mobile LDR GMEM Path\n"
-        "Usage: \n"
-        "0 disable\n"
-        "1 Resolves floating point buffer into RGBA8 back-buffer after deferred composition\n");
 
     // Confetti David Srour: Global VisArea/Portals blend weight for GMEM path
     REGISTER_CVAR3("r_GMEMVisAreasBlendWeight", CV_r_GMEMVisAreasBlendWeight, 1, VF_NULL,
@@ -3376,18 +3672,18 @@ void CRenderer::InitRenderer()
         "GMEM render path doesn't support per-portal blend weight.\n"
         "0.f to 1.f weight\n");
 
-    //  Confetti BEGIN: Igor Lobanchikov :END is respected by OpenGL ES only
     REGISTER_CVAR3("r_ForceFixedPointRenderTargets", CV_r_ForceFixedPointRenderTargets, 0, VF_NULL,
         "Forces the engine to use fixed point render targets instead of floating point ones.\n"
         "This variable is respected on Android OpenGL ES only\n"
         "0 Off\n"
         "1 ON\n");
 
-    REGISTER_CVAR3("r_Fur", CV_r_Fur, 1, VF_NULL,
+    REGISTER_CVAR3_CB("r_Fur", CV_r_Fur, 1, VF_NULL,
         "Specifies how fur is rendered:\n"
         "0: Fur is disabled - objects using Fur shader appear similar to Illum\n"
         "1: Alpha blended transparent passes\n"
-        "2: Alpha tested opaque passes");
+        "2: Alpha tested opaque passes",
+    OnChange_CV_r_Fur);
 
     REGISTER_CVAR3("r_FurShellPassCount", CV_r_FurShellPassCount, 64, VF_NULL,
         "Number of passes to perform for rendering fur shells");
@@ -3458,6 +3754,39 @@ void CRenderer::InitRenderer()
     REGISTER_CVAR3_CB("r_GPUParticleDepthCubemapResolution", CV_r_CubeDepthMapResolution, 256, VF_EXPERIMENTAL,
         "The resolution for the cubemaps used by the cubemap depth collision feature for GPU particles",
         OnChange_CV_r_CubeDepthMapResolution);
+    
+    REGISTER_CVAR3("r_SkipNativeUpscale", CV_r_SkipNativeUpscale, 0, VF_NULL,
+        "Renders to the back buffer during the final post processing step and skips the native upscale.\n"
+        "Used when a second upscale already exists to avoid having two upscales.\n"
+        "0: Does not skip native upscale. \n"
+        "1: Skips native upscale."
+        );
+    
+    REGISTER_CVAR3_CB("r_SkipRenderComposites", CV_r_SkipRenderComposites, 0, VF_NULL,
+        "Skips the RenderComposites call for rendering Flares and Grain. Can be used as an\n"
+        "optimization to avoid a full screen render when these effects are not being used."
+        "0: Does not skip RenderComposites. \n"
+        "1: Skips RenderComposites",
+        OnChange_CV_r_SkipRenderComposites);
+
+    REGISTER_CVAR3("r_minConsoleFontSize", CV_r_minConsoleFontSize, 19.0f, VF_NULL,
+        "Minimum size used for scaling the font when rendering the console"
+    );
+
+    REGISTER_CVAR3("r_maxConsoleFontSize", CV_r_maxConsoleFontSize, 24.0f, VF_NULL,
+        "Maximum size used for scaling the font when rendering the console"
+    );
+
+    REGISTER_CVAR3("r_GraphicsTest00", CV_r_GraphicsTest00, 0, VF_DEV_ONLY, "Graphics programmers: Use in your code for misc graphics tests/debugging.");
+    REGISTER_CVAR3("r_GraphicsTest01", CV_r_GraphicsTest01, 0, VF_DEV_ONLY, "Graphics programmers: Use in your code for misc graphics tests/debugging.");
+    REGISTER_CVAR3("r_GraphicsTest02", CV_r_GraphicsTest02, 0, VF_DEV_ONLY, "Graphics programmers: Use in your code for misc graphics tests/debugging.");
+    REGISTER_CVAR3("r_GraphicsTest03", CV_r_GraphicsTest03, 0, VF_DEV_ONLY, "Graphics programmers: Use in your code for misc graphics tests/debugging.");
+    REGISTER_CVAR3("r_GraphicsTest04", CV_r_GraphicsTest04, 0, VF_DEV_ONLY, "Graphics programmers: Use in your code for misc graphics tests/debugging.");
+    REGISTER_CVAR3("r_GraphicsTest05", CV_r_GraphicsTest05, 0, VF_DEV_ONLY, "Graphics programmers: Use in your code for misc graphics tests/debugging.");
+    REGISTER_CVAR3("r_GraphicsTest06", CV_r_GraphicsTest06, 0, VF_DEV_ONLY, "Graphics programmers: Use in your code for misc graphics tests/debugging.");
+    REGISTER_CVAR3("r_GraphicsTest07", CV_r_GraphicsTest07, 0, VF_DEV_ONLY, "Graphics programmers: Use in your code for misc graphics tests/debugging.");
+    REGISTER_CVAR3("r_GraphicsTest08", CV_r_GraphicsTest08, 0, VF_DEV_ONLY, "Graphics programmers: Use in your code for misc graphics tests/debugging.");
+    REGISTER_CVAR3("r_GraphicsTest09", CV_r_GraphicsTest09, 0, VF_DEV_ONLY, "Graphics programmers: Use in your code for misc graphics tests/debugging.");
 
 #ifndef NULL_RENDERER
     AZ::Debug::DrillerManager* drillerManager = nullptr;
@@ -3473,6 +3802,7 @@ void CRenderer::InitRenderer()
         Render::Debug::VRAMSubCategoryType textureSubcategories;
         textureSubcategories.push_back(Render::Debug::VRAMSubcategory(Render::Debug::VRAM_SUBCATEGORY_TEXTURE_TEXTURE, "Texture Assets"));
         textureSubcategories.push_back(Render::Debug::VRAMSubcategory(Render::Debug::VRAM_SUBCATEGORY_TEXTURE_RENDERTARGET, "Rendertargets"));
+        textureSubcategories.push_back(Render::Debug::VRAMSubcategory(Render::Debug::VRAM_SUBCATEGORY_TEXTURE_DYNAMIC, "Dynamic Textures"));
         EBUS_EVENT(Render::Debug::VRAMDrillerBus, RegisterCategory, Render::Debug::VRAM_CATEGORY_TEXTURE, "Texture", textureSubcategories);
 
         Render::Debug::VRAMSubCategoryType meshSubcategories;
@@ -3487,6 +3817,7 @@ void CRenderer::InitRenderer()
 #endif
 
     m_cClearColor = ColorF(0, 0, 0, 128.0f / 255.0f);       // 128 is default GBuffer value
+    m_clearBackground = false;
     m_pDefaultFont = NULL;
     m_TexGenID = 1;
     m_VSync = CV_r_vsync;
@@ -3497,27 +3828,22 @@ void CRenderer::InitRenderer()
     m_Features = 0;
     m_bVendorLibInitialized = false;
 
-    //init_math();
-
+    // Initialize SThreadInfo and PerFrameParameters
     for (uint32 id = 0; id < RT_COMMAND_BUF_COUNT; ++id)
     {
+        memset(&m_RP.m_TI[id].m_perFrameParameters, 0, sizeof(PerFrameParameters));
         m_RP.m_TI[id].m_nFrameID = -2;
+        m_RP.m_TI[id].m_FS.m_bEnable = true;
     }
 
     m_bPauseTimer = 0;
     m_fPrevTime = -1.0f;
-
-    //  m_RP.m_ShaderCurrTime = 0.0f;
 
     m_CurFontColor = Col_White;
 
     m_bUseHWSkinning = CV_r_usehwskinning != 0;
 
     m_bSwapBuffers = true;
-    for (uint32 id = 0; id < RT_COMMAND_BUF_COUNT; ++id)
-    {
-        m_RP.m_TI[id].m_FS.m_bEnable = true;
-    }
 
 #if defined(_DEBUG) && defined(WIN32)
     if (CV_r_printmemoryleaks)
@@ -3587,19 +3913,7 @@ void CRenderer::InitRenderer()
     m_IdentityMatrix.SetIdentity();
 
     m_TemporalJitterClipSpace = Vec4(0.0f);
-
-    m_RP.m_newOcclusionCameraProj.SetIdentity();
-    m_RP.m_newOcclusionCameraView.SetIdentity();
-
-    for (int i = 0; i < CULLER_MAX_CAMS; i++)
-    {
-        m_RP.m_OcclusionCameraBuffer[i].SetIdentity();
-
-#ifdef CULLER_DEBUG
-        m_RP.m_OcclusionCameraBufferID[i] = -1;
-#endif
-    }
-
+    
     m_RP.m_nZOcclusionBufferID = -1;
 
     m_RP.m_nCurrResolveBounds[0] = m_RP.m_nCurrResolveBounds[1] = m_RP.m_nCurrResolveBounds[2] = m_RP.m_nCurrResolveBounds[3] = 0;
@@ -3651,12 +3965,6 @@ void CRenderer::InitRenderer()
     m_pRT = new SRenderThread;
     m_pRT->StartRenderThread();
 
-    for (int i = 0; i < RT_COMMAND_BUF_COUNT; ++i)
-    {
-        m_pFinalizeRendItemJob[i] = NULL;
-        m_pFinalizeShadowRendItemJob[i] = NULL;
-    }
-
     m_ShadowFrustumMGPUCache.Init();
     RegisterSyncWithMainListener(&m_ShadowFrustumMGPUCache);
 
@@ -3668,6 +3976,8 @@ void CRenderer::InitRenderer()
 CRenderer::~CRenderer()
 {
     //Code now moved to Release()
+
+    CCryNameR::ReleaseNameTable();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -3682,6 +3992,17 @@ void CRenderer::PostInit()
 
     // Initialize asset messaging listener
     m_assetListener.Connect();
+#if AZ_RENDER_TO_TEXTURE_GEM_ENABLED && !defined(NULL_RENDERER)
+    if (m_contextManager)
+    {
+        m_contextManager->Init();
+    }
+#endif // if AZ_RENDER_TO_TEXTURE_GEM_ENABLED && !defined(NULL_RENDERER)
+
+#ifdef LY_TERRAIN_RUNTIME
+    // Instantiate the terrain render params singleton, registering our custom CVars
+    Terrain::TerrainRenderingParameters::GetInstance();
+#endif
 
 #if !defined(NULL_RENDERER)
     //////////////////////////////////////////////////////////////////////////
@@ -3709,6 +4030,11 @@ void CRenderer::PostInit()
 void CRenderer::Release()
 {
     m_assetListener.Disconnect();
+
+#if AZ_RENDER_TO_TEXTURE_GEM_ENABLED && !defined(NULL_RENDERER)
+    m_contextManager = nullptr;
+#endif // if AZ_RENDER_TO_TEXTURE_GEM_ENABLED && !defined(NULL_RENDERER)
+
     // Reminder for Andrey/AntonKap: this needs to be properly handled
     //SAFE_DELETE(g_pSDynTexture_PoolAlloc)
     //g_pSDynTexture_PoolAlloc = NULL;
@@ -3723,6 +4049,21 @@ void CRenderer::Release()
         CryWarning(VALIDATOR_MODULE_RENDERER, VALIDATOR_ERROR_DBGBRK, "could not free all buffers from CDevBufferMan!");
     }
 
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERER_CPP_SECTION_9
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/Renderer_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/Renderer_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/Renderer_cpp_salem.inl"
+    #endif
+#endif
+
+    if (g_shaderGeneralHeap)
+    {
+        g_shaderGeneralHeap->Release();
+    }
 
     // Shutdown the VRAM driller
     if (m_vramDriller)
@@ -3763,7 +4104,7 @@ void CRenderer::TextToScreenColor(int x, int y, float r, float g, float b, float
     char buffer[512];
     va_list args;
     va_start(args, format);
-    if (vsnprintf(buffer, sizeof(buffer), format, args) == -1)
+    if (azvsnprintf(buffer, sizeof(buffer), format, args) == -1)
     {
         buffer[sizeof(buffer) - 1] = 0;
     }
@@ -3781,7 +4122,7 @@ void CRenderer::TextToScreen(float x, float y, const char* format, ...)
     char buffer[512];
     va_list args;
     va_start(args, format);
-    if (vsnprintf(buffer, sizeof(buffer), format, args) == -1)
+    if (azvsnprintf(buffer, sizeof(buffer), format, args) == -1)
     {
         buffer[sizeof(buffer) - 1] = 0;
     }
@@ -3914,7 +4255,7 @@ void CRenderer::WriteXY(int x, int y, float xscale, float yscale, float r, float
     // Check for the presence of a D3D device
     // Format the string
     va_start(args, format);
-    if (vsnprintf(buffer, sizeof(buffer), format, args) == -1)
+    if (azvsnprintf(buffer, sizeof(buffer), format, args) == -1)
     {
         buffer[sizeof(buffer) - 1] = 0;
     }
@@ -3934,6 +4275,14 @@ void CRenderer::WriteXY(int x, int y, float xscale, float yscale, float r, float
 //////////////////////////////////////////////////////////////////////////
 void CRenderer::DrawTextQueued(Vec3 pos, SDrawTextInfo& ti, const char* text)
 {
+#if AZ_RENDER_TO_TEXTURE_GEM_ENABLED
+    if (IsRenderToTextureActive())
+    {
+        // don't add debug text from the render to texture pass
+        return;
+    }
+#endif // AZ_RENDER_TO_TEXTURE_GEM_ENABLED
+
     int nT = m_pRT->GetThreadList();
     if (text && !gEnv->IsDedicated())
     {
@@ -3948,6 +4297,14 @@ void CRenderer::DrawTextQueued(Vec3 pos, SDrawTextInfo& ti, const char* text)
 //////////////////////////////////////////////////////////////////////////
 void CRenderer::DrawTextQueued(Vec3 pos, SDrawTextInfo& ti, const char* format, va_list args)
 {
+#if AZ_RENDER_TO_TEXTURE_GEM_ENABLED
+    if (IsRenderToTextureActive())
+    {
+        // don't add debug text from the render to texture pass
+        return;
+    }
+#endif // AZ_RENDER_TO_TEXTURE_GEM_ENABLED
+
     int nT = m_pRT->GetThreadList();
     if (format && !gEnv->IsDedicated())
     {
@@ -3968,6 +4325,14 @@ void CRenderer::DrawTextQueued(Vec3 pos, SDrawTextInfo& ti, const char* format, 
 void CRenderer::EF_RenderTextMessages()
 {
     ASSERT_IS_MAIN_THREAD(m_pRT)
+
+#if AZ_RENDER_TO_TEXTURE_GEM_ENABLED
+    if (IsRenderToTextureActive())
+    {
+        // don't draw debug text in the render to texture pass
+        return;
+    }
+#endif // AZ_RENDER_TO_TEXTURE_GEM_ENABLED
 
     CTextMessages& textMessage = m_TextMessages[m_RP.m_nFillThreadID];
     if (!textMessage.empty())
@@ -4026,6 +4391,14 @@ void CRenderer::RenderTextMessages(CTextMessages& messages)
             }
 
             ProjectToScreen(vPos.x, vPos.y, vPos.z, &sx, &sy, &sz);
+
+            if (!b800x600)
+            {
+                // ProjectToScreen() returns virtual screen values in range [0-100], while the Draw2dTextWithDepth() method expects screen coords.
+                // Correcting sx, sy values if not in virtual screen mode (sz is depth in range [0-1], and does not need to be altered).
+                sx = vw ? (sx / 100.f) * vw : sx;
+                sy = vh ? (sy / 100.f) * vh : sy;
+            }
         }
         else
         {
@@ -4111,6 +4484,14 @@ void CRenderer::RT_RenderTextMessages()
     ASSERT_IS_RENDER_THREAD(m_pRT)
     FUNCTION_PROFILER_LEGACYONLY(GetISystem(), PROFILE_RENDERER);
     AZ_TRACE_METHOD();
+
+#if AZ_RENDER_TO_TEXTURE_GEM_ENABLED
+    if (IsRenderToTextureActive())
+    {
+        // don't draw debug text in the render to texture pass
+        return;
+    }
+#endif // AZ_RENDER_TO_TEXTURE_GEM_ENABLED
 
     int nT = m_pRT->GetThreadList();
 
@@ -4298,6 +4679,16 @@ void CRenderer::EF_ReleaseInputShaderResource(SInputShaderResources* pRes)
 
 //#include "../Common/Character/CryModel.h"
 
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERER_CPP_SECTION_10
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/Renderer_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/Renderer_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/Renderer_cpp_salem.inl"
+    #endif
+#endif
 void CRenderer::ForceSwapBuffers()
 {
     m_pRT->RC_ForceSwapBuffers();
@@ -4361,6 +4752,13 @@ void CRenderer::FreeResources(int nFlags)
 
     CTimeValue tBegin = gEnv->pTimer->GetAsyncTime();
 
+    // Throughout this function, we are queuing up a lot of work to execute on the render thread while also manipulating 
+    // global state on both the render and main threads.  We need to call ForceFlushRTCommands to synchronize the main and
+    // render threads whenever we are manipulating global state on either of these threads.
+    ForceFlushRTCommands();
+
+    AZ::RenderNotificationsBus::Broadcast(&AZ::RenderNotifications::OnRendererFreeResources, nFlags);
+
 #if !defined(_RELEASE)
     ClearDrawCallsInfo();
 #endif
@@ -4377,7 +4775,7 @@ void CRenderer::FreeResources(int nFlags)
     {
         for (size_t i = 0; i < MAX_RELEASED_MESH_FRAMES; ++i)
         {
-            m_pRT->RC_ForceMeshGC(true, true);
+            m_pRT->RC_ForceMeshGC(false, false);
         }
         ForceFlushRTCommands();
     }
@@ -4422,7 +4820,7 @@ void CRenderer::FreeResources(int nFlags)
             }
 
             m_RP.m_arrCustomShadowMapFrustumData[i].clear();
-            m_RP.m_fogVolumeContibutions[i].clear();
+            m_RP.m_fogVolumeContibutionsData[i].clear();
         }
 
         for (int i = 0; i < sizeof(m_RP.m_RIs) / sizeof(m_RP.m_RIs[0]); ++i)
@@ -4471,7 +4869,11 @@ void CRenderer::FreeResources(int nFlags)
 
     if (nFlags & FRR_TEXTURES)
     {
+        // Release the system textures on the render thread and then force that task to be completed
+        // before shutting down the texture system
+        m_pRT->RC_ReleaseSystemTextures();
         ForceFlushRTCommands();
+
         CTexture::ShutDown();
     }
 
@@ -4520,8 +4922,6 @@ void CRenderer::FreeResources(int nFlags)
         {
             m_gpuParticleEngine->Release();
         }
-        ClearJobResources();
-        CRenderMesh::ClearJobResources();
 
         for (int i = 0; i < RT_COMMAND_BUF_COUNT; ++i)
         {
@@ -4537,14 +4937,8 @@ void CRenderer::FreeResources(int nFlags)
         m_p3DEngineCommon.m_CausticInfo.Release();
 
         m_pRT->RC_UnbindResources();
-        ForceFlushRTCommands();
-
-        m_pRT->RC_ResetGlass();
-        ForceFlushRTCommands();
-
-        m_pRT->RC_ForceMeshGC(true, true);
-        ForceFlushRTCommands();
-
+        m_pRT->RC_ResetGlass();        
+        m_pRT->RC_ForceMeshGC(false, false);
         m_cEF.mfReleaseSystemShaders();
         ForceFlushRTCommands();
 
@@ -4564,11 +4958,9 @@ void CRenderer::FreeResources(int nFlags)
         ForceFlushRTCommands();
 
         m_pRT->RC_UnbindTMUs();
-        ForceFlushRTCommands();
-        CTexture::ResetTMUs();
 
+        // This function calls FlushAndWait internally in order to synchronize the main and render threads
         CRendElement::Cleanup();
-        ForceFlushRTCommands();
 
         // sync dev buffer only once per frame, to prevent syncing to the currently rendered frame
         // which would result in a deadlock
@@ -4768,7 +5160,7 @@ uint64 CRenderer::EF_GetShaderGlobalMaskGenFromString(const char* szShaderName, 
 }
 
 // inverse of EF_GetShaderMaskGenFromString
-const char* CRenderer::EF_GetStringFromShaderGlobalMaskGen(const char* szShaderName, uint64 nMaskGen)
+AZStd::string CRenderer::EF_GetStringFromShaderGlobalMaskGen(const char* szShaderName, uint64 nMaskGen)
 {
     if (!m_cEF.mfUsesGlobalFlags(szShaderName))
     {
@@ -4797,9 +5189,9 @@ bool CRenderer::EF_ReloadFile_Request(const char* szFileName)
     {
         // Replace image extensions with .dds extensions.
         char realName[MAX_PATH + 1];
-        strncpy_s(realName, MAX_PATH, szFileName, MAX_PATH);
+        azstrncpy(realName, MAX_PATH, szFileName, MAX_PATH);
         char* szExt = (char*)fpGetExtension(realName);
-        strncpy_s(szExt, MAX_PATH - (szExt - realName), ".dds", 4);
+        azstrncpy(szExt, MAX_PATH - (szExt - realName), ".dds", 4);
         return CTexture::ReloadFile_Request(realName); // post in queue
     }
     else if (IResourceCompilerHelper::IsGameImageFormatSupported(szFileName))
@@ -4818,7 +5210,7 @@ bool CRenderer::EF_ReloadFile(const char* szFileName)
         return false; //might want to check this it hits
     }
     char realName[MAX_PATH + 1];
-    strncpy_s(realName, MAX_PATH, szFileName, MAX_PATH);
+    azstrncpy(realName, MAX_PATH, szFileName, MAX_PATH);
     const char* szExt = fpGetExtension(realName);
 
     if (IResourceCompilerHelper::IsSourceImageFormatSupported(szExt) ||
@@ -4826,7 +5218,7 @@ bool CRenderer::EF_ReloadFile(const char* szFileName)
     {
         CRY_ASSERT_MESSAGE(false, "You must call EF_ReloadFile_Request for texture assets.");
     }
-    else if (szExt && !_stricmp(szExt, ".cgf"))
+    else if (szExt && !azstricmp(szExt, ".cgf"))
     {
         IStatObj* pStatObjectToReload = (gEnv && gEnv->p3DEngine) ? gEnv->p3DEngine->FindStatObjectByFilename(realName) : nullptr;
         if (pStatObjectToReload)
@@ -4837,7 +5229,7 @@ bool CRenderer::EF_ReloadFile(const char* szFileName)
         }
         return false;
     }
-    else if (szExt && (!_stricmp(szExt, ".cfx") || (!CV_r_shadersignoreincludeschanging && !_stricmp(szExt, ".cfi"))))
+    else if (szExt && (!azstricmp(szExt, ".cfx") || (!CV_r_shadersignoreincludeschanging && !azstricmp(szExt, ".cfi"))))
     {
         gRenDev->m_cEF.m_Bin.InvalidateCache();
         // This is a temporary fix so that shaders would reload during hot update.
@@ -4850,7 +5242,7 @@ bool CRenderer::EF_ReloadFile(const char* szFileName)
         //    return gRenDev->m_cEF.mfReloadFile(drn, nmf, FRO_SHADERS);
     }
 #if defined(USE_GEOM_CACHES)
-    else if (szExt && !_stricmp(szExt, ".cax"))
+    else if (szExt && !azstricmp(szExt, ".cax"))
     {
         IGeomCache* pGeomCache = (gEnv && gEnv->p3DEngine) ? gEnv->p3DEngine->FindGeomCacheByFilename(realName) : nullptr;
         if (pGeomCache)
@@ -4915,7 +5307,7 @@ ITexture* CRenderer::EF_GetTextureByName(const char* nameTex, uint32 flags)
         INDENT_LOG_DURING_SCOPE(true, "While trying to find texture '%s' flags=0x%x...", nameTex, flags);
 
         const char* ext = fpGetExtension(nameTex);
-        if (ext != 0 && (stricmp(ext, ".tif") == 0 || stricmp(ext, ".hdr") == 0))
+        if (ext != 0 && (azstricmp(ext, ".tif") == 0 || azstricmp(ext, ".hdr") == 0 || azstricmp(ext, ".png") == 0))
         {
             // for compilable files, register by the dds file name (to not load it twice)
             char nameDDS[256];
@@ -4941,7 +5333,7 @@ ITexture* CRenderer::EF_LoadTexture(const char* nameTex, const uint32 flags)
 
         //if its a source image format try to load the dds
         const char* ext = fpGetExtension(nameTex);
-        if (ext != 0 && (stricmp(ext, ".tif") == 0 || stricmp(ext, ".hdr") == 0))
+        if (ext != 0 && (azstricmp(ext, ".tif") == 0 || azstricmp(ext, ".hdr") == 0 || azstricmp(ext, ".png") == 0))
         {
             // for compilable files, register by the dds file name (to not load it twice)
             char nameDDS[256];
@@ -5064,7 +5456,7 @@ void CRenderer::EF_StartEf(const SRenderingPassInfo& passInfo)
         }
 
         EF_RemovePolysFromScene();
-        m_RP.m_fogVolumeContibutions[nThreadID].resize(0);
+        m_RP.m_fogVolumeContibutionsData[nThreadID].resize(0);
         //If we clear these flags during the recursion pass, it causes flickering and popping of objects.
         passInfo.GetRenderView()->PrepareForWriting();
     }
@@ -5102,18 +5494,11 @@ void CRenderer::EF_StartEf(const SRenderingPassInfo& passInfo)
     EF_ClearDeferredLightsList();
 }
 
-void CRenderer::RT_PrepareLevelTexStreaming()
-{
-    if (CRenderer::CV_r_texturesstreampooldefragmentation)
-    {
-    }
-}
-
 void CRenderer::RT_PostLevelLoading()
 {
     int nThreadID = m_pRT->GetThreadList();
-    m_RP.m_fogVolumeContibutions[nThreadID].reserve(2048);
-
+    m_RP.m_fogVolumeContibutionsData[nThreadID].reserve(2048);
+   
     m_cEF.m_Bin.InvalidateCache();
     CHWShader::mfCleanupCache();
     CResFile::m_nMaxOpenResFiles = 4;
@@ -5134,7 +5519,7 @@ void CRenderer::RT_CreateREPostProcess(CRendElementBase** re)
     *re = new CREPostProcess;
 }
 
-CRendElementBase* CRenderer::EF_CreateRE(EDataType edt)
+IRenderElement* CRenderer::EF_CreateRE(EDataType edt)
 {
     CRendElementBase* re = NULL;
     switch (edt)
@@ -5211,6 +5596,16 @@ CRendElementBase* CRenderer::EF_CreateRE(EDataType edt)
 #if defined(USE_GEOM_CACHES)
     case eDATA_GeomCache:
         re = new CREGeomCache;
+        break;
+#endif
+    case eDATA_Gem:
+        // For gems we return a base element which will be accessed through the IRenderElement interface.
+        // The gem is expected to provide a delegate that implement the IRenderElementDelegate interface
+        re = new CRendElementBase();
+        break;
+#ifdef LY_TERRAIN_RUNTIME
+    case eDATA_TerrainSystem:
+        re = new Terrain::CRETerrain;
         break;
 #endif
     }
@@ -5584,7 +5979,7 @@ bool CRenderer::EF_AddDeferredDecal(const SDeferredDecal& rDecal)
         _smart_ptr<IMaterial> pDecalMaterial = rDecalCopy.pMaterial;
         if (pDecalMaterial == NULL)
         {
-            assert(0);
+            AZ_WarningOnce("Renderer", pDecalMaterial == NULL, "Decal missing material.");
             return false;
         }
 
@@ -6235,7 +6630,21 @@ void CRenderer::EF_QueryImpl(ERenderQueryTypes eQuery, void* pInOut0, uint32 nIn
         STextureStreamingStats* stats = (STextureStreamingStats*)(pInOut0);
         if (stats)
         {
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERER_CPP_SECTION_11
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/Renderer_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/Renderer_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/Renderer_cpp_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#else
             stats->nCurrentPoolSize = CTexture::s_pPoolMgr->GetReservedSize();    // s_nStatsStreamPoolInUseMem;
+#endif
             stats->nStreamedTexturesSize = CTexture::s_nStatsStreamPoolInUseMem;
 
             stats->nStaticTexturesSize = CTexture::s_nStatsCurManagedNonStreamedTexMem;
@@ -6249,6 +6658,16 @@ void CRenderer::EF_QueryImpl(ERenderQueryTypes eQuery, void* pInOut0, uint32 nIn
             stats->nNumTexturesPerFrame = gRenDev->m_RP.m_PS[gRenDev->m_RP.m_nProcessThreadID].m_NumTextures;
 #endif
 
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERER_CPP_SECTION_12
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/Renderer_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/Renderer_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/Renderer_cpp_salem.inl"
+    #endif
+#endif
 
             if (stats->bComputeReuquiredTexturesPerFrame)
             {
@@ -6338,7 +6757,16 @@ void CRenderer::EF_QueryImpl(ERenderQueryTypes eQuery, void* pInOut0, uint32 nIn
 
     case EFQ_GetFogCullDistance:
     {
+#if AZ_RENDER_TO_TEXTURE_GEM_ENABLED
+        // only return the culling distance for the main camera, this helps
+        // prevent r_displayinfo flickering
+        if (!IsRenderToTextureActive())
+        {
+            WriteQueryResult(pInOut0, nInOutSize0, m_fogCullDistance);
+        }
+#else
         WriteQueryResult(pInOut0, nInOutSize0, m_fogCullDistance);
+#endif // if AZ_RENDER_TO_TEXTURE_GEM_ENABLED
     }
     break;
 
@@ -6454,9 +6882,6 @@ _smart_ptr<IRenderMesh> CRenderer::CreateRenderMesh(const char* szType, const ch
             pInitParams->eType, pInitParams->nRenderChunkCount, pInitParams->nClientTextureBindID, 0, 0, pInitParams->bOnlyVideoBuffer, pInitParams->bPrecache, pInitParams->pTangents, pInitParams->bLockForThreadAccess, pInitParams->pNormals);
     }
 
-    MEMSTAT_CONTEXT(EMemStatContextTypes::MSC_RenderMeshType, 0, szType);
-    MEMSTAT_CONTEXT(EMemStatContextTypes::MSC_RenderMesh, 0, szSourceName);
-
     // make material table with clean elements
     _smart_ptr<CRenderMesh> pRenderMesh = new CRenderMesh(szType, szSourceName);
     pRenderMesh->_SetRenderMeshType(eBufType);
@@ -6478,9 +6903,6 @@ _smart_ptr<IRenderMesh> CRenderer::CreateRenderMeshInitialized(
     const SPipTangents* pTangents, bool bLockForThreadAcc, Vec3* pNormals)
 {
     FUNCTION_PROFILER_RENDERER;
-
-    MEMSTAT_CONTEXT(EMemStatContextTypes::MSC_RenderMeshType, 0, szType);
-    MEMSTAT_CONTEXT(EMemStatContextTypes::MSC_RenderMesh, 0, szSourceName);
 
     _smart_ptr<CRenderMesh> pRenderMesh = new CRenderMesh(szType, szSourceName, bLockForThreadAcc);
     pRenderMesh->_SetRenderMeshType(eBufType);
@@ -6522,7 +6944,7 @@ _smart_ptr<IRenderMesh> CRenderer::CreateRenderMeshInitialized(
     pRenderMesh->m_nClientTextureBindID = nClientTextureBindID;
 
     // Precache for static buffers
-    if (CV_r_meshprecache && pRenderMesh->_GetNumVerts() && bPrecache && !m_bDeviceLost && m_pRT->IsRenderThread())
+    if (CV_r_meshprecache && pRenderMesh->GetNumVerts() && bPrecache && !m_bDeviceLost && m_pRT->IsRenderThread())
     {
         pRenderMesh->CheckUpdate(-1);
     }
@@ -6553,6 +6975,11 @@ int CRenderer::GetBlackTextureId() const
 void CRenderer::SetTexture(int tnum)
 {
     m_pRT->RC_SetTexture(tnum, 0);
+}
+
+void CRenderer::SetTexture(int tnum, int nUnit)
+{
+    m_pRT->RC_SetTexture(tnum, nUnit);
 }
 
 // used for sprite generation
@@ -6624,7 +7051,7 @@ bool CRenderer::EF_PrecacheResource(IRenderMesh* _pPB, _smart_ptr<IMaterial> pMa
         pSR->m_fMinMipFactorLoad = fMipFactor;
         for (auto& iter : pSR->m_TexturesResourcesMap )
         {
-            SEfResTexture*  	pTexture = &(iter.second);
+            SEfResTexture*      pTexture = &(iter.second);
             CTexture*           tp = static_cast<CTexture*> (pTexture->m_Sampler.m_pITex);
             if (!tp)
             {
@@ -6724,8 +7151,9 @@ static float LinearToGamma(float x)
 
 #pragma warning(push)
 #pragma warning(disable:4819)   // Invalid character not in default code page
-#include <squish-ccr/squish.h>
-#include <squish-ccr/squish.inl>
+#pragma warning(disable:4828)
+#include <squish.h>
+#include <squish.inl>
 #pragma warning(pop)
 
 #ifdef __GNUC__
@@ -6904,11 +7332,6 @@ static void DXTCompressRowFloat(SCompressRowData data)
     }
 }
 
-DECLARE_JOB("DXTDecompressRow", TDXTDecompressRow, DXTDecompressRow);
-DECLARE_JOB("DXTDecompressRowFloat", TDXTDecompressRowFloat, DXTDecompressRowFloat);
-DECLARE_JOB("DXTCompressRow", TDXTCompressRow, DXTCompressRow);
-DECLARE_JOB("DXTCompressRowFloat", TDXTCompressRowFloat, DXTCompressRowFloat);
-
 #endif // #if !defined(__RECODE__) && !defined(EXCLUDE_SQUISH_SDK)
 
 bool CRenderer::DXTDecompress(const byte* sourceData, const size_t srcFileSize, byte* destinationData, int width, int height, int mips, ETEX_Format sourceFormat, bool bUseHW, int nDstBytesPerPix)
@@ -7013,49 +7436,19 @@ bool CRenderer::DXTDecompress(const byte* sourceData, const size_t srcFileSize, 
 
     if ((datatype == squish::sqio::DT_U8) && (nDstBytesPerPix == 4))
     {
-#ifdef PROCESS_TEXTURES_IN_PARALLEL
-        JobManager::SJobState jobState;
-#endif
-
         for (int y = 0; y < height; y += blockHeight)
         {
             data.row = y;
-#ifdef PROCESS_TEXTURES_IN_PARALLEL
-            TDXTDecompressRow compressJob(data);
-            compressJob.RegisterJobState(&jobState);
-            compressJob.SetPriorityLevel(JobManager::eStreamPriority);
-            compressJob.Run();
-#else
             DXTDecompressRow(data);
-#endif
         }
-
-#ifdef PROCESS_TEXTURES_IN_PARALLEL
-        gEnv->pJobManager->WaitForJob(jobState);
-#endif
     }
     else if ((datatype == squish::sqio::DT_F23) && (nDstBytesPerPix == 4))
     {
-#ifdef PROCESS_TEXTURES_IN_PARALLEL
-        JobManager::SJobState jobState;
-#endif
-
         for (int y = 0; y < height; y += blockHeight)
         {
             data.row = y;
-#ifdef PROCESS_TEXTURES_IN_PARALLEL
-            TDXTDecompressRowFloat compressJob(data);
-            compressJob.RegisterJobState(&jobState);
-            compressJob.SetPriorityLevel(JobManager::eStreamPriority);
-            compressJob.Run();
-#else
             DXTDecompressRowFloat(data);
-#endif
         }
-
-#ifdef PROCESS_TEXTURES_IN_PARALLEL
-        gEnv->pJobManager->WaitForJob(jobState);
-#endif
     }
     else
     {
@@ -7196,49 +7589,19 @@ bool CRenderer::DXTCompress(const byte* sourceData, int width, int height, ETEX_
 
     if ((datatype == squish::sqio::DT_U8) && (nSrcBytesPerPix == 4))
     {
-#ifdef PROCESS_TEXTURES_IN_PARALLEL
-        JobManager::SJobState jobState;
-#endif
-
         for (int y = 0; y < height; y += blockHeight)
         {
             data.row = y;
-#ifdef PROCESS_TEXTURES_IN_PARALLEL
-            TDXTCompressRow compressJob(data);
-            compressJob.RegisterJobState(&jobState);
-            compressJob.SetPriorityLevel(JobManager::eHighPriority);
-            compressJob.Run();
-#else
             DXTCompressRow(data);
-#endif
         }
-
-#ifdef PROCESS_TEXTURES_IN_PARALLEL
-        gEnv->pJobManager->WaitForJob(jobState);
-#endif
     }
     else if ((datatype == squish::sqio::DT_F23) && (nSrcBytesPerPix == 4))
     {
-#ifdef PROCESS_TEXTURES_IN_PARALLEL
-        JobManager::SJobState jobState;
-#endif
-
         for (int y = 0; y < height; y += blockHeight)
         {
             data.row = y;
-#ifdef PROCESS_TEXTURES_IN_PARALLEL
-            TDXTCompressRowFloat compressJob(data);
-            compressJob.RegisterJobState(&jobState);
-            compressJob.SetPriorityLevel(JobManager::eHighPriority);
-            compressJob.Run();
-#else
             DXTCompressRowFloat(data);
-#endif
         }
-
-#ifdef PROCESS_TEXTURES_IN_PARALLEL
-        gEnv->pJobManager->WaitForJob(jobState);
-#endif
     }
     else
     {
@@ -7279,7 +7642,7 @@ void CRenderer::GetThreadIDs(threadID& mainThreadID, threadID& renderThreadID) c
 void CRenderer::PostLevelLoading()
 {
     int nThreadID = m_pRT->GetThreadList();
-    m_RP.m_fogVolumeContibutions[nThreadID].reserve(2048);
+    m_RP.m_fogVolumeContibutionsData[nThreadID].reserve(2048);
 }
 
 const char* CRenderer::GetTextureFormatName(ETEX_Format eTF)
@@ -7298,6 +7661,19 @@ ERenderType CRenderer::GetRenderType() const
 {
 #if defined(NULL_RENDERER)
     return eRT_Null;
+#define AZ_RESTRICTED_SECTION_IMPLEMENTED
+#elif defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERER_CPP_SECTION_13
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/Renderer_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/Renderer_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/Renderer_cpp_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#undef AZ_RESTRICTED_SECTION_IMPLEMENTED
 #elif defined(CRY_USE_METAL)
     return eRT_Metal;
 #elif defined(OPENGL)
@@ -7500,7 +7876,8 @@ void S3DEngineCommon::UpdateRainOccInfo(int nThreadID)
         m_RainOccluders.Release();
     }
 
-    const Vec3 vCamPos = gRenDev->GetViewParameters().vOrigin;
+    // Get the rendering camera position from the renderer
+    const Vec3 vCamPos = gEnv->p3DEngine->GetRenderingCamera().GetPosition();
     bool bDisableOcclusion = m_RainInfo.bDisableOcclusion;
     static bool bOldDisableOcclusion = true;    // set to true to allow update at first run
 
@@ -7761,9 +8138,8 @@ void CRenderer::SetTextureStreamListener(ITextureStreamListener* pListener)
 //////////////////////////////////////////////////////////////////////////
 float CRenderer::GetGPUFrameTime()
 {
-    //  Confetti BEGIN: Igor Lobanchikov
 #if defined(CRY_USE_METAL) || defined(ANDROID)
-    //  TODO: Igor: if this won't work consider different frame time calculation
+    //  TODO: if this won't work consider different frame time calculation
     return gEnv->pTimer->GetRealFrameTime();
 #else
 #if 0
@@ -7787,7 +8163,6 @@ float CRenderer::GetGPUFrameTime()
     return fGPUtime;
 #endif
 #endif
-    //  Confetti End: Igor Lobanchikov
 }
 
 void CRenderer::GetRenderTimes(SRenderTimes& outTimes)
@@ -7988,8 +8363,6 @@ SSkinningData* CRenderer::EF_CreateSkinningData(uint32 nNumBones, bool bNeedJobS
     uint32 skinningFlags = bUseMatrixSkinning ? eHWS_Skinning_Matrix : 0;
 
     uint32 nNeededSize = Align(sizeof(SSkinningData), 16);
-    nNeededSize += Align(bNeedJobSyncVar ? sizeof(JobManager::SJobState) : 0, 16);
-    nNeededSize += Align(bNeedJobSyncVar ? sizeof(JobManager::SJobState) : 0, 16);
 
     size_t boneSize = bUseMatrixSkinning ? sizeof(Matrix34) : sizeof(DualQuat);
 
@@ -7999,17 +8372,8 @@ SSkinningData* CRenderer::EF_CreateSkinningData(uint32 nNumBones, bool bNeedJobS
     SSkinningData* pSkinningRenderData = alias_cast<SSkinningData*>(pData);
     pData += Align(sizeof(SSkinningData), 16);
 
-    pSkinningRenderData->pAsyncJobs = bNeedJobSyncVar ? alias_cast<JobManager::SJobState*>(pData) : NULL;
-    pData += Align(bNeedJobSyncVar ? sizeof(JobManager::SJobState) : 0, 16);
-
-    pSkinningRenderData->pAsyncDataJobs = bNeedJobSyncVar ? alias_cast<JobManager::SJobState*>(pData) : NULL;
-    pData += Align(bNeedJobSyncVar ? sizeof(JobManager::SJobState) : 0, 16);
-
-    if (bNeedJobSyncVar) // init job state if requiered
-    {
-        new(pSkinningRenderData->pAsyncJobs) JobManager::SJobState();
-        new(pSkinningRenderData->pAsyncDataJobs) JobManager::SJobState();
-    }
+    pSkinningRenderData->pAsyncJobExecutor = bNeedJobSyncVar ? m_jobExecutorPool.Allocate() : nullptr;
+    pSkinningRenderData->pAsyncDataJobExecutor = bNeedJobSyncVar ? m_jobExecutorPool.Allocate() : nullptr;
 
     if (bUseMatrixSkinning)
     {
@@ -8065,8 +8429,8 @@ SSkinningData* CRenderer::EF_CreateRemappedSkinningData(uint32 nNumBones, SSkinn
     // use actual bone information from original skinning data
     pSkinningRenderData->pBoneQuatsS = pSourceSkinningData->pBoneQuatsS;
     pSkinningRenderData->pBoneMatrices = pSourceSkinningData->pBoneMatrices;
-    pSkinningRenderData->pAsyncJobs = pSourceSkinningData->pAsyncJobs;
-    pSkinningRenderData->pAsyncDataJobs = pSourceSkinningData->pAsyncDataJobs;
+    pSkinningRenderData->pAsyncJobExecutor = pSourceSkinningData->pAsyncJobExecutor;
+    pSkinningRenderData->pAsyncDataJobExecutor = pSourceSkinningData->pAsyncDataJobExecutor;
 
     pSkinningRenderData->pCharInstCB = pSourceSkinningData->pCharInstCB;
 
@@ -8088,6 +8452,8 @@ void CRenderer::EF_ClearSkinningDataPool()
     m_pRT->RC_PushSkinningPoolId(++m_nPoolIndex);
     m_SkinningDataPool[m_nPoolIndex % 3].ClearPool();
     FX_ClearCharInstCB(m_nPoolIndex);
+
+    m_jobExecutorPool.AdvanceCurrent();
 }
 
 int CRenderer::EF_GetSkinningPoolID()
@@ -8108,7 +8474,7 @@ void CRenderer::ClearShaderItem(SShaderItem* pShaderItem)
 
         for (int i = 0; i < EFTT_MAX; ++i)
         {
-            SEfResTexture*  	pTexture = shaderResources->GetTextureResource(i);
+            SEfResTexture*      pTexture = shaderResources->GetTextureResource(i);
             if (gRenDev->m_RP.m_ShaderTexResources[i] == pTexture)
             {
                 gRenDev->m_RP.m_ShaderTexResources[i] = nullptr;
@@ -8117,7 +8483,7 @@ void CRenderer::ClearShaderItem(SShaderItem* pShaderItem)
 /* @barled - adibugbug - put back in place!!!
         for (auto iter = shaderResources->m_TexturesResourcesMap.begin(); iter != shaderResources->m_TexturesResourcesMap.end(); ++iter)
         {
-            SEfResTexture*  	pTexture = &iter->second;
+            SEfResTexture*      pTexture = &iter->second;
             uint16              nSlot = iter->first;
             if (gRenDev->m_RP.m_ShaderTexResources[nSlot] == pTexture)
             {   // Notice the usage of pointer for the comparison - should be revisited?
@@ -8166,7 +8532,7 @@ void CRenderer::ForceUpdateShaderItem(SShaderItem* pShaderItem, _smart_ptr<IMate
     m_pRT->RC_UpdateShaderItem(pShaderItem, pMaterial);
 }
 
-void CRenderer::RT_UpdateShaderItem(SShaderItem* pShaderItem)
+void CRenderer::RT_UpdateShaderItem(SShaderItem* pShaderItem, IMaterial* material)
 {
     AZ_TRACE_METHOD();
     CShader* pShader = static_cast<CShader*>(pShaderItem->m_pShader);
@@ -8174,6 +8540,43 @@ void CRenderer::RT_UpdateShaderItem(SShaderItem* pShaderItem)
     {
         pShader->m_Flags &= ~EF_RELOADED;
         pShaderItem->Update();
+    }
+
+    if (material)
+    {
+        // We received a raw pointer to the material instead of a smart_ptr because writing/reading smart pointers from
+        // the render thread queue causes the ref count to be increased incorrectly in some platforms (e.g. 32 bit architectures). 
+        // In order to keep the material reference "alive" we manually increment the reference count and decrement it when we finish using it.
+        material->AddRef();
+        AZStd::function<void()> runOnMainThread = [material]()
+        {
+            // Updating the material flags after the shader has been parse and loaded.
+            material->UpdateFlags();
+            // Remove reference that we added.
+            material->Release();
+        };
+
+        EBUS_QUEUE_FUNCTION(AZ::MainThreadRenderRequestBus, runOnMainThread);
+    }
+}
+
+void CRenderer::GetClampedWindowSize(int& widthPixels, int& heightPixels)
+{
+    const int maxWidth = gEnv->pConsole->GetCVar("r_maxWidth")->GetIVal();
+    const int maxHeight = gEnv->pConsole->GetCVar("r_maxheight")->GetIVal();
+
+    if (maxWidth > 0 && maxWidth < widthPixels)
+    {
+        const float widthScaleFactor = static_cast<float>(maxWidth) / static_cast<float>(widthPixels);
+        widthPixels = aznumeric_cast<int>(widthPixels * widthScaleFactor);
+        heightPixels = aznumeric_cast<int>(heightPixels * widthScaleFactor); 
+    }
+
+    if (maxHeight > 0 && maxHeight < heightPixels)
+    {
+        const float heightScaleFactor = static_cast<float>(maxHeight) / static_cast<float>(heightPixels);
+        widthPixels = aznumeric_cast<int>(widthPixels * heightScaleFactor);
+        heightPixels = aznumeric_cast<int>(heightPixels * heightScaleFactor);
     }
 }
 
@@ -8190,7 +8593,6 @@ bool CRenderer::UseHalfFloatRenderTargets()
     return true;
 #endif
 }
-//  Confetti End: Igor Lobanchikov
 
 Matrix44A CRenderer::GetCameraMatrix()
 {
@@ -8257,6 +8659,67 @@ bool CRenderer::GetBooleanConfigurationValue(const char* varName, bool defaultVa
     return var ? (var->GetIVal() != 0) : defaultValue;
 }
 
+// Methods exposed to external libraries
+void CRenderer::ApplyDepthTextureState(int unit, int nFilter, bool clamp)
+{
+    CTexture::ApplyDepthTextureState(unit, nFilter, clamp);
+}
+
+ITexture* CRenderer::GetZTargetTexture()
+{
+    return CTexture::GetZTargetTexture();
+}
+
+int CRenderer::GetTextureState(const STexState& TS)
+{
+    return CTexture::GetTextureState(TS);
+}
+
+uint32 CRenderer::TextureDataSize(uint32 nWidth, uint32 nHeight, uint32 nDepth, uint32 nMips, uint32 nSlices, const ETEX_Format eTF, ETEX_TileMode eTM)
+{
+    return CTexture::TextureDataSize(nWidth, nHeight, nDepth, nMips, nSlices, eTF, eTM);
+}
+
+void CRenderer::ApplyForID(int nID, int nTUnit, int nTState, int nTexMaterialSlot, int nSUnit, bool useWhiteDefault)
+{
+    CTexture::ApplyForID(nID, nTUnit, nTState, nTexMaterialSlot, nSUnit, useWhiteDefault);
+}
+
+ITexture* CRenderer::Create3DTexture(const char* szName, int nWidth, int nHeight, int nDepth, int nMips, int nFlags, const byte* pData, ETEX_Format eTFSrc, ETEX_Format eTFDst)
+{
+    return CTexture::Create3DTexture(szName, nWidth, nHeight, nDepth, nMips, nFlags, pData, eTFSrc, eTFDst);
+}
+
+bool CRenderer::IsTextureExist(const ITexture* pTex)
+{
+    return CTexture::IsTextureExist(pTex);
+}
+
+const char* CRenderer::NameForTextureFormat(ETEX_Format eTF)
+{
+    return CTexture::NameForTextureFormat(eTF);
+}
+
+const char* CRenderer::NameForTextureType(ETEX_Type eTT)
+{
+    return CTexture::NameForTextureType(eTT);
+}
+
+bool CRenderer::IsVideoThreadModeEnabled()
+{
+    return m_pRT->m_eVideoThreadMode != SRenderThread::eVTM_Disabled;
+}
+
+IDynTexture* CRenderer::CreateDynTexture2(uint32 nWidth, uint32 nHeight, uint32 nTexFlags, const char* szSource, ETexPool eTexPool)
+{
+    return new SDynTexture2(nWidth, nHeight, nTexFlags, szSource, eTexPool);
+}
+
+uint32 CRenderer::GetCurrentTextureAtlasSize()
+{
+    return SDynTexture::s_CurTexAtlasSize;
+}
+
 #ifndef _RELEASE
 int CRenderer::GetDrawCallsPerNode(IRenderNode* pRenderNode)
 {
@@ -8272,3 +8735,55 @@ int CRenderer::GetDrawCallsPerNode(IRenderNode* pRenderNode)
     return 0;
 }
 #endif
+
+#if AZ_RENDER_TO_TEXTURE_GEM_ENABLED
+bool CRenderer::IsRenderToTextureActive() const
+{
+    return ((m_RP.m_TI[m_pRT->GetThreadList()].m_PersFlags & RBPF_RENDER_SCENE_TO_TEXTURE) != 0);
+}
+
+int CRenderer::GetWidth() const
+{
+    return IsRenderToTextureActive() ? m_RP.m_pRenderViews[m_pRT->GetThreadList()]->GetWidth() : m_width;
+}
+
+void CRenderer::SetWidth(int width)
+{
+    if (IsRenderToTextureActive())
+    {
+        m_RP.m_pRenderViews[m_pRT->GetThreadList()]->SetWidth(width);
+    }
+    else
+    {
+        m_width = width;
+    }
+}
+
+int CRenderer::GetHeight() const
+{
+    return IsRenderToTextureActive() ? m_RP.m_pRenderViews[m_pRT->GetThreadList()]->GetHeight() : m_height;
+}
+
+void CRenderer::SetHeight(int height)
+{
+    if (IsRenderToTextureActive())
+    {
+        m_RP.m_pRenderViews[m_pRT->GetThreadList()]->SetHeight(height);
+    }
+    else
+    {
+        m_height = height;
+    }
+}
+
+int CRenderer::GetOverlayWidth() const
+{
+    return IsRenderToTextureActive() ? m_RP.m_pRenderViews[m_pRT->GetThreadList()]->GetWidth() : m_nativeWidth;
+}
+
+int CRenderer::GetOverlayHeight() const
+{
+    return IsRenderToTextureActive() ? m_RP.m_pRenderViews[m_pRT->GetThreadList()]->GetHeight() : m_nativeHeight;
+}
+
+#endif // if AZ_RENDER_TO_TEXTURE_GEM_ENABLED

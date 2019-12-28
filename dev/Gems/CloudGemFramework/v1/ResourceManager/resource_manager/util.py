@@ -14,11 +14,13 @@ import copy
 import os
 import json
 import re
-
-from distutils.version import LooseVersion
+import boto3
+import time
+from cgf_utils import custom_resource_utils
 
 from errors import HandledError
 from botocore.exceptions import ClientError
+from resource_manager_common import resource_type_info
 
 def default(value, default):
     '''Returns a default value when a given value is None, otherwise returns the given value.'''
@@ -85,6 +87,10 @@ def validate_stack_name_format(check_name):
     if not re.match('^[a-z][a-z0-9\-]*$', check_name, re.I):
         raise HandledError('Name can only consist of letters, numbers and hyphens and must start with a letter: {}'.format(check_name))
 
+def validate_stack_name_no_reserved_words(check_name):
+    if check_name in resource_type_info.LAMBDA_TAGS:
+        raise HandledError('Name must not be any of %s' % sorted(list(resource_type_info.LAMBDA_TAGS)))
+
 def validate_stack_name(check_name):
 
     if check_name == None:
@@ -93,6 +99,8 @@ def validate_stack_name(check_name):
     validate_stack_name_length(check_name)
 
     validate_stack_name_format(check_name)
+
+    validate_stack_name_no_reserved_words(check_name)
 
 def validate_writable_list(context, write_check_list):
     '''Prompts the user to make specified files writable.
@@ -153,53 +161,18 @@ ID_DATA_MARKER = '::'
 
 def get_data_from_custom_physical_resource_id(physical_resource_id):
     if physical_resource_id:
-        i_data_marker = physical_resource_id.find(ID_DATA_MARKER)
+        embedded_physical_resource_id = custom_resource_utils.get_embedded_physical_id(physical_resource_id)
+        i_data_marker = embedded_physical_resource_id.find(ID_DATA_MARKER)
         if i_data_marker == -1:
             id_data = {}
         else:
             try:
-                id_data = json.loads(physical_resource_id[i_data_marker+len(ID_DATA_MARKER):])
+                id_data = json.loads(embedded_physical_resource_id[i_data_marker + len(ID_DATA_MARKER):])
             except Exception as e:
                 raise HandledError('Could not parse JSON data from physical resource id {}. {}'.format(physical_resource_id, e.message))
     else:
         id_data = {}
     return id_data
-
-RESOURCE_ARN_PATTERNS = {
-    'AWS::DynamoDB::Table': 'arn:aws:dynamodb:{region}:{account_id}:table/{resource_name}',
-    'AWS::Lambda::Function': 'arn:aws:lambda:{region}:{account_id}:function:{resource_name}',
-    'AWS::SQS::Queue': '{resource_name}',
-    'AWS::SNS::Topic': 'arn:aws:sns:{region}:{account_id}:{resource_name}',
-    'AWS::S3::Bucket': 'arn:aws:s3:::{resource_name}',
-    'Custom::CognitoUserPool': 'arn:aws:cognito-idp:{region}:{account_id}:userpool/{resource_name}',
-    'Custom::ServiceApi': 'arn:aws:execute-api:{region}:{account_id}:{resource_name}'
-}
-
-def get_resource_arn(stack_arn, resource_type, resource_name, optional = False, context = None):
-
-    # TODO: need a way to "plug in" resource types, so hacks like this aren't necessary
-    if resource_type == 'Custom::ServiceApi':
-        id_data = get_data_from_custom_physical_resource_id(resource_name)
-        rest_api_id = id_data.get('RestApiId', '')
-        resource_name = rest_api_id
-    elif resource_type == 'AWS::SQS::Queue':
-        client = context.aws.client('sqs', region=get_region_from_arn(stack_arn))
-        result = client.get_queue_attributes(QueueUrl=resource_name, AttributeNames=["QueueArn"])
-        queue_arn = result["Attributes"].get("QueueArn", None)
-        if queue_arn is None:
-            raise RuntimeError('Could not find QueueArn in {} for {}'.format(result, resource_name))
-        resource_name = queue_arn
-
-    pattern = RESOURCE_ARN_PATTERNS.get(resource_type, None)
-    if pattern is None:
-        if optional:
-            return None
-        raise RuntimeError('Unsupported resource type {} for resource {}.'.format(resource_type, resource_name))
-
-    return pattern.format(
-        region=get_region_from_arn(stack_arn),
-        account_id=get_account_id_from_arn(stack_arn),
-        resource_name=resource_name)
 
 def trim_at(s, c):
     i = s.find(c)
@@ -232,9 +205,15 @@ def load_json(path, default = None, optional = True):
     try:
         if os.path.isfile(path):
             with open(path, 'r') as file:
-                return json.load(file)
+                data = file.read()
+            if len(data):
+                return json.loads(data)
+            elif not optional:
+                raise HandledError('Could not load {}. The file is empty.'.format(path))
+            else:
+                return copy.deepcopy(default)
         elif not optional:
-            raise HandledError('Cloud not load {}. The file does not exist.'.format(path))
+            raise HandledError('Could not load {}. The file does not exist.'.format(path))
         else:
             return copy.deepcopy(default)
     except Exception as e:
@@ -254,7 +233,6 @@ def json_parse(str, default):
 def delete_bucket_contents(context, stack_name, logical_bucket_id, physical_bucket_id):
 
     s3 = context.aws.client('s3')
-
     try:
         list_res = s3.list_object_versions(Bucket=physical_bucket_id, MaxKeys=500)
     except ClientError as e:
@@ -262,6 +240,7 @@ def delete_bucket_contents(context, stack_name, logical_bucket_id, physical_buck
             return
 
     total = 0
+    did_final_list = False
 
     while True:
 
@@ -274,6 +253,13 @@ def delete_bucket_contents(context, stack_name, logical_bucket_id, physical_buck
                     'VersionId': version['VersionId']
                 })
 
+        for marker in list_res.get('DeleteMarkers', []):
+            delete_list.append(
+                {
+                    'Key': marker['Key'],
+                    'VersionId': marker['VersionId']
+                })
+
         if delete_list:
 
             count = len(delete_list)
@@ -284,54 +270,19 @@ def delete_bucket_contents(context, stack_name, logical_bucket_id, physical_buck
             s3.delete_objects(Bucket=physical_bucket_id, Delete={ 'Objects': delete_list, 'Quiet': True })
 
         if 'NextKeyMarker' not in list_res or 'NextVersionIdMarker' not in list_res:
+            if total and not did_final_list:
+                # Wait for consistency issues - if we're creating delete markers above the final ones may not have propagated immediately
+                did_final_list = True
+                time.sleep(5)
+                list_res = s3.list_object_versions(Bucket=physical_bucket_id, MaxKeys=500)
+                continue
+
             break
 
         list_res = s3.list_object_versions(Bucket=physical_bucket_id, MaxKeys=500, KeyMarker=list_res['NextKeyMarker'], VersionIdMarker=list_res['NextVersionIdMarker'])
 
 
-# Our version numbers should conform to http://semver.org/ 2.0.
-class Version(LooseVersion):
 
-    def __init__(self, s):
-        # LooseVersion is an old style class, so can't use super
-        LooseVersion.__init__(self, s) 
-
-    @property
-    def major(self):
-        return self.version[0]
-
-    @property
-    def minor(self):
-        return self.version[1]
-
-    @property
-    def revision(self):
-        return self.version[2]
-
-    def is_compatible_with(self, other):
-        
-        if not isinstance(other, Version):
-            other = Version(other)
-
-        if self.major != other.major:
-            return False
-        
-        # self.major == other.major
-
-        if self.minor < other.minor:
-            return False
-
-        if self.minor > other.minor:
-            return True
-
-        # self.minor == other.minor
-
-        if self.revision < other.revision:
-            return False
-
-        # self.revision == self.revions
-
-        return True
 
 
 

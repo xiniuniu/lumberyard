@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include <StdAfx.h>
+#include <StartingPointInput_precompiled.h>
 #include <InputNode.h>
 
 #include <AzCore/EBus/EBus.h>
@@ -22,10 +22,6 @@
 // CryCommon
 #include <PlayerProfileRequestBus.h>
 #include <ScriptCanvas/Libraries/Libraries.h>
-
-
-
-
 
 namespace InputNodes
 {
@@ -54,7 +50,7 @@ namespace InputNodes
     void InputNode::OnPressed(float value)
     {
         m_value = value;
-        const ScriptCanvas::Datum output = ScriptCanvas::Datum::CreateInitializedCopy(m_value);
+        const ScriptCanvas::Datum output = ScriptCanvas::Datum(m_value);
         const ScriptCanvas::SlotId pressedSlotId = InputNodeProperty::GetPressedSlotId(this);
         const ScriptCanvas::SlotId valueId = InputNodeProperty::GetValueSlotId(this);
 
@@ -62,13 +58,14 @@ namespace InputNodes
         {
             PushOutput(output, *slot);
         }
+
         SignalOutput(pressedSlotId);
     }
 
     void InputNode::OnHeld(float value)
     {
         m_value = value;
-        const ScriptCanvas::Datum output = ScriptCanvas::Datum::CreateInitializedCopy(m_value);
+        const ScriptCanvas::Datum output = ScriptCanvas::Datum(m_value);
         const ScriptCanvas::SlotId heldSlotId = InputNodeProperty::GetHeldSlotId(this);
         const ScriptCanvas::SlotId valueId = InputNodeProperty::GetValueSlotId(this);
         if (auto* slot = GetSlot(valueId))
@@ -81,7 +78,7 @@ namespace InputNodes
     void InputNode::OnReleased(float value)
     {
         m_value = value;
-        const ScriptCanvas::Datum output = ScriptCanvas::Datum::CreateInitializedCopy(m_value);
+        const ScriptCanvas::Datum output = ScriptCanvas::Datum(m_value);
         const ScriptCanvas::SlotId releasedSlotId = InputNodeProperty::GetReleasedSlotId(this);
         const ScriptCanvas::SlotId valueId = InputNodeProperty::GetValueSlotId(this);
 

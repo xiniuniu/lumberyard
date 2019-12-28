@@ -23,7 +23,6 @@
 
 #include <StringUtils.h>
 #include <IStatoscope.h>
-#include <IJobManager_JobDelegator.h>
 #include <CryProfileMarker.h>
 #include <IZLibCompressor.h>
 
@@ -83,12 +82,12 @@ void CParticleBatchDataManager::ResetData()
         stl::free_container(m_ParticlesToScene[t]);
     }
 
-    for (int i = 0, end = m_UpdateParticleStates.size(); i < end; ++i)
+    for (int i = 0, end = m_UpdateParticleJobExecutors.size(); i < end; ++i)
     {
-        delete m_UpdateParticleStates[i];
+        delete m_UpdateParticleJobExecutors[i];
     }
 
-    stl::free_container(m_UpdateParticleStates);
+    stl::free_container(m_UpdateParticleJobExecutors);
     m_nUsedStates = 0;
 }
 
@@ -97,7 +96,7 @@ void CParticleBatchDataManager::SyncAllUpdateParticlesJobs()
     AZ_TRACE_METHOD();
     for (int i = 0; i < m_nUsedStates; ++i)
     {
-        gEnv->GetJobManager()->WaitForJob(*m_UpdateParticleStates[i]);
+        m_UpdateParticleJobExecutors[i]->WaitForCompletion();
     }
     m_nUsedStates = 0;
 }
@@ -150,6 +149,8 @@ CParticleManager::~CParticleManager()
         Get3DEngine()->GetIVisAreaManager()->RemoveListener(this);
     }
     GetPhysicalWorld()->RemoveEventClient(EventPhysAreaChange::id, &StaticOnPhysAreaChange, 0);
+
+    m_bEnabled = false;  // Do this before Reset so it doesn't try to create new shaders before destructing.
     Reset(false);
 
     // Destroy references to shaders.
@@ -252,8 +253,11 @@ void CParticleManager::Reset(bool bIndependentOnly)
 {
     m_bRegisteredListener = false;
 
-    // make sure "no mat" and "simple" material are initialized before level starts
-    CreateLightShader();
+    if (m_bEnabled)
+    {
+        // make sure "no mat" and "simple" material are initialized before level starts
+        CreateLightShader();
+    }
 
     for_all_ptrs (CParticleEmitter, e, m_Emitters)
     {
@@ -489,9 +493,6 @@ IParticleEffect* CParticleManager::FindEffect(cstr sEffectName, cstr sSource, bo
         }
     }
 
-    MEMSTAT_CONTEXT(EMemStatContextTypes::MSC_Other, 0, "Particles");
-    MEMSTAT_CONTEXT_FMT(EMemStatContextTypes::MSC_ParticleEffect, EMemStatContextFlags::MSF_Instance, "%s", sEffectName);
-
     assert(pEffect);
     if (pEffect->IsEnabled() || pEffect->GetChildCount())
     {
@@ -704,6 +705,7 @@ void CParticleManager::Update()
 
         bool bStatoscopeEffectStats = false;
         bool bCollectCounts = (GetCVars()->e_ParticlesDebug & 1)
+            || (GetCVars()->e_ParticlesProfile & 1)
             || m_pWidget && m_pWidget->ShouldUpdate()
             || gEnv->pStatoscope->RequiresParticleStats(bStatoscopeEffectStats);
 
@@ -1097,7 +1099,7 @@ bool CParticleManager::LoadLibrary(cstr sParticlesLibrary, cstr sParticlesLibrar
             for_container (TEffectsList, it, m_Effects)
             {
                 CParticleEffect* pEffect = it->second;
-                if (pEffect && strnicmp(pEffect->GetName(), sPrefix, sPrefix.size()) == 0)
+                if (pEffect && azstrnicmp(pEffect->GetName(), sPrefix, sPrefix.size()) == 0)
                 {
                     pEffect->LoadResources(true);
                 }
@@ -1186,9 +1188,6 @@ bool CParticleManager::LoadLibrary(cstr sParticlesLibrary, cstr sParticlesLibrar
 
 XmlNodeRef CParticleManager::ReadLibrary(cstr sParticlesLibrary)
 {
-    MEMSTAT_CONTEXT(EMemStatContextTypes::MSC_Other, 0, "ParticleLibraries");
-    MEMSTAT_CONTEXT_FMT(EMemStatContextTypes::MSC_ParticleLibrary, 0, "Particle lib (%s)", sParticlesLibrary);
-
     string sLibSubPath = PathUtil::Make(EFFECTS_SUBPATH, sParticlesLibrary, "xml");
     if (GetCVars()->e_ParticlesUseLevelSpecificLibs)
     {
@@ -1276,15 +1275,12 @@ bool CParticleManager::LoadLibrary(cstr sParticlesLibrary, XmlNodeRef& libNode, 
         return false;
     }
 
-    MEMSTAT_CONTEXT(EMemStatContextTypes::MSC_Other, 0, "ParticleLibraries");
-    MEMSTAT_CONTEXT_FMT(EMemStatContextTypes::MSC_ParticleLibrary, 0, "Particle lib (%s)", sParticlesLibrary);
-
     CRY_DEFINE_ASSET_SCOPE("ParticleLibrary", sParticlesLibrary);
 
     m_LoadedLibs[sParticlesLibrary] = libNode;
 
     // Load special defaults effects, if created (no warning otherwise).
-    if (!m_pDefaultEffect && _stricmp(sParticlesLibrary, "System") != 0 && gEnv->pCryPak->IsFileExist(EFFECTS_SUBPATH "System.xml"))
+    if (!m_pDefaultEffect && azstricmp(sParticlesLibrary, "System") != 0 && gEnv->pCryPak->IsFileExist(EFFECTS_SUBPATH "System.xml"))
     {
         SetDefaultEffect("System.Default");
     }
@@ -1312,8 +1308,6 @@ IParticleEffect* CParticleManager::LoadEffect(cstr sEffectName, XmlNodeRef& effe
     {
         return NULL;
     }
-
-    MEMSTAT_CONTEXT_FMT(EMemStatContextTypes::MSC_ParticleEffect, 0, "%s", sEffectName);
 
     CParticleEffect* pEffect = FindLoadedEffect(sEffectName);
     if (!pEffect)

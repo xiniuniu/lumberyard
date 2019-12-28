@@ -11,16 +11,13 @@
 # $Revision: #1 $
 
 from resource_manager.errors import HandledError
-
+from cgf_utils import custom_resource_utils
 import resource_manager.util
-
 import boto3
 import json
-
 import dynamic_content_settings
 import show_manifest
 import content_manifest
-
 import datetime
 
 def _get_staging_table(context, deployment_name):
@@ -37,7 +34,8 @@ def _get_stack_resource_by_name(context, deployment_name, resource_group_name, r
   
     stack_id = context.config.get_resource_group_stack_id(deployment_name , resource_group_name, optional=True)
 
-    resource_arn = context.stack.get_physical_resource_id(stack_id, resource_name)
+    resource_obj = context.stack.get_physical_resource_id(stack_id, resource_name)
+    resource_arn = custom_resource_utils.get_embedded_physical_id(resource_obj)
     show_manifest.found_stack(resource_arn)
     return resource_arn
     
@@ -80,7 +78,9 @@ def set_staging_status(file_path, context, staging_args, deployment_name):
     staging_end = staging_args.get('StagingEnd')
     signature = staging_args.get('Signature')
     parentPak = staging_args.get('Parent')
-    
+    fileSize = staging_args.get('Size')
+    fileHash = staging_args.get('Hash')
+
     if not staging_status:
         staging_status = 'PRIVATE'
         
@@ -111,7 +111,7 @@ def set_staging_status(file_path, context, staging_args, deployment_name):
             }
         }
         
-    if signature is not None:
+    if signature:
         attributeUpdate['Signature'] = {
             'Value': {
                 'S': signature
@@ -121,7 +121,29 @@ def set_staging_status(file_path, context, staging_args, deployment_name):
         attributeUpdate['Signature'] = {
             'Action': 'DELETE'
         }
-        
+
+    if fileSize is not None:
+        attributeUpdate['Size'] = {
+            'Value': {
+                'S': str(fileSize)
+            }
+        }
+    else:
+        attributeUpdate['Size'] = {
+            'Action': 'DELETE'
+        }
+
+    if fileHash is not None and len(fileHash) > 0:
+        attributeUpdate['Hash'] = {
+            'Value': {
+                'S': str(fileHash)
+            }
+        }
+    else:
+        attributeUpdate['Hash'] = {
+            'Action': 'DELETE'
+        }
+
     if staging_status == 'WINDOW':
         time_start = None
         if staging_start.lower() == 'now':
@@ -210,6 +232,7 @@ def remove_entry(context, file_path):
             ),
             e
         )
+
 def command_request_url(context, args):
     file_name = args.file_path
     
@@ -241,3 +264,28 @@ def command_request_url(context, args):
             ),
             e
         )
+
+def signing_status_changed(context, key, do_signing):
+    dynamoDB = context.aws.client('dynamodb', region=resource_manager.util.get_region_from_arn(context.config.project_stack_id))
+    table_arn = _get_staging_table(context, context.config.default_deployment)
+
+    try:
+        response = dynamoDB.get_item(
+            TableName = table_arn,
+            Key = {'FileName': {'S' : key}}
+        )
+
+    except Exception as e:
+        if e.response['Error']['Code'] == 'ResourceNotFoundException':
+            return True
+        else:
+            raise HandledError(
+                'Could not get signing status for {}'.format(
+                    key,
+                ),
+                e
+            )
+
+    pak_is_signed = response.get('Item', {}).get('Signature', {}).get('S', '') != ''
+    return pak_is_signed != do_signing
+

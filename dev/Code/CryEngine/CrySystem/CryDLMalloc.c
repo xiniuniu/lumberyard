@@ -11,7 +11,26 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#if defined(BUCKET_SIMULATOR) || defined(_WIN32) || defined(LINUX) || defined(APPLE) || defined (ORBIS) // ACCEPTED_USE
+#define DEFAULT_GRANULARITY (64 * 1024) //this gets #undef and redefined in the .inl this has to come before that
+
+#if defined(AZ_RESTRICTED_PLATFORM)
+#undef AZ_RESTRICTED_SECTION
+#define CRYDLMALLOC_C_SECTION_1 1
+#define CRYDLMALLOC_C_SECTION_2 2
+
+#define AZ_RESTRICTED_SECTION CRYDLMALLOC_C_SECTION_1
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/CryDLMalloc_c_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/CryDLMalloc_c_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/CryDLMalloc_c_salem.inl"
+    #endif
+#elif defined(_WIN32) || defined(LINUX) || defined(APPLE)
+#define TRAIT_ENABLE_DLMALLOC 1
+#endif
+
+#if defined(BUCKET_SIMULATOR) || TRAIT_ENABLE_DLMALLOC
 /*
   This is a version (aka dlmalloc) of malloc/free/realloc written by
   Doug Lea and released to the public domain, as explained at
@@ -500,7 +519,7 @@ MAX_RELEASE_CHECK_RATE   default: 4095 unless not HAVE_MMAP
 #define DLMALLOC_VERSION 20804
 #endif /* DLMALLOC_VERSION */
 
-#define DEFAULT_GRANULARITY (64 * 1024)
+
 #define MAX_RELEASE_CHECK_RATE 255
 #define REALLOC_ZERO_BYTES_FREES
 #define USE_DL_PREFIX           1
@@ -527,12 +546,10 @@ MAX_RELEASE_CHECK_RATE   default: 4095 unless not HAVE_MMAP
 #define mspace_mallopt dlmspace_mallopt
 
 // Avoid x64 warnings with size_t converted to int
-#if _MSC_VER >= 1600
 #pragma warning(disable : 4267)
 #pragma warning(disable : 6239)
 #pragma warning(disable : 6297)
 #pragma warning(disable : 28182)
-#endif
 
 #ifdef BUCKET_SIMULATOR
 
@@ -608,7 +625,8 @@ void* SimSBrk(ptrdiff_t size)
 }
 #endif
 
-#if   defined(_WIN32)
+#if defined(AZ_RESTRICTED_PLATFORM)
+#elif defined(_WIN32)
 
 #define HAVE_MMAP                   1
 #define HAVE_MORECORE           (!HAVE_MMAP)
@@ -673,8 +691,8 @@ void* SimSBrk(ptrdiff_t size)
 #define WIN32 1
 #endif /* _WIN32_WCE */
 #endif  /* WIN32 */
+
 #ifdef WIN32
-#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #define HAVE_MMAP 1
 #ifndef HAVE_MORECORE
@@ -713,7 +731,7 @@ void* SimSBrk(ptrdiff_t size)
 #include <sys/types.h>  /* For size_t */
 #endif  /* LACKS_SYS_TYPES_H */
 
-#if (defined(__GNUC__) && ((defined(__i386__) || defined(__x86_64__)))) || (defined(_MSC_VER) && _MSC_VER >= 1310)
+#if (defined(__GNUC__) && ((defined(__i386__) || defined(__x86_64__)))) || (defined(_MSC_VER))
 #define SPIN_LOCKS_AVAILABLE 1
 #else
 #define SPIN_LOCKS_AVAILABLE 0
@@ -847,6 +865,24 @@ void* SimSBrk(ptrdiff_t size)
 #define M_TRIM_THRESHOLD     (-1)
 #define M_GRANULARITY        (-2)
 #define M_MMAP_THRESHOLD     (-3)
+
+// --------- Traits --------------
+
+#if !defined(AZ_RESTRICTED_PLATFORM)
+    #if defined(_MSC_VER)
+        #define TRAIT_HAS_BITSCANFORWARD 1
+        #define TRAIT_HAS_BITSCANREVERSE 1
+    #endif
+    #if defined(WIN32)
+        #define TRAIT_HAS_WIN32_MMAP 1
+    #endif
+    #if defined(WIN32) || defined(WIN64)
+        #define TRAIT_HAS_GETSYSTEMINFO 1
+    #endif
+    #if defined(_WIN32)
+        #define TRAIT_USE_QUERYPERFORMANCECOUNTER 1
+    #endif
+#endif
 
 /* ------------------------ Mallinfo declarations ------------------------ */
 
@@ -1532,7 +1568,21 @@ extern void*     sbrk(ptrdiff_t);
 /* Declarations for locking */
 #if USE_LOCKS
 #ifndef WIN32
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION CRYDLMALLOC_C_SECTION_2
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/CryDLMalloc_c_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/CryDLMalloc_c_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/CryDLMalloc_c_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#else
 #include <pthread.h>
+#endif
 #if defined (__SVR4) && defined (__sun)  /* solaris */
 #include <thread.h>
 #endif /* solaris */
@@ -1572,7 +1622,7 @@ unsigned char _BitScanReverse(unsigned long* index, unsigned long mask);
 #pragma intrinsic(_BitScanForward)
 #pragma intrinsic(_BitScanReverse)
 #endif /* BitScanForward */
-#endif /* defined(_MSC_VER) && _MSC_VER>=1300 */
+#endif /* defined(_MSC_VER) */
 
 #ifndef WIN32
 #ifndef malloc_getpagesize
@@ -1666,12 +1716,7 @@ extern size_t getpagesize();
 
 #if HAVE_MMAP
 
-#if   !defined(WIN32)
-#else
-#define AZ_HAVE_WIN32_MMAP
-#endif
-
-#if !defined(AZ_HAVE_WIN32_MMAP)
+#if !TRAIT_HAS_WIN32_MMAP
 #define MUNMAP_DEFAULT(a, s)  munmap((a), (s))
 #define MMAP_PROT            (PROT_READ | PROT_WRITE)
 #if !defined(MAP_ANONYMOUS) && defined(MAP_ANON)
@@ -1695,7 +1740,7 @@ static int dev_zero_fd = -1; /* Cached file descriptor for /dev/zero. */
 
 #define DIRECT_MMAP_DEFAULT(s) MMAP_DEFAULT(s)
 
-#else /* AZ_HAVE_WIN32_MMAP */
+#else /* TRAIT_HAS_WIN32_MMAP */
 
 /* Win32 MMAP via VirtualAlloc */
 static FORCEINLINE void* win32mmap(size_t size)
@@ -1741,7 +1786,7 @@ static FORCEINLINE int win32munmap(void* ptr, size_t size)
 #define MMAP_DEFAULT(s)             win32mmap(s)
 #define MUNMAP_DEFAULT(a, s)        win32munmap((a), (s))
 #define DIRECT_MMAP_DEFAULT(s)      win32direct_mmap(s)
-#endif /* AZ_HAVE_WIN32_MMAP */
+#endif /* TRAIT_HAS_WIN32_MMAP */
 #endif /* HAVE_MMAP */
 
 #if HAVE_MREMAP
@@ -2960,11 +3005,6 @@ static size_t traverse_and_check(mstate m);
 #define smallbin_at(M, i)   ((sbinptr)((char*)&((M)->smallbins[(i) << 1])))
 #define treebin_at(M, i)     (&((M)->treebins[i]))
 
-#if   defined(_MSC_VER) && _MSC_VER >= 1300
-#define AZ_HAS_BITSCANFORWARD
-#define AZ_HAS_BITSCANREVERSE
-#endif
-
 /* assign tree index for size S to variable I. Use x86 asm if possible  */
 #if defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__))
 #define compute_tree_index(S, I)                                                \
@@ -2995,7 +3035,7 @@ static size_t traverse_and_check(mstate m);
         }                                                                       \
     }
 
-#elif defined(AZ_HAS_BITSCANREVERSE)
+#elif TRAIT_HAS_BITSCANREVERSE
 #define compute_tree_index(S, I)                                                \
     {                                                                           \
         size_t X = S >> TREEBIN_SHIFT;                                          \
@@ -3086,7 +3126,7 @@ static size_t traverse_and_check(mstate m);
         I = (bindex_t)J;           \
     }
 
-#elif defined(AZ_HAS_BITSCANFORWARD)
+#elif TRAIT_HAS_BITSCANFORWARD
 #define compute_bit2idx(X, I)            \
     {                                    \
         unsigned int J;                  \
@@ -3243,11 +3283,7 @@ int init_mparams(void)
         size_t psize;
         size_t gsize;
 
-#if   defined(WIN32) || defined(WIN64)
-    #define AZ_HAS_GETSYSTEMINFO
-#endif
-
-#if defined(AZ_HAS_GETSYSTEMINFO)
+#if TRAIT_HAS_GETSYSTEMINFO
         {
             SYSTEM_INFO system_info;
             GetSystemInfo(&system_info);
@@ -3258,7 +3294,7 @@ int init_mparams(void)
 #else
         psize = malloc_getpagesize;
         gsize = ((DEFAULT_GRANULARITY != 0) ? DEFAULT_GRANULARITY : psize);
-#endif //#if defined(AZ_HAS_GETSYSTEMINFO)
+#endif //#if TRAIT_HAS_GETSYSTEMINFO
 
         /* Sanity-check configuration:
            size_t must be unsigned and as wide as pointer type.
@@ -3307,7 +3343,14 @@ int init_mparams(void)
             }
             else
 #endif /* USE_DEV_RANDOM */
-#if   defined(WIN32)
+#if TRAIT_USE_QUERYPERFORMANCECOUNTER
+            {
+                // GetTickCount not available on Metro style apps
+                LARGE_INTEGER li;
+                QueryPerformanceCounter(&li);
+                magic = (size_t)(li.QuadPart ^ (size_t)0x55555555U);
+            }
+#elif defined(WIN32)
             magic = (size_t)(GetTickCount() ^ (size_t)0x55555555U);
 #else
             magic = (size_t)(time(0) ^ (size_t)0x55555555U);

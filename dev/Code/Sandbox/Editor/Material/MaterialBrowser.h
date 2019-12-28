@@ -34,6 +34,7 @@ class CMaterialImageListCtrl;
 class QMaterialImageListModel;
 
 class QTreeView;
+class QAction;
 
 struct IDataBaseItem;
 class CMaterialBrowserRecord;
@@ -108,9 +109,7 @@ public:
 
     bool ShowCheckedOutRecursive(TMaterialBrowserRecords* pRecords);
 
-    #ifdef KDAB_PORT_TODO
-    bool OnFilterTestSubmaterials(CTreeItemRecord* pRecord, bool bAddOperation);
-#endif
+    void ShowOnlyLevelMaterials(bool levelOnly);
     
     void OnCopy();
     void OnCopyName();
@@ -121,16 +120,17 @@ public:
     void OnAddNewMultiMaterial();
     void OnConvertToMulti();
     void OnMergeMaterials();
-    bool eventFilter(QObject* watched, QEvent* event);
 
 public slots:
     void OnSelectionChanged();
-    void OnSubMaterialSelectedInPreviewPane(const QModelIndex& current, const QModelIndex& previous);
+    void OnSubMaterialSelectedInPreviewPane(const QModelIndex& current);
     void SaveCurrentMaterial();
     void OnRefreshSelection();
+    void OnMaterialAdded();
 
 signals:
     void refreshSelection();
+    void materialAdded();
     
 public:
     void OnUpdateShowCheckedOut();
@@ -149,6 +149,7 @@ public:
     void OnContextMenuAction(int command, _smart_ptr<CMaterial> material);
 
     // MaterialBrowserWidgetBus event handlers
+    void MaterialAddFinished() override;
     void MaterialFinishedProcessing(_smart_ptr<CMaterial> material, const QPersistentModelIndex &filterModelIndex) override;
     void MaterialRecordUpdateFinished() override;
 
@@ -233,6 +234,13 @@ private:
 
     bool m_bShowOnlyCheckedOut;
 
+    QAction* m_cutAction;
+    QAction* m_copyAction;
+    QAction* m_pasteAction;
+    QAction* m_duplicateAction;
+    QAction* m_deleteAction;
+    QAction* m_renameItemAction;
+    QAction* m_addNewMaterialAction;
 };
 
 #endif // CRYINCLUDE_EDITOR_MATERIAL_MATERIALBROWSER_H

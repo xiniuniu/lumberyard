@@ -10,28 +10,26 @@
 *
 */
 #include <AzCore/Debug/Trace.h>
-#include "FbxTimeWrapper.h"
-#include "FbxTimeSpanWrapper.h"
-
+#include <SceneAPI/FbxSDKWrapper/FbxTimeWrapper.h>
+#include <SceneAPI/FbxSDKWrapper/FbxTimeSpanWrapper.h>
 
 namespace AZ
 {
     namespace FbxSDKWrapper
     {
-
         FbxTimeSpanWrapper::FbxTimeSpanWrapper(const FbxTimeSpan& fbxTimeSpan)
             : m_fbxTimeSpan(fbxTimeSpan)
         {
         }
 
-        double FbxTimeSpanWrapper::GetStartTime() const
+        FbxTimeWrapper FbxTimeSpanWrapper::GetStartTime() const
         {
-            return FbxTimeWrapper(m_fbxTimeSpan.GetStart()).GetTime();
+            return FbxTimeWrapper(m_fbxTimeSpan.GetStart());
         }
 
-        double FbxTimeSpanWrapper::GetStopTime() const
+        FbxTimeWrapper FbxTimeSpanWrapper::GetStopTime() const
         {
-            return FbxTimeWrapper(m_fbxTimeSpan.GetStop()).GetTime();
+            return FbxTimeWrapper(m_fbxTimeSpan.GetStop());
         }
 
         double FbxTimeSpanWrapper::GetFrameRate() const
@@ -39,6 +37,9 @@ namespace AZ
             return FbxTimeWrapper(m_fbxTimeSpan.GetStart()).GetFrameRate();
         }
 
-
+        int64_t FbxTimeSpanWrapper::GetNumFrames() const
+        {
+            return GetStopTime().GetFrameCount() - GetStartTime().GetFrameCount() + 1;
+        }
     } // namespace FbxSDKWrapper
 } // namespace AZ

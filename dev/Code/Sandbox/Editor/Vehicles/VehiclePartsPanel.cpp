@@ -234,16 +234,16 @@ void CWheelMasterDialog::OnApplyWheels()
 
                     // get variable from wheel to update
                     QString varName = pEditMaster->GetVariable(i)->GetName();
-                    IVariable* pVar = GetChildVar(pSubVar, varName.toLatin1().data());
+                    IVariable* pVar = GetChildVar(pSubVar, varName.toUtf8().data());
 
                     if (pVar)
                     {
                         pVar->Set(val);
-                        VeedLog("%s: applying %s [%s]", pWheel->GetName(), varName.toLatin1().data(), val);
+                        VeedLog("%s: applying %s [%s]", pWheel->GetName().toUtf8().constData(), varName.toUtf8().data(), val.toUtf8().constData());
                     }
                     else
                     {
-                        Log("%s: Variable %s not found", pWheel->GetName(), varName.toLatin1().data());
+                        Log("%s: Variable %s not found", pWheel->GetName().toUtf8().constData(), varName.toUtf8().data());
                     }
                 }
             }
@@ -402,7 +402,7 @@ void CVehiclePartsPanel::OnSelect(const QModelIndex& index)
         // if its a Part, also expand SubVariable
         if (qobject_cast<CVehiclePart*>(pObj))
         {
-            if (IVariable* pSubVar = GetChildVar(pVar, ((CVehiclePart*)pObj)->GetPartClass().toLatin1().data()))
+            if (IVariable* pSubVar = GetChildVar(pVar, ((CVehiclePart*)pObj)->GetPartClass().toUtf8().data()))
             {
                 ReflectedPropertyItem* pItem = m_ui->m_propsCtrl->FindItemByVar(pSubVar);
 
@@ -1041,7 +1041,7 @@ void CVehiclePartsPanel::ShowObject(TPartToTreeMap::iterator it, bool bShow)
 
         if (!it->second.item)
         {
-            Log("InsertItem for %s failed!", pObj->GetName());
+            Log("InsertItem for %s failed!", pObj->GetName().toUtf8().constData());
         }
     }
 }
@@ -1320,7 +1320,7 @@ void CVehiclePartsPanel::FillSeats()
 
                 if (pPartObj)
                 {
-                    VeedLog("Attaching Seat to part %s", sPart);
+                    VeedLog("Attaching Seat to part %s", sPart.toUtf8().constData());
                     pPartObj->AttachChild(pSeatObj);
                     hParentItem = stl::find_in_map(m_partToTree, pPartObj, STreeItem()).item;
                     bPart = true;
@@ -1401,7 +1401,7 @@ void CVehiclePartsPanel::DumpPartTreeMap()
 
     for (TPartToTreeMap::iterator it = m_partToTree.begin(); it != m_partToTree.end(); ++it)
     {
-        VeedLog("[%i] %s", i++, (*it).first->GetName());
+        VeedLog("[%i] %s", i++, (*it).first->GetName().toUtf8().constData());
     }
 }
 
@@ -1574,7 +1574,7 @@ void CVehiclePartsPanel::AddParts(IVariable* pParts, CBaseObject* pParent)
         }
         else
         {
-            VeedLog("Attaching part %s to parent %s", pPartObj->GetName(), pParent->GetName());
+            VeedLog("Attaching part %s to parent %s", pPartObj->GetName().toUtf8().constData(), pParent->GetName().toUtf8().constData());
             pParent->AttachChild(pPartObj);
             hParentItem = stl::find_in_map(m_partToTree, pParent, STreeItem()).item;
             assert(hParentItem);
@@ -1593,7 +1593,7 @@ void CVehiclePartsPanel::AddParts(IVariable* pParts, CBaseObject* pParent)
         pPartObj->AddEventListener(functor(*this, &CVehiclePartsPanel::OnObjectEvent));
 
         // check if the part has a child parts table
-        if (IVariable* pChildParts = GetChildVar(pPartVar, pParts->GetName().toLatin1().data(), false))
+        if (IVariable* pChildParts = GetChildVar(pPartVar, pParts->GetName().toUtf8().data(), false))
         {
             AddParts(pChildParts, pPartObj); // add children
         }

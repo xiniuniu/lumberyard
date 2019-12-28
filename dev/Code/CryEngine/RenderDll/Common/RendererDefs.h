@@ -30,11 +30,170 @@
 #include <AzCore/Casting/numeric_cast.h>
 #include <AzCore/Casting/lossy_cast.h>
 
+#if defined(AZ_RESTRICTED_PLATFORM)
+#undef AZ_RESTRICTED_SECTION
+#define RENDERERDEFS_H_SECTION_1 1
+#define RENDERERDEFS_H_SECTION_2 2
+#define RENDERERDEFS_H_SECTION_3 3
+#define RENDERERDEFS_H_SECTION_4 4
+#define RENDERERDEFS_H_SECTION_5 5
+#define RENDERERDEFS_H_SECTION_6 6
+#define RENDERERDEFS_H_SECTION_7 7
+#define RENDERERDEFS_H_SECTION_8 8
+#define RENDERERDEFS_H_SECTION_9 9
+#define RENDERERDEFS_H_SECTION_10 10
+#define RENDERERDEFS_H_SECTION_11 11
+#define RENDERERDEFS_H_SECTION_12 12
+#define RENDERERDEFS_H_SECTION_13 13
+#define RENDERERDEFS_H_SECTION_14 14
+#define RENDERERDEFS_H_SECTION_15 15
+#define RENDERERDEFS_H_SECTION_16 16
+#define RENDERERDEFS_H_SECTION_17 17
+#define RENDERERDEFS_H_SECTION_18 18
+#define RENDERERDEFS_H_SECTION_19 19
+#define RENDERERDEFS_H_SECTION_20 20
+#endif
+
 #define SUPPORTS_WINDOWS_10_SDK false
-#if   _MSC_VER
+#if _MSC_VER
 #include <ntverp.h>
 #undef SUPPORTS_WINDOWS_10_SDK
 #define SUPPORTS_WINDOWS_10_SDK (VER_PRODUCTBUILD > 9600)
+#endif
+
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERERDEFS_H_SECTION_1
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RendererDefs_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RendererDefs_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RendererDefs_h_salem.inl"
+    #endif
+#else
+#if defined(WIN32) || defined(WIN64) || defined(LINUX) || defined(APPLE)
+#define RENDERERDEFS_H_TRAIT_SUPPORT_BAKED_MESHES_AND_DECALS 1
+#endif
+
+#define RENDERERDEFS_H_TRAIT_CONSTANT_BUFFER_ENABLE_DIRECT_ACCESS 0
+
+#if defined(WIN32) || defined(WIN64)
+#define RENDERERDEFS_H_TRAIT_SUPPORT_D3D_DEBUG_RUNTIME 1
+#endif
+
+#if defined(APPLE)
+#define RENDERERDEFS_H_TRAIT_DEFINE_D3DPOOL 1
+#endif
+
+#define RENDERERDEFS_H_TRAIT_ALIAS_D3DOK 0
+#define RENDERMESH_CPP_TRAIT_BUFFER_ENABLE_DIRECT_ACCESS 0
+
+#if defined(MOBILE)
+#define RENDERTHREAD_H_TRAIT_USE_LOCKS_FOR_FLUSH_SYNC 1
+#endif
+
+#if defined(WIN64)
+#define PLANNINGTEXTURESTREAMER_JOBS_CPP_TRAIT_JOB_INITKEYS_PREFETCH 1
+#endif
+
+#define TEXTURESTREAMING_CPP_TRAIT_CANSTREAMINPLACE_ETT_2D_EARLY_OUT 1
+#define TEXTURESTREAMING_CPP_TRAIT_CANSTREAMINPLACE_FORMATCOMPATIBLE 1
+#define TEXTURESTREAMING_CPP_TRAIT_TRYCOMMIT_COPYMIPS 1
+#define TEXTURESTREAMING_CPP_TRAIT_COPYMIPS_MOVEENGINE 0
+#define TEXTURESTREAMING_CPP_TRAIT_CANSTREAMINPLACE_SRCTILEMODE_CHECK 0
+
+#define D3DFXPIPELINE_CPP_TRAIT_CLEARVIEW 1
+
+#if defined(IOS)
+#define D3DGPUPARTICLEENGINE_CPP_TRAIT_BEGINUPDATE_INIT_COMPUTE 1
+#endif
+
+#define D3DHWSHADER_H_TRAIT_DEFINE_D3D_BLOB 0
+
+#if defined(OPENGL) || defined(CRY_USE_METAL)
+#define D3DHWSHADERCOMPILING_CPP_TRAIT_VERTEX_FORMAT 1
+#else
+#define D3DHWSHADERCOMPILING_CPP_TRAIT_VERTEX_FORMAT 0
+#endif
+
+#if defined(WIN32) || defined(WIN64) || defined(APPLE) || defined(LINUX)
+#define D3DRENDERRE_CPP_TRAIT_MFDRAW_SETDEPTHSURF 1
+#endif
+
+#define D3DRENDERRE_CPP_TRAIT_MFDRAW_USEINSTANCING 1
+
+#if defined(AZ_PLATFORM_WINDOWS)
+#define D3DSTEREO_CPP_TRAIT_SELECTDEFAULTDEVICE_STEREODEVICEDRIVER 1
+#endif
+
+#if defined(WIN32)
+#define D3DSYSTEM_CPP_TRAIT_SETWINDOW_REGISTERWINDOWMESSAGEHANDLER 1
+#endif
+
+#define DRIVERD3D_CPP_TRAIT_CALCULATERESOLUTIONS_1080 0
+
+#if defined(IOS) || defined(APPLETV) || defined(ANDROID)
+#define DRIVERD3D_CPP_TRAIT_HANDLEDISPLAYPROPERTYCHANGES_FULLSCREEN 1
+#endif
+
+#if defined(IOS) || defined(APPLETV) || defined(ANDROID)
+#define DRIVERD3D_CPP_TRAIT_HANDLEDISPLAYPROPERTYCHANGES_NATIVERES 1
+#endif
+
+#if !defined(APPLETV)
+#define DRIVERD3D_CPP_TRAIT_HANDLEDISPLAYPROPERTYCHANGES_CALCRESOLUTIONS 1
+#endif
+
+#define DRIVERD3D_CPP_TRAIT_RT_ENDFRAME_NOTIMPL 0
+
+#if defined(_WIN32)
+#define DRIVERD3D_CPP_TRAIT_ONSYSTEMEVENT_EVENTMOVE 1
+#endif
+
+#if defined (WIN32)
+#define DRIVERD3D_H_TRAIT_DEFSAVETEXTURE 1
+#endif
+
+#if defined(WIN32)
+#define DRIVERD3D_H_TRAIT_DEFREGISTEREDWINDOWHANDLER 1
+#endif
+
+#if defined (WIN32) || defined(WIN64) || defined(APPLE) || defined(LINUX)
+#define DRIVERD3D_H_TRAIT_DEFOCCLUSIONTEXTURESVALID 1
+#endif
+
+#if defined(WIN32)
+#define GPUTIMER_CPP_TRAIT_CSIMPLEGPUTIMER_SETQUERYSTART 1
+#endif
+
+#if defined(WIN32)
+#define GPUTIMER_CPP_TRAIT_RELEASE_RELEASEQUERY 1
+#endif
+
+#if defined(WIN32)
+#define GPUTIMER_CPP_TRAIT_INIT_CREATEQUERY 1
+#endif
+
+#if defined(WIN32)
+#define GPUTIMER_CPP_TRAIT_START_PRIMEQUERY 1
+#endif
+
+#if defined(WIN32)
+#define GPUTIMER_CPP_TRAIT_STOP_ENDQUERY 1
+#endif
+
+#if defined(WIN32)
+#define GPUTIMER_CPP_TRAIT_UPDATETIME_GETDATA 1
+#endif
+
+#if defined(WIN32)
+#define GPUTIMER_H_TRAIT_DEFINEQUERIES 1
+#endif
+
+#if defined(LINUX) || defined(APPLE)
+#define NULL_SYSTEM_TRAIT_INIT_RETURNTHIS 1
+#endif
+
 #endif
 
 #if defined(WIN64) && defined (CRY_USE_DX12)
@@ -44,13 +203,14 @@
 #ifdef _DEBUG
 #define GFX_DEBUG
 #endif
+
 //defined in DX9, but not DX10
-#if defined(DURANGO) || defined(OPENGL)
+#if RENDERERDEFS_H_TRAIT_ALIAS_D3DOK || defined(OPENGL)
 #define D3D_OK  S_OK
 #endif
 
-#if !defined(_RELEASE)
-# define RENDERER_ENABLE_BREAK_ON_ERROR 0
+#if !defined(CRY_USE_DX12) && !defined(OPENGL) && !defined(_RELEASE)        
+# define RENDERER_ENABLE_BREAK_ON_ERROR 0       ///< Define causes compile errors on DX12 and OpenGL
 #endif
 #if !defined(RENDERER_ENABLE_BREAK_ON_ERROR)
 # define RENDERER_ENABLE_BREAK_ON_ERROR 0
@@ -69,6 +229,16 @@ namespace detail
 # define CHECK_HRESULT(x) (!FAILED(x))
 #endif
 
+#if defined(AZ_RESTRICTED_PLATFORM)
+    #define AZ_RESTRICTED_SECTION RENDERERDEFS_H_SECTION_6
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RendererDefs_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RendererDefs_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RendererDefs_h_salem.inl"
+    #endif
+#endif
 
 #if defined(OPENGL) && (defined(DEBUG) || defined(_DEBUG))
 #define LY_ENABLE_OPENGL_ERROR_CHECKING
@@ -88,11 +258,21 @@ namespace Lumberyard
 }
 
 // enable support for D3D11.1 features if the platform supports it
-#if   defined(CRY_USE_DX12)
+#if defined(AZ_RESTRICTED_PLATFORM)
+#   define AZ_RESTRICTED_SECTION RENDERERDEFS_H_SECTION_2
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RendererDefs_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RendererDefs_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RendererDefs_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#elif defined(CRY_USE_DX12)
 #   define DEVICE_SUPPORTS_D3D11_1
 #endif
-
-
 
 #ifdef _DEBUG
 #define CRTDBG_MAP_ALLOC
@@ -106,7 +286,7 @@ namespace Lumberyard
 #endif
 
 #if !defined(NULL_RENDERER) && (!defined(_RELEASE) || defined(PERFORMANCE_BUILD))
-#define ENABLE_SIMPLE_GPU_TIMERS
+#define ENABLE_PROFILING_GPU_TIMERS
 #define ENABLE_FRAME_PROFILER_LABELS
 #endif
 
@@ -114,6 +294,16 @@ namespace Lumberyard
 #   define PROFILE 1
 #endif
 
+#if defined(AZ_RESTRICTED_PLATFORM)
+# define AZ_RESTRICTED_SECTION RENDERERDEFS_H_SECTION_7
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RendererDefs_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RendererDefs_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RendererDefs_h_salem.inl"
+    #endif
+#endif
 
 #ifdef ENABLE_SCUE_VALIDATION
 enum EVerifyType
@@ -137,7 +327,7 @@ enum EVerifyType
 #endif
 
 // enable support for baked meshes and decals on PC
-#if defined(WIN32) || defined(WIN64) || defined(LINUX) || defined(APPLE) || defined(DURANGO)
+#if RENDERERDEFS_H_TRAIT_SUPPORT_BAKED_MESHES_AND_DECALS
 //#define RENDER_MESH_TRIANGLE_HASH_MAP_SUPPORT // CryTek removed this #define in 3.8.  Not sure if we should strip out all related code or not, or if it may be a useful feature.
 #define TEXTURE_GET_SYSTEM_COPY_SUPPORT
 #endif
@@ -171,16 +361,27 @@ enum EVerifyType
 //#define ASSERT_IN_SHADER( expr ) assert( expr );
 #define ASSERT_IN_SHADER(expr)
 
-// TODO: linux clang doesn't behave like orbis clang and linux gcc doesn't behave like darwin gcc, all linux instanced can't manage squish-template overloading // ACCEPTED_USE
+// TODO: linux clang doesn't behave like orbis clang and linux gcc doesn't behave like darwin gcc, all linux instanced can't manage squish-template overloading
 #if defined (NULL_RENDERER)
     #define EXCLUDE_SQUISH_SDK
 #elif defined(LINUX)
     #define EXCLUDE_SQUISH_SDK
+#elif defined(AZ_RESTRICTED_PLATFORM)
+    #define AZ_RESTRICTED_SECTION RENDERERDEFS_H_SECTION_8
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RendererDefs_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RendererDefs_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RendererDefs_h_salem.inl"
+    #endif
 #elif defined(IOS)
     #define EXCLUDE_SQUISH_SDK
 #elif defined(APPLETV)
     #define EXCLUDE_SQUISH_SDK
 #elif defined(CRY_USE_METAL)
+    #define EXCLUDE_SQUISH_SDK
+#elif defined(AZ_PLATFORM_WINDOWS) && defined(AZ_COMPILER_CLANG)
     #define EXCLUDE_SQUISH_SDK
 #endif
 
@@ -201,6 +402,16 @@ enum EVerifyType
 #define LEGACY_D3D9_INCLUDE
 #endif
 
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERERDEFS_H_SECTION_3
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RendererDefs_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RendererDefs_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RendererDefs_h_salem.inl"
+    #endif
+#endif
 
 #if !defined(NULL_RENDERER)
 
@@ -209,10 +420,21 @@ enum EVerifyType
 #define D3D10CreateBlob                                      D3DCreateBlob
 
 // Direct3D11 includes
-#if   defined(OPENGL)
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERERDEFS_H_SECTION_9
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RendererDefs_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RendererDefs_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RendererDefs_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#elif defined(OPENGL)
 #include "CryLibrary.h"
-//  Confetti BEGIN: Igor Lobanchikov
-//  Igor: enable metal for ios device only. Emulator is not supported for now.
+//  enable metal for ios device only. Emulator is not supported for now.
 #if TARGET_OS_IPHONE || TARGET_OS_TV
 #ifndef __IPHONE_9_0
 #define __IPHONE_9_0    90000
@@ -224,13 +446,21 @@ enum EVerifyType
 #else
 #include "XRenderD3D9/DXGL/CryDXGL.hpp"
 #endif
-//  Confetti END: Igor Lobanchikov
 #elif defined(CRY_USE_DX12)
 #include "CryLibrary.h"
 typedef uintptr_t SOCKET;
 #else
 
-#if   defined(WIN32) || defined(WIN64)
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERERDEFS_H_SECTION_4
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RendererDefs_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RendererDefs_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RendererDefs_h_salem.inl"
+    #endif
+#elif defined(WIN32) || defined(WIN64)
 #include "d3d11.h"
 #endif
 
@@ -253,6 +483,16 @@ typedef uintptr_t SOCKET;
 #   undef _DID_SKIP_WINSOCK_
 #endif
 
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERERDEFS_H_SECTION_5
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RendererDefs_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RendererDefs_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RendererDefs_h_salem.inl"
+    #endif
+#endif
 
 #if !defined(_RELEASE) || defined(ENABLE_STATOSCOPE_RELEASE)
 #define ENABLE_TEXTURE_STREAM_LISTENER
@@ -268,7 +508,19 @@ typedef uintptr_t SOCKET;
 // stores pointers to actual backing storage of vertex buffers. Can only be used on architectures
 // that have a unified memory architecture and further guarantee that buffer storage does not change
 // on repeated accesses.
-#if   defined(CRY_USE_DX12)
+#if defined(AZ_RESTRICTED_PLATFORM)
+# define AZ_RESTRICTED_SECTION RENDERERDEFS_H_SECTION_10
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RendererDefs_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RendererDefs_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RendererDefs_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#elif defined(CRY_USE_DX12) || defined(CRY_USE_METAL)
 # define BUFFER_ENABLE_DIRECT_ACCESS 1
 #endif
 
@@ -276,10 +528,22 @@ typedef uintptr_t SOCKET;
 // On platforms that support staging buffers, special buffers are allocated that act as a staging area
 // for updating buffer contents on the fly.
 
-// Confetti Igor: when staged updates are disabled CPU will have direct access to the pool's buffers' content
+// when staged updates are disabled CPU will have direct access to the pool's buffers' content
 //  and update data directly. This cuts memory consumption and reduces the number of copies.
-//  GPU won't be used to update buffer content but it will be used to performa defragmentation.
-#if   defined(CRY_USE_METAL)
+//  GPU won't be used to update buffer content but it will be used to perform defragmentation.
+#if defined(AZ_RESTRICTED_PLATFORM)
+# define AZ_RESTRICTED_SECTION RENDERERDEFS_H_SECTION_11
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RendererDefs_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RendererDefs_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RendererDefs_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+# undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#elif defined(CRY_USE_METAL)
 # define BUFFER_USE_STAGED_UPDATES 0
 #else
 # define BUFFER_USE_STAGED_UPDATES 1
@@ -301,7 +565,7 @@ typedef uintptr_t SOCKET;
 // Enable if we have direct access to video memory and the device manager
 // should manage constant buffers
 #if BUFFER_ENABLE_DIRECT_ACCESS == 1
-#   if defined(DURANGO) || defined (CRY_USE_DX12)
+#   if RENDERERDEFS_H_TRAIT_CONSTANT_BUFFER_ENABLE_DIRECT_ACCESS || defined (CRY_USE_DX12)
 #       define CONSTANT_BUFFER_ENABLE_DIRECT_ACCESS 1
 #   else
 #       define CONSTANT_BUFFER_ENABLE_DIRECT_ACCESS 0
@@ -318,18 +582,50 @@ typedef uintptr_t SOCKET;
 # define FEATURE_SILHOUETTE_POM
 #elif defined(WIN64)
 # define FEATURE_SILHOUETTE_POM
+#elif defined(AZ_RESTRICTED_PLATFORM)
+# define AZ_RESTRICTED_SECTION RENDERERDEFS_H_SECTION_12
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RendererDefs_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RendererDefs_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RendererDefs_h_salem.inl"
+    #endif
 #elif defined(LINUX)
 # define FEATURE_SILHOUETTE_POM
 #elif defined(APPLE)
 # define FEATURE_SILHOUETTE_POM
 #endif
 
+#if defined(AZ_RESTRICTED_PLATFORM)
+    #define AZ_RESTRICTED_SECTION RENDERERDEFS_H_SECTION_13
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RendererDefs_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RendererDefs_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RendererDefs_h_salem.inl"
+    #endif
+#endif
 
-#if !defined(_RELEASE) && !defined(NULL_RENDERER) && (defined(WIN32) || defined(WIN64) || defined(DURANGO)) && !defined(OPENGL)
+#if !defined(_RELEASE) && !defined(NULL_RENDERER) && RENDERERDEFS_H_TRAIT_SUPPORT_D3D_DEBUG_RUNTIME && !defined(OPENGL)
 #   define SUPPORT_D3D_DEBUG_RUNTIME
 #endif
 
-#if defined(NULL_RENDERER) // Scubber friendly negated define condition
+#if defined(NULL_RENDERER)
+#   define AZ_RESTRICTED_SECTION_IMPLEMENTED
+#elif defined(AZ_RESTRICTED_PLATFORM)
+#   define AZ_RESTRICTED_SECTION RENDERERDEFS_H_SECTION_14
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RendererDefs_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RendererDefs_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RendererDefs_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#   undef AZ_RESTRICTED_SECTION_IMPLEMENTED
 #else
 #   define SUPPORT_DEVICE_INFO
 #   if defined(WIN32) || defined(WIN64)
@@ -343,26 +639,39 @@ typedef uintptr_t SOCKET;
 
 #if !defined(NULL_RENDERER)
 #   if defined(CRY_USE_DX12)
-#include "XRenderD3D9/DX12/CryDX12.hpp"
+#       include "XRenderD3D9/DX12/CryDX12.hpp"
 #   elif defined(DEVICE_SUPPORTS_D3D11_1)
-typedef IDXGIFactory1           DXGIFactory;
-typedef IDXGIDevice1            DXGIDevice;
-typedef IDXGIAdapter1           DXGIAdapter;
-typedef IDXGIOutput             DXGIOutput;
-typedef IDXGISwapChain          DXGISwapChain;
-typedef ID3D11DeviceContextX    D3DDeviceContext;
-typedef ID3D11DeviceX           D3DDevice;
+#       if defined(AZ_RESTRICTED_PLATFORM)
+#           define AZ_RESTRICTED_SECTION RENDERERDEFS_H_SECTION_15
+            #if defined(AZ_PLATFORM_XENIA)
+                #include "Xenia/RendererDefs_h_xenia.inl"
+            #elif defined(AZ_PLATFORM_PROVO)
+                #include "Provo/RendererDefs_h_provo.inl"
+            #elif defined(AZ_PLATFORM_SALEM)
+                #include "Salem/RendererDefs_h_salem.inl"
+            #endif
+#       endif
+#       if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#           undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#       else
+            typedef IDXGIFactory1           DXGIFactory;
+            typedef IDXGIDevice1            DXGIDevice;
+            typedef IDXGIAdapter1           DXGIAdapter;
+            typedef IDXGIOutput             DXGIOutput;
+            typedef IDXGISwapChain          DXGISwapChain;
+            typedef ID3D11DeviceContextX    D3DDeviceContext;
+            typedef ID3D11DeviceX           D3DDevice;
+#       endif
 #   else
-
-typedef IDXGIFactory1           DXGIFactory;
-#if !defined(ANDROID) && !defined(APPLE)
-typedef IDXGIDevice1            DXGIDevice;
-#endif
-typedef IDXGIAdapter1           DXGIAdapter;
-typedef IDXGIOutput             DXGIOutput;
-typedef IDXGISwapChain          DXGISwapChain;
-typedef ID3D11DeviceContext     D3DDeviceContext;
-typedef ID3D11Device            D3DDevice;
+        typedef IDXGIFactory1           DXGIFactory;
+#       if !defined(ANDROID) && !defined(APPLE) && !defined(LINUX) && !defined(SKIP_TYPEDEF_OF_IDXGIDEVICE1)
+            typedef IDXGIDevice1        DXGIDevice;
+#       endif
+        typedef IDXGIAdapter1           DXGIAdapter;
+        typedef IDXGIOutput             DXGIOutput;
+        typedef IDXGISwapChain          DXGISwapChain;
+        typedef ID3D11DeviceContext     D3DDeviceContext;
+        typedef ID3D11Device            D3DDevice;
 #   endif
 
 typedef ID3D11InputLayout       D3DVertexDeclaration;
@@ -370,7 +679,21 @@ typedef ID3D11VertexShader      D3DVertexShader;
 typedef ID3D11PixelShader       D3DPixelShader;
 typedef ID3D11Resource          D3DResource;
 
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERERDEFS_H_SECTION_16
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RendererDefs_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RendererDefs_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RendererDefs_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#else
 typedef ID3D11Resource          D3DBaseTexture;
+#endif
 
 typedef ID3D11Texture2D         D3DTexture;
 typedef ID3D11Texture3D         D3DVolumeTexture;
@@ -406,8 +729,21 @@ typedef interface ID3DXConstTable*  LPD3DXCONSTANTTABLE;
 
 
 
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERERDEFS_H_SECTION_19
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RendererDefs_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RendererDefs_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RendererDefs_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#else
 
-#if defined(DURANGO) || defined(APPLE) || defined(CRY_USE_DX12)
+#if RENDERERDEFS_H_TRAIT_DEFINE_D3DPOOL || defined(CRY_USE_DX12)
 // D3DPOOL define still used as function parameters, so defined to backwards compatible with D3D9
 typedef enum _D3DPOOL
 {
@@ -419,6 +755,7 @@ typedef enum _D3DPOOL
 } D3DPOOL;
 #endif
 
+#endif
 
 #ifndef MAKEFOURCC
 #define MAKEFOURCC(ch0, ch1, ch2, ch3)                                                \
@@ -532,13 +869,22 @@ inline eRenderPrimitiveType GetInternalPrimitiveType(PublicRenderPrimitiveType t
 }
 
 #if !defined(NULL_RENDERER)
-#   if defined(WIN32) // Scubber friendly breaks out cases
+#   if defined(WIN32)
 #       define SUPPORT_FLEXIBLE_INDEXBUFFER // supports 16 as well as 32 bit indices AND index buffer bind offset
-#   elif defined(WIN64) // Scubber friendly breaks out cases
+#   elif defined(WIN64)
 #       define SUPPORT_FLEXIBLE_INDEXBUFFER // supports 16 as well as 32 bit indices AND index buffer bind offset
-#   elif defined(LINUX) // Scubber friendly breaks out cases
+#   elif defined(AZ_RESTRICTED_PLATFORM)
+#       define AZ_RESTRICTED_SECTION RENDERERDEFS_H_SECTION_17
+#       if defined(AZ_PLATFORM_XENIA)
+#           include "Xenia/RendererDefs_h_xenia.inl"
+#       elif defined(AZ_PLATFORM_PROVO)
+#           include "Provo/RendererDefs_h_provo.inl"
+#       elif defined(AZ_PLATFORM_SALEM)
+#           include "Salem/RendererDefs_h_salem.inl"
+#       endif
+#   elif defined(LINUX)
 #       define SUPPORT_FLEXIBLE_INDEXBUFFER // supports 16 as well as 32 bit indices AND index buffer bind offset
-#   elif defined(APPLE) // Scubber friendly breaks out cases
+#   elif defined(APPLE)
 #       define SUPPORT_FLEXIBLE_INDEXBUFFER // supports 16 as well as 32 bit indices AND index buffer bind offset
 #   endif
 #endif
@@ -566,13 +912,20 @@ extern ISystem* iSystem;
 #   define VOLUMETRIC_FOG_SHADOWS
 #endif
 
-#if (defined(WIN32) || defined(WIN64)) && !(defined(OPENGL) && defined(RELEASE))
-#if !defined(CRY_USE_DX12)
+#if ((defined(AZ_PLATFORM_WINDOWS) && !defined(OPENGL)) || defined(AZ_PLATFORM_MAC)) && !defined(CRY_USE_DX12) && !defined(RELEASE)
 #   define ENABLE_NULL_D3D11DEVICE
 #endif
+
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERERDEFS_H_SECTION_18
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RendererDefs_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RendererDefs_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RendererDefs_h_salem.inl"
+    #endif
 #endif
-
-
 
 
 // Enable to eliminate DevTextureDataSize calls during stream updates - costs 4 bytes per mip header
@@ -590,7 +943,16 @@ extern ISystem* iSystem;
 #define TEXSTRM_COMMIT_COOLDOWN
 #endif
 
-
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERERDEFS_H_SECTION_20
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RendererDefs_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RendererDefs_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RendererDefs_h_salem.inl"
+    #endif
+#endif
 
 #if defined(_RELEASE)
 #   define EXCLUDE_RARELY_USED_R_STATS

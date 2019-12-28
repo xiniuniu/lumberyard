@@ -22,11 +22,9 @@
 #include "STLGlobalAllocator.h"
 #include "StringUtils.h"
 
-#include <IJobManager_JobDelegator.h>
 #include "Components/IComponentRender.h"
 #include "../CryCommon/IGPUParticleEngine.h"
 #include "ParticleContainerGPU.h"
-
 
 
 static const float fUNSEEN_EMITTER_RESET_TIME   = 5.f;      // Max time to wait before freeing unseen emitter resources
@@ -44,12 +42,6 @@ static const float fVELOCITY_SMOOTHING_TIME     = 0.125f;   // Interval to smoot
     Currently, Dynamic BBs are computed for emitters that perform physics,
     or are affected by non-uniform physical forces.
 */
-
-///////////////////////////////////////////////////////////////////////////////////////////////
-static void UpdateParticlesEmitter(CParticleEmitter* pEmitter)
-{
-    pEmitter->UpdateAllParticlesJob();
-}
 
 static void EnsureGpuDataCreated(CParticleContainer* c)
 {
@@ -84,16 +76,19 @@ static void RenderContainer(CParticleContainer* c, SRendParams const& RenParams,
     }
 }
 
-DECLARE_JOB("UpdateParticles", TUpdateParticlesJob, UpdateParticlesEmitter);
-
-JobManager::SJobState* CParticleBatchDataManager::AddUpdateJob(CParticleEmitter* pEmitter)
+AZ::LegacyJobExecutor* CParticleBatchDataManager::AddUpdateJob(CParticleEmitter *pEmitter)
 {
-    JobManager::SJobState* pJobState = GetJobState();
+    AZ::LegacyJobExecutor* pJobExecutor = GetJobExecutor();
 
-    TUpdateParticlesJob job(pEmitter);
-    job.RegisterJobState(pJobState);
-    job.Run();
-    return pJobState;
+    pJobExecutor->Reset();
+    pJobExecutor->StartJob(
+        [pEmitter]
+        {
+            pEmitter->UpdateAllParticlesJob();
+        }
+    );
+
+    return pJobExecutor;
 }
 
 bool CParticleEmitter::IsEditSelected() const
@@ -125,9 +120,9 @@ void CParticleEmitter::AddUpdateParticlesJob()
     }
 
     // Queue background job for particle updates.
-    assert(!m_pUpdateParticlesJobState);
+    assert(!m_pJobExecutorParticles);
 
-    m_pUpdateParticlesJobState = CParticleManager::Instance()->AddUpdateJob(this);
+    m_pJobExecutorParticles = CParticleManager::Instance()->AddUpdateJob(this);
 }
 
 void CParticleEmitter::UpdateAllParticlesJob()
@@ -148,12 +143,12 @@ void CParticleEmitter::UpdateAllParticlesJob()
 
 void CParticleEmitter::SyncUpdateParticlesJob()
 {
-    if (m_pUpdateParticlesJobState)
+    if (m_pJobExecutorParticles)
     {
         FUNCTION_PROFILER(gEnv->pSystem, PROFILE_PARTICLE);
         PARTICLE_LIGHT_SYNC_PROFILER();
-        gEnv->GetJobManager()->WaitForJob(*m_pUpdateParticlesJobState);
-        m_pUpdateParticlesJobState = NULL;
+        m_pJobExecutorParticles->WaitForCompletion();
+        m_pJobExecutorParticles = nullptr;
     }
 }
 
@@ -394,7 +389,7 @@ CParticleEmitter::CParticleEmitter(const IParticleEffect* pEffect, const QuatTS&
     , m_fBoundsStableAge(0.f)
     , m_fResetAge(fUNSEEN_EMITTER_RESET_TIME)
     , m_nEmitterFlags(uEmitterFlags)
-    , m_pUpdateParticlesJobState(NULL)
+    , m_pJobExecutorParticles(nullptr)
     , m_isPrimed(false)
 {
     m_nInternalFlags |= IRenderNode::REQUIRES_FORWARD_RENDERING | IRenderNode::REQUIRES_NEAREST_CUBEMAP;
@@ -578,11 +573,6 @@ void CParticleEmitter::AddEffect(CParticleContainer* pParentContainer, const CPa
                             pContainer->SetEndLod(_endLod);
                             pContainer->SetStartLod(_startLod);
 
-                            pContainer->SetFadeEffectContainer(nullptr);
-                            if (pParentContainer && pContainer->GetEffect()->GetParams().bIsCameraNonFacingFadeParticle)
-                            {
-                                pParentContainer->SetFadeEffectContainer(pContainer);
-                            }
                             break;
                         }
                         if (!pNext)
@@ -594,18 +584,21 @@ void CParticleEmitter::AddEffect(CParticleContainer* pParentContainer, const CPa
             }
             if (pContainer == pParentContainer)
             {
-                // Add new container
-                if (void* pMem = pNext ? m_Containers.insert_new(pNext) : m_Containers.push_back_new())
+                if (pNext)
                 {
-                    pContainer = new(pMem) CParticleContainer(pParentContainer, this, pEffect, _startLod, _endLod);
-                    if (pParentContainer && pEffect->GetParams().bIsCameraNonFacingFadeParticle )
-                    {
-                        pParentContainer->SetFadeEffectContainer(pContainer);
-                    }
+                    // Destroy it properly before reusing it as the new container
+                    pNext->Reset();
+                    pNext->~CParticleContainer();
+                    pContainer = pNext;
                 }
                 else
                 {
-                    return;
+                    // Add new container
+                    pContainer = static_cast<CParticleContainer*>(m_Containers.push_back_new());
+                }
+                if (pContainer)
+                {
+                    new(pContainer) CParticleContainer(pParentContainer, this, pEffect, _startLod, _endLod);
                 }
             }
         }
@@ -650,14 +643,8 @@ void CParticleEmitter::AddEffect(CParticleContainer* pParentContainer, const CPa
             }
 
             AddEffect(pParentContainer, static_cast<const CParticleEffect*>(pEffect->GetLodParticle(pEffect->GetLevelOfDetail(i))), bUpdate, bInEditor, _startLod, _endLod);
-        }
-    }
-
-    //Add Trail Particle "Fade" particles
-    if (pEffect->HasFadeEffect())
-    {
-        AddEffect(pContainer, pEffect->GetFadeEffect(), bUpdate, bInEditor, startLod, endLod);
-    }
+		}
+	}
 }
 
 void CParticleEmitter::RefreshEffect(bool recreateContainer)
@@ -1259,9 +1246,21 @@ void CParticleEmitter::Render(SRendParams const& RenParams, const SRenderingPass
     SPartRenderParams PartParams;
     ZeroStruct(PartParams);
 
-    ColorF fogVolumeContrib;
-    CFogVolumeRenderNode::TraceFogVolumes(GetPos(), fogVolumeContrib, passInfo);
-    PartParams.m_nFogVolumeContribIdx = GetRenderer()->PushFogVolumeContribution(fogVolumeContrib, passInfo);
+    // Pass the bounding box and the high quality option 
+    // That has been set in the particle editor.
+    bool fogVolumeShadingQuality = false;
+  
+    static ICVar* pCVarFogVolumeShadingQuality = gEnv->pConsole->GetCVar("e_FogVolumeShadingQuality");
+    if ((pCVarFogVolumeShadingQuality->GetIVal() > 0) && (m_Containers.size() > 0))
+    {
+        const ResourceParticleParams& params = m_Containers.front().GetParams();
+        fogVolumeShadingQuality = params.FogVolumeShadingQualityHigh;
+    }
+   
+    SFogVolumeData fogVolData;
+    CFogVolumeRenderNode::TraceFogVolumes(GetPos(), GetBBox(), fogVolData, passInfo, fogVolumeShadingQuality);
+   
+    PartParams.m_nFogVolumeContribIdx = GetRenderer()->PushFogVolumeContribution(fogVolData, passInfo);
 
     // Compute camera distance with top effect's SortBoundsScale.
     PartParams.m_fMainBoundsScale = m_pTopEffect->IsEnabled() ? +m_pTopEffect->GetParams().fSortBoundsScale : 1.f;
@@ -1332,12 +1331,6 @@ void CParticleEmitter::Render(SRendParams const& RenParams, const SRenderingPass
                     {
                         RenderContainer(c, RenParams, PartParams, passInfo);
                         nThreadJobs += c->NeedJobUpdate();
-
-                        if (c->GetFadeEffectContainer() != nullptr)
-                        {
-                            RenderContainer(c->GetFadeEffectContainer(), RenParams, PartParams, passInfo);
-                            nThreadJobs += c->GetFadeEffectContainer()->NeedJobUpdate();
-                        }
                     }
                 }
             }
@@ -1345,7 +1338,7 @@ void CParticleEmitter::Render(SRendParams const& RenParams, const SRenderingPass
     }
     else
     {
-        if (m_pTopEffect->IsEnabled())
+        if (m_pTopEffect && m_pTopEffect->IsEnabled() && !m_Containers.empty())
         {
             CParticleContainer* selectedContainer = m_Containers.begin();
             
@@ -1358,13 +1351,6 @@ void CParticleEmitter::Render(SRendParams const& RenParams, const SRenderingPass
                     {
                         RenderContainer(selectedContainer, RenParams, PartParams, passInfo);
                         nThreadJobs += selectedContainer->NeedJobUpdate();
-
-                        //If the container has a fade particle, we want to draw that to
-                        if (selectedContainer->GetFadeEffectContainer() != nullptr)
-                        {
-                            RenderContainer(selectedContainer->GetFadeEffectContainer(), RenParams, PartParams, passInfo);
-                            nThreadJobs += selectedContainer->GetFadeEffectContainer()->NeedJobUpdate();
-                        }
                     }
                 }
             }
@@ -1378,7 +1364,7 @@ void CParticleEmitter::Render(SRendParams const& RenParams, const SRenderingPass
         CParticleManager::Instance()->FinishParticleRenderTasks(passInfo);
         RenderDebugInfo();
     }
-    else if (nThreadJobs && !m_pUpdateParticlesJobState)
+    else if (nThreadJobs && !m_pJobExecutorParticles)
     {
         // Schedule new emitter update, for containers first rendered this frame.
         AddUpdateParticlesJob();

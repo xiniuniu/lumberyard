@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "StdAfx.h"
+#include "Maestro_precompiled.h"
 #include <AzCore/Serialization/SerializeContext.h>
 #include "ScreenFaderTrack.h"
 #include <IRenderer.h>
@@ -183,11 +183,12 @@ template<>
 inline void TAnimTrack<IScreenFaderKey>::Reflect(AZ::SerializeContext* serializeContext)
 {
     serializeContext->Class<TAnimTrack<IScreenFaderKey> >()
-        ->Version(1)
+        ->Version(2)
         ->Field("Flags", &TAnimTrack<IScreenFaderKey>::m_flags)
         ->Field("Range", &TAnimTrack<IScreenFaderKey>::m_timeRange)
         ->Field("ParamType", &TAnimTrack<IScreenFaderKey>::m_nParamType)
-        ->Field("Keys", &TAnimTrack<IScreenFaderKey>::m_keys);
+        ->Field("Keys", &TAnimTrack<IScreenFaderKey>::m_keys)
+        ->Field("Id", &TAnimTrack<IScreenFaderKey>::m_id);
 }
 
 //////////////////////////////////////////////////////////////////////////

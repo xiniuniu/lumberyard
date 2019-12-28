@@ -23,7 +23,7 @@
 #include "Tarray.h"
 #include "Viewport.h"
 
-#include "clipboard.h"
+#include "Clipboard.h"
 #include "FlowGraphManager.h"
 #include "FlowGraph.h"
 #include "FlowGraphNode.h"
@@ -899,7 +899,7 @@ void QHyperGraphWidget::OnLButtonDown(Qt::KeyboardModifiers modifiers, const QPo
                 m_pGraph->GetAllEdges(edges);
                 for (size_t i = 0; i < edges.size(); ++i)
                 {
-                    if (edges[i]->nodeIn == pNode->GetId() && 0 == QString::compare(edges[i]->portIn.toLatin1().data(), pPort->GetName(), Qt::CaseInsensitive))
+                    if (edges[i]->nodeIn == pNode->GetId() && 0 == QString::compare(edges[i]->portIn.toUtf8().data(), pPort->GetName(), Qt::CaseInsensitive))
                     {
                         CHyperNode* pToNode = (CHyperNode*)m_pGraph->FindNode(edges[i]->nodeOut);
                         QVariant v;
@@ -1792,7 +1792,7 @@ void QHyperGraphWidget::OnLButtonDblClk(Qt::KeyboardModifiers modifiers, const Q
                     if (CEditorFlowGraphModuleManager* pModuleManager = GetIEditor()->GetFlowGraphModuleManager())
                     {
                         const QString moduleGraphName = nodeClassName.mid(nodeClassName.indexOf('_') + 1);
-                        IFlowGraphPtr moduleGraph = pModuleManager->GetModuleFlowGraph(moduleGraphName.toLatin1().data());
+                        IFlowGraphPtr moduleGraph = pModuleManager->GetModuleFlowGraph(moduleGraphName.toUtf8().data());
 
                         if (CFlowGraph* moduleFlowGraph = pFlowGraphManager->FindGraph(moduleGraph))
                         {
@@ -3929,7 +3929,7 @@ void QHyperGraphWidget::PopulateClassMenu(SClassMenuGroup& classMenu, QStringLis
 {
     NodeFilter filter(m_componentViewMask);
     std::vector<_smart_ptr<CHyperNode> > prototypes;
-    m_pGraph->GetManager()->GetPrototypesEx(prototypes, true, functor_ret(filter, &NodeFilter::Visit));
+    m_pGraph->GetManager()->GetPrototypesEx(prototypes, true, functor(filter, &NodeFilter::Visit));
     classes.clear();
     for (std::vector<_smart_ptr<CHyperNode> >::iterator iter = prototypes.begin();
          iter != prototypes.end(); ++iter)
@@ -4390,7 +4390,7 @@ CHyperNode* QHyperGraphWidget::CreateNode(const QString& sNodeClass, const QPoin
     {
         CUndo undo("New Graph Node");
         m_pGraph->UnselectAll();
-        pNode = (CHyperNode*)m_pGraph->CreateNode(sNodeClass.toLatin1().data(), p);
+        pNode = (CHyperNode*)m_pGraph->CreateNode(sNodeClass.toUtf8().data(), p);
     }
     if (pNode)
     {
@@ -5184,7 +5184,7 @@ void QHyperGraphWidget::OnSearchNodes(const QString& text)
 
     NodeFilter filter(m_componentViewMask);
     std::vector<_smart_ptr<CHyperNode> > prototypes;
-    m_pGraph->GetManager()->GetPrototypesEx(prototypes, true, functor_ret(filter, &NodeFilter::Visit));
+    m_pGraph->GetManager()->GetPrototypesEx(prototypes, true, functor(filter, &NodeFilter::Visit));
 
     m_SearchResults.clear();
     m_sCurrentSearchSelection = "";

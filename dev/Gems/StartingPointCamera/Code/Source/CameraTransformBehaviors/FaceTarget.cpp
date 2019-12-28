@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "StartingPointCamera_precompiled.h"
 #include "FaceTarget.h"
 #include <AzCore/Math/Transform.h>
 #include <AzCore/Serialization/SerializeContext.h>
@@ -30,7 +30,7 @@ namespace Camera
         {
             serializeContext->Class<FaceTarget>()
                 ->Version(1)
-                ->SerializerForEmptyClass();
+                ;
 
             AZ::EditContext* editContext = serializeContext->GetEditContext();
             if (editContext)

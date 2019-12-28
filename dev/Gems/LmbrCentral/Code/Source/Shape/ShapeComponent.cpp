@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 #include <AzCore/RTTI/BehaviorContext.h>
 #include <LmbrCentral/Shape/ShapeComponentBus.h>
 
@@ -48,6 +48,18 @@ namespace LmbrCentral
             behaviorContext->EBus<ShapeComponentNotificationsBus>("ShapeComponentNotificationsBus")
                 ->Handler<BehaviorShapeComponentNotificationsBusHandler>()
                 ;
+        }
+    }
+
+    void ShapeComponentConfig::Reflect(AZ::ReflectContext* context)
+    {
+        if (AZ::SerializeContext* serializeContext = azrtti_cast<AZ::SerializeContext*>(context))
+        {
+            serializeContext->Class<ShapeComponentConfig>()
+                ->Version(1)
+                ->Field("DrawColor", &ShapeComponentConfig::m_drawColor)
+                ->Field("IsFilled", &ShapeComponentConfig::m_filled)
+            ;
         }
     }
 } // namespace LmbrCentral

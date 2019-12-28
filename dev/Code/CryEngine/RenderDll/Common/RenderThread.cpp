@@ -20,6 +20,19 @@
 #include <IGameFramework.h>
 #include <ICryAnimation.h>
 #include "PostProcess/PostEffects.h"
+
+#if defined(AZ_RESTRICTED_PLATFORM)
+#undef AZ_RESTRICTED_SECTION
+#define RENDERTHREAD_CPP_SECTION_1 1
+#define RENDERTHREAD_CPP_SECTION_2 2
+#define RENDERTHREAD_CPP_SECTION_3 3
+#define RENDERTHREAD_CPP_SECTION_4 4
+#define RENDERTHREAD_CPP_SECTION_5 5
+#define RENDERTHREAD_CPP_SECTION_6 6
+#define RENDERTHREAD_CPP_SECTION_7 7
+#define RENDERTHREAD_CPP_SECTION_8 8
+#endif
+
 #if !defined(NULL_RENDERER)
 #include <DriverD3D.h>
 #endif
@@ -57,14 +70,30 @@ void CRenderThread::Run()
 
     CryThreadSetName(threadID(THREADID_NULL), RENDER_THREAD_NAME);
     gEnv->pSystem->GetIThreadTaskManager()->MarkThisThreadForDebugging(RENDER_THREAD_NAME, true);
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERTHREAD_CPP_SECTION_1
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RenderThread_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RenderThread_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RenderThread_cpp_salem.inl"
+    #endif
+#endif
     threadID renderThreadId = ::GetCurrentThreadId();
     gRenDev->m_pRT->m_nRenderThread = renderThreadId;
     CNameTableR::m_nRenderThread = renderThreadId;
     gEnv->pCryPak->SetRenderThreadId(renderThreadId);
     //SetThreadAffinityMask(GetCurrentThread(), 2);
     m_started.Set();
+
     gRenDev->m_pRT->Process();
-    gEnv->pSystem->GetIThreadTaskManager()->MarkThisThreadForDebugging(RENDER_THREAD_NAME, false);
+
+    // Check pointers, it's not guaranteed that system is still valid.
+    if (gEnv && gEnv->pSystem && gEnv->pSystem->GetIThreadTaskManager())
+    {
+        gEnv->pSystem->GetIThreadTaskManager()->MarkThisThreadForDebugging(RENDER_THREAD_NAME, false);
+    }
 }
 
 void CRenderThreadLoading::Run()
@@ -75,13 +104,29 @@ void CRenderThreadLoading::Run()
     gRenDev->m_pRT->m_nRenderThreadLoading = renderThreadId;
     CNameTableR::m_nRenderThread = renderThreadId;
 
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERTHREAD_CPP_SECTION_2
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RenderThread_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RenderThread_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RenderThread_cpp_salem.inl"
+    #endif
+#endif
 
     // We aren't interested in file access from the render loading thread, and this
     // would overwrite the real render thread id
     //gEnv->pCryPak->SetRenderThreadId( renderThreadId );
     m_started.Set();
+
     gRenDev->m_pRT->ProcessLoading();
-    gEnv->pSystem->GetIThreadTaskManager()->MarkThisThreadForDebugging(RENDER_LOADING_THREAD_NAME, false);
+
+    // Check pointers, it's not guaranteed that system is still valid.
+    if (gEnv && gEnv->pSystem && gEnv->pSystem->GetIThreadTaskManager())
+    {
+        gEnv->pSystem->GetIThreadTaskManager()->MarkThisThreadForDebugging(RENDER_LOADING_THREAD_NAME, false);
+    }
 }
 
 void SRenderThread::SwitchMode(bool bEnableVideo)
@@ -119,6 +164,16 @@ SRenderThread::SRenderThread()
     m_bEndFrameCalled = false;
     m_bBeginFrameCalled = false;
     m_bQuitLoading = false;
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERTHREAD_CPP_SECTION_3
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RenderThread_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RenderThread_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RenderThread_cpp_salem.inl"
+    #endif
+#endif
 #if defined(USE_HANDLE_FOR_FINAL_FLUSH_SYNC)
     m_FlushFinishedCondition = CreateEvent(NULL, FALSE, FALSE, "FlushFinishedCondition");
 #endif
@@ -201,7 +256,7 @@ bool SRenderThread::RC_CreateDevice()
     LOADING_TIME_PROFILE_SECTION;
     AZ_TRACE_METHOD();
 
-#if defined(WIN32) || defined(WIN64) || defined(APPLE) || defined(LINUX)
+#if defined(WIN32) || defined(WIN64) || defined(APPLE) || defined(LINUX) || defined(CREATE_DEVICE_ON_MAIN_THREAD)
     return gRenDev->RT_CreateDevice();
 #else
     if (IsRenderThread())
@@ -221,7 +276,7 @@ bool SRenderThread::RC_CreateDevice()
 void SRenderThread::RC_ResetDevice()
 {
     AZ_TRACE_METHOD();
-#if defined(WIN32) || defined(WIN64) || defined(LINUX) || defined(APPLE)
+#if defined(WIN32) || defined(WIN64) || defined(LINUX) || defined(APPLE) || defined(CREATE_DEVICE_ON_MAIN_THREAD)
     gRenDev->RT_Reset();
 #else
     if (IsRenderThread())
@@ -237,6 +292,16 @@ void SRenderThread::RC_ResetDevice()
 #endif
 }
 
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERTHREAD_CPP_SECTION_4
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RenderThread_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RenderThread_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RenderThread_cpp_salem.inl"
+    #endif
+#endif
 
 void SRenderThread::RC_PreloadTextures()
 {
@@ -362,7 +427,7 @@ void SRenderThread::RC_UpdateShaderItem (SShaderItem* pShaderItem, _smart_ptr<IM
     AZ_TRACE_METHOD();
     if (IsRenderThread(true))
     {
-        return gRenDev->RT_UpdateShaderItem(pShaderItem);
+        return gRenDev->RT_UpdateShaderItem(pShaderItem, pMaterial.get());
     }
 
     if (!IsMainThread(true))
@@ -377,6 +442,9 @@ void SRenderThread::RC_UpdateShaderItem (SShaderItem* pShaderItem, _smart_ptr<IM
     }
 
     LOADINGLOCK_COMMANDQUEUE
+    // We pass the raw pointer instead of the smart_ptr because writing/reading smart pointers from
+    // the render thread queue causes the ref count to be increased incorrectly in some platforms (e.g. 32 bit architectures). 
+    // Because of this we manually increment the reference count before adding it to the queue and decrement it when we finish using it in the RenderThread.
     IMaterial* materialRawPointer = pMaterial.get();
     if (materialRawPointer)
     {
@@ -1067,6 +1135,67 @@ void SRenderThread::RC_DrawDynVB(SVF_P3F_C4B_T2F* pBuf, uint16* pInds, int nVert
     EndCommand(p);
 }
 
+void SRenderThread::RC_DrawDynUiPrimitiveList(IRenderer::DynUiPrimitiveList& primitives, int totalNumVertices, int totalNumIndices)
+{
+    AZ_TRACE_METHOD();
+
+    if (IsRenderThread())
+    {
+        // When this is called on the render thread we do not currently combine the draw calls since we would
+        // have to allocate a new buffer to do so using RT_DrawDynVBUI.
+        // We could avoid the allocate by having a RT_DrawDynUiPrimitiveList which was only used
+        // when RC_DrawDynUiPrimitiveList is called on the render thread. It would have to do some
+        // fancy stuff with TempDynVB. Currently we are optimizing the case where there is a separate
+        // render thread so this is not a priority.
+        for (const IRenderer::DynUiPrimitive& primitive : primitives)
+        {
+            gRenDev->RT_DrawDynVBUI(primitive.m_vertices, primitive.m_indices, primitive.m_numVertices, primitive.m_numIndices, prtTriangleList);
+        }
+        return;
+    }
+
+    size_t vertsSizeInBytes = Align4(sizeof(SVF_P2F_C4B_T2F_F4B) * totalNumVertices);
+    size_t indsSizeInBytes = Align4(sizeof(uint16) * totalNumIndices);
+
+    LOADINGLOCK_COMMANDQUEUE
+    const size_t fixedCommandSize = 5 * sizeof(uint32);  // accounts for the 5 calls to AddDWORD below
+    byte* p = AddCommand(eRC_DrawDynVBUI, fixedCommandSize + vertsSizeInBytes + indsSizeInBytes);
+
+    // we can't use AddPtr for each primitive since that adds a length then memcpy's the pointer
+    // we want all the vertices added to the queue as one length plus one data chunk.
+    // Same for indices.
+
+    // We know SVF_P2F_C4B_T2F_F4B is a multiple of 4 bytes so no padding needed
+    AddDWORD(p, vertsSizeInBytes);
+    for (const IRenderer::DynUiPrimitive& primitive : primitives)
+    {
+        memcpy(p, primitive.m_vertices, sizeof(SVF_P2F_C4B_T2F_F4B) * primitive.m_numVertices);
+        p += sizeof(SVF_P2F_C4B_T2F_F4B) * primitive.m_numVertices;
+    }
+
+    AddDWORD(p, indsSizeInBytes);
+    // when copying the indicies we have to adjust them to be the correct index in the combined vertex buffer
+    uint16 vbOffset = 0;
+    for (const IRenderer::DynUiPrimitive& primitive : primitives)
+    {
+        uint16* pIndex = reinterpret_cast<uint16*>(p);
+        for (int i = 0; i < primitive.m_numIndices; ++i)
+        {
+            pIndex[i] = primitive.m_indices[i] + vbOffset;
+        }
+        p += sizeof(uint16) * primitive.m_numIndices;
+        vbOffset += primitive.m_numVertices;
+    }
+    // uint16 is not a multiple of 4 bytes so if there is an odd number of indices we need to pad
+    unsigned pad = indsSizeInBytes - sizeof(uint16) * totalNumIndices;
+    p += pad;
+
+    AddDWORD(p, totalNumVertices);
+    AddDWORD(p, totalNumIndices);
+    AddDWORD(p, (int)prtTriangleList);
+    EndCommand(p);
+}
+
 void SRenderThread::RC_Draw2dImageStretchMode(bool bStretch)
 {
     AZ_TRACE_METHOD();
@@ -1427,20 +1556,6 @@ void SRenderThread::RC_SetCamera()
     }
 }
 
-void SRenderThread::RC_PrepareLevelTexStreaming()
-{
-    AZ_TRACE_METHOD();
-    if (IsRenderThread())
-    {
-        gRenDev->RT_PrepareLevelTexStreaming();
-        return;
-    }
-
-    LOADINGLOCK_COMMANDQUEUE
-    byte* p = AddCommand(eRC_PrepareLevelTexStreaming, 0);
-    EndCommand(p);
-}
-
 void SRenderThread::RC_PostLoadLevel()
 {
     AZ_TRACE_METHOD();
@@ -1734,16 +1849,8 @@ void SRenderThread::RC_ReleaseDeviceTexture(CTexture* pTexture)
 
     if (IsRenderThread())
     {
-        if (m_eVideoThreadMode != eVTM_Disabled)
-        {
-            m_rdldLock.Lock();
-            pTexture->RT_ReleaseDevice();
-            m_rdldLock.Unlock();
-        }
-        else
-        {
-            pTexture->RT_ReleaseDevice();
-        }
+        CryOptionalAutoLock<CryMutex> lock(m_lockRenderLoading, m_eVideoThreadMode != eVTM_Disabled);
+        pTexture->RT_ReleaseDevice();
         return;
     }
 
@@ -2131,7 +2238,7 @@ void SRenderThread::EnqueueRenderCommand(RenderCommandCB command)
 
 #pragma warning(push)
 #pragma warning(disable : 4800)
-void SRenderThread::ProcessCommands()
+void SRenderThread::ProcessCommands(bool loadTimeProcessing)
 {
     AZ_TRACE_METHOD();
     CRYPROFILE_SCOPE_PROFILE_MARKER("SRenderThread::ProcessCommands");
@@ -2149,7 +2256,6 @@ void SRenderThread::ProcessCommands()
         gcpRendD3D->BindContextToThread(CryGetCurrentThreadId());
     }
 # endif
-    //  Confetti BEGIN: Igor Lobanchikov
 #if defined(OPENGL) && !DXGL_FULL_EMULATION && !defined(CRY_USE_METAL)
     if (CRenderer::CV_r_multithreaded)
     {
@@ -2160,7 +2266,6 @@ void SRenderThread::ProcessCommands()
         m_kDXGLDeviceContextHandle.Set(&gcpRendD3D->GetDeviceContext(), !CRenderer::CV_r_multithreaded);
     }
 #endif //defined(OPENGL) && !DXGL_FULL_EMULATION
-    //  Confetti End: Igor Lobanchikov
 
 
 #ifdef DO_RENDERSTATS
@@ -2169,6 +2274,16 @@ void SRenderThread::ProcessCommands()
 
     int threadId = m_nCurThreadProcess;
 
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERTHREAD_CPP_SECTION_5
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RenderThread_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RenderThread_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RenderThread_cpp_salem.inl"
+    #endif
+#endif
     int n = 0;
     m_bSuccessful = true;
     m_hResult = S_OK;
@@ -2201,6 +2316,16 @@ void SRenderThread::ProcessCommands()
                 gRenDev->RT_Reset();
             }
             break;
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERTHREAD_CPP_SECTION_6
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RenderThread_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RenderThread_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RenderThread_cpp_salem.inl"
+    #endif
+#endif
         case eRC_ReleasePostEffects:
             if (gRenDev->m_pPostProcessMgr)
             {
@@ -2355,15 +2480,11 @@ void SRenderThread::ProcessCommands()
         case eRC_UpdateShaderItem:
         {
             SShaderItem* pShaderItem = ReadCommand<SShaderItem*>(n);
-            //Note the read command is a blit of the memory so it won't over increment the smart pointer.
-            //But we need to let this pointer go out of scope to deref correctly
-            //It is unclear why this material is even necessary to pass at this point.
-            //Further investigation is warranted.
-            // MSR - The material is necessary at this point because an UpdateShaderItem may have been queued 
+            // The material is necessary at this point because an UpdateShaderItem may have been queued 
             // for a material that was subsequently released and would have been deleted, thus resulting in a
             // dangling pointer and a crash; this keeps it alive until this render command can complete
             IMaterial* pMaterial = ReadCommand<IMaterial*>(n);
-            gRenDev->RT_UpdateShaderItem(pShaderItem);
+            gRenDev->RT_UpdateShaderItem(pShaderItem, pMaterial);
             if (pMaterial)
             {
                 // Release the reference we added when we submitted the command.
@@ -2576,7 +2697,7 @@ void SRenderThread::ProcessCommands()
             break;
         case eRC_CreateDeviceTexture:
         {
-            m_rdldLock.Lock();
+            CryOptionalAutoLock<CryMutex> lock(m_lockRenderLoading, loadTimeProcessing);
             CTexture* pTex = ReadCommand<CTexture*>(n);
             const byte* pData[6];
             for (int i = 0; i < 6; i++)
@@ -2584,7 +2705,6 @@ void SRenderThread::ProcessCommands()
                 pData[i] = ReadCommand<byte*>(n);
             }
             m_bSuccessful = pTex->RT_CreateDeviceTexture(pData);
-            m_rdldLock.Unlock();
         }
         break;
         case eRC_CopyDataToTexture:
@@ -2651,6 +2771,24 @@ void SRenderThread::ProcessCommands()
             }
             END_PROFILE_PLUS_RT(gRenDev->m_fRTTimeMiscRender);
         }
+        break;
+        case eRC_DrawDynVBUI:
+            {
+                pP = &m_Commands[threadId][0];
+                uint32 nSize = *(uint32*)&pP[n];
+                SVF_P2F_C4B_T2F_F4B* pBuf = (SVF_P2F_C4B_T2F_F4B*)&pP[n + 4];
+                n += nSize + 4;
+                nSize = *(uint32*)&pP[n];
+                uint16* pInds = (nSize > 0) ? (uint16*)&pP[n + 4] : nullptr;
+                n += nSize + 4;
+                int nVerts = ReadCommand<int>(n);
+                int nInds = ReadCommand<int>(n);
+                const PublicRenderPrimitiveType nPrimType = (PublicRenderPrimitiveType)ReadCommand<int>(n);
+                if (m_eVideoThreadMode == eVTM_Disabled)
+                {
+                    gRenDev->RT_DrawDynVBUI(pBuf, pInds, nVerts, nInds, nPrimType);
+                }
+            }
         break;
 
         case eRC_Draw2dImageStretchMode:
@@ -2743,6 +2881,9 @@ void SRenderThread::ProcessCommands()
         break;
         case eRC_AzFunction:
         {
+            // Lock only when processing on the RenderLoadThread - multiple AzFunctions make calls that cause crashes if invoked concurrently with render
+            CryOptionalAutoLock<CryMutex> lock(m_lockRenderLoading, loadTimeProcessing);
+
             // We "build" the command from the buffer memory (instead of copying it)
             RenderCommandCB* command = alias_cast<RenderCommandCB*>(reinterpret_cast<uint32*>(&m_Commands[threadId][n]));
             (*command)();
@@ -2797,8 +2938,8 @@ void SRenderThread::ProcessCommands()
                 {
                     ////////////////////////////////////////////////
                     // wait till all SRendItems for this frame have finished preparing
-                    gEnv->pJobManager->WaitForJob(*gRenDev->GetFinalizeRendItemJobState(gRenDev->m_RP.m_nProcessThreadID));
-                    gEnv->pJobManager->WaitForJob(*gRenDev->GetFinalizeShadowRendItemJobState(gRenDev->m_RP.m_nProcessThreadID));
+                    gRenDev->GetFinalizeRendItemJobExecutor(gRenDev->m_RP.m_nProcessThreadID)->WaitForCompletion();
+                    gRenDev->GetFinalizeShadowRendItemJobExecutor(gRenDev->m_RP.m_nProcessThreadID)->WaitForCompletion();
 
                     ////////////////////////////////////////////////
                     // to non-thread safe remaing work for *::Render functions
@@ -2849,6 +2990,10 @@ void SRenderThread::ProcessCommands()
             CShaderResources* pRes = ReadCommand<CShaderResources*>(n);
             uint64 nMaskGen = ReadCommand<uint64>(n);
             uint32 nFlags = ReadCommand<uint32>(n);
+
+            // Lock only when processing on the RenderLoadThread - RT_ParseShader changes data structures used while rendering
+            CryOptionalAutoLock<CryMutex> lock(m_lockRenderLoading, loadTimeProcessing);
+
             gRenDev->m_cEF.RT_ParseShader(pSH, nMaskGen, nFlags, pRes);
             pSH->Release();
             if (pRes)
@@ -2987,12 +3132,6 @@ void SRenderThread::ProcessCommands()
             {
                 pRE->RT_ReadResult_Try(nDefaultNumSamples);
             }
-        }
-        break;
-
-        case eRC_PrepareLevelTexStreaming:
-        {
-            gRenDev->RT_PrepareLevelTexStreaming();
         }
         break;
 
@@ -3154,7 +3293,21 @@ void SRenderThread::Process()
         // Clear stale SRV bindings before processing graphic commands in case there have been textures deleted in previous frames,
         // because simply clearing them during BeginFrame/EndFrame is not sufficient as the graphic commands can be executed without calling BeginFrame/EndFrame
 #if !defined (NULL_RENDERER)
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERTHREAD_CPP_SECTION_8
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RenderThread_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RenderThread_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RenderThread_cpp_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#else
         if (gcpRendD3D->IsDeviceContextValid())
+#endif
         {
             gcpRendD3D->RT_UnbindTMUs();
             gcpRendD3D->RT_UnbindResources();
@@ -3177,7 +3330,8 @@ void SRenderThread::Process()
             //gRenDev->m_fRTTimeEndFrame = 0;
             gRenDev->m_fRTTimeSceneRender = 0;
             gRenDev->m_fRTTimeMiscRender = 0;
-            ProcessCommands();
+
+            ProcessCommands(false /*loadTimeProcessing*/);
 
             CTimeValue TimeAfterProcess = iTimer->GetAsyncTime();
             fT = TimeAfterProcess.GetDifferenceInSeconds(TimeAfterWait);
@@ -3202,6 +3356,9 @@ void SRenderThread::Process()
             gcpRendD3D->BindContextToThread(CryGetCurrentThreadId());
             gRenDev->m_DevBufMan.Sync(frameId); // make sure no request are flying when switching to render loading thread
 
+            // Guarantee default resources
+            gRenDev->InitSystemResources(0);
+
             // Create another render thread;
             SwitchMode(true);
 
@@ -3210,43 +3367,57 @@ void SRenderThread::Process()
 
                 while (m_eVideoThreadMode != eVTM_ProcessingStop)
                 {
-
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERTHREAD_CPP_SECTION_7
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RenderThread_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RenderThread_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RenderThread_cpp_salem.inl"
+    #endif
+#endif
                     frameId += 1;
                     CTimeValue curTime = gEnv->pTimer->GetAsyncTime();
                     float deltaTime = max((curTime - lastTime).GetSeconds(), 0.0f);
                     lastTime = curTime;
-                    gRenDev->m_DevBufMan.Update(frameId, true);
+                    {
+                        CryAutoLock<CryMutex> lock(m_lockRenderLoading);
+                        gRenDev->m_DevBufMan.Update(frameId, true);
+                    }
 
                     if (m_pLoadtimeCallback)
                     {
+                        CryAutoLock<CryMutex> lock(m_lockRenderLoading);
                         m_pLoadtimeCallback->LoadtimeUpdate(deltaTime);
                     }
 
                     {
                         ////////////////////////////////////////////////
                         // wait till all SRendItems for this frame have finished preparing
-                        gEnv->pJobManager->WaitForJob(*gRenDev->GetFinalizeRendItemJobState(gRenDev->m_RP.m_nProcessThreadID));
-                        gEnv->pJobManager->WaitForJob(*gRenDev->GetFinalizeShadowRendItemJobState(gRenDev->m_RP.m_nProcessThreadID));
+                        const threadID processThreadID = gRenDev->m_RP.m_nProcessThreadID;
 
-                        m_rdldLock.Lock();
+                        gRenDev->GetFinalizeRendItemJobExecutor(processThreadID)->WaitForCompletion();
 
-                        gRenDev->RT_SwitchToNativeResolutionBackbuffer(false);
+                        gRenDev->GetFinalizeShadowRendItemJobExecutor(processThreadID)->WaitForCompletion();
 
-                        if (m_pLoadtimeCallback)
                         {
-                            m_pLoadtimeCallback->LoadtimeRender();
+                            CryAutoLock<CryMutex> lock(m_lockRenderLoading);
+
+                            gRenDev->SetViewport(0, 0, gRenDev->GetOverlayWidth(), gRenDev->GetOverlayHeight());
+                            gRenDev->RT_BeginFrame();
+                            SPostEffectsUtils::AcquireFinalCompositeTarget(false);
+                            if (m_pLoadtimeCallback)
+                            {
+                                m_pLoadtimeCallback->LoadtimeRender();
+                            }
+
+                            gRenDev->RT_EndFrame(true /*isLoading*/);
+
+                            // Tick mesh streaming
+                            CRenderMesh::Tick();
                         }
-
-                        gRenDev->m_DevBufMan.ReleaseEmptyBanks(frameId);
-
-                        gRenDev->RT_PresentFast();
-                        CRenderMesh::Tick();
-                        CTexture::RT_LoadingUpdate();
-                        m_rdldLock.Unlock();
                     }
-
-                    // Make sure we aren't running with thousands of FPS with VSync disabled
-                    gRenDev->LimitFramerate(120, true);
 
 #if defined(SUPPORT_DEVICE_INFO_MSG_PROCESSING)
                     gcpRendD3D->DevInfo().ProcessSystemEventQueue();
@@ -3275,12 +3446,10 @@ void SRenderThread::Process()
         const uint64 elapsed = CryGetTicks() - start;
         gEnv->pSystem->GetCurrentUpdateTimeStats().RenderTime = elapsed;
     }
-    //  Confetti BEGIN: Igor Lobanchikov
 #if defined(OPENGL) && !DXGL_FULL_EMULATION && !defined(CRY_USE_METAL)
     m_kDXGLDeviceContextHandle.Set(NULL, !CRenderer::CV_r_multithreaded);
     m_kDXGLContextHandle.Set(NULL);
 #endif //defined(OPENGL) && !DXGL_FULL_EMULATION
-    //  Confetti End: Igor Lobanchikov
 }
 
 void SRenderThread::ProcessLoading()
@@ -3301,7 +3470,9 @@ void SRenderThread::ProcessLoading()
         {
             m_fTimeIdleDuringLoading += fTimeAfterWait - fTime;
         }
-        ProcessCommands();
+
+        ProcessCommands(true /*loadTimeProcessing*/);
+
         SignalFlushFinishedCond();
         float fTimeAfterProcess = iTimer->GetAsyncCurTime();
         gRenDev->m_fTimeProcessedRT[m_nCurThreadProcess] += fTimeAfterProcess - fTimeAfterWait;
@@ -3315,12 +3486,10 @@ void SRenderThread::ProcessLoading()
             SwitchMode(false);
         }
     }
-    //  Confetti BEGIN: Igor Lobanchikov
 #if defined(OPENGL) && !DXGL_FULL_EMULATION && !defined(CRY_USE_METAL)
     m_kDXGLDeviceContextHandle.Set(NULL, !CRenderer::CV_r_multithreaded);
     m_kDXGLContextHandle.Set(NULL);
 #endif //defined(OPENGL) && !DXGL_FULL_EMULATION
-    //  Confetti End: Igor Lobanchikov
 }
 
 #ifndef STRIP_RENDER_THREAD
@@ -3333,7 +3502,6 @@ void SRenderThread::FlushAndWait()
         return;
     }
 
-    LOADING_TIME_PROFILE_SECTION(iSystem);
     FUNCTION_PROFILER_LEGACYONLY(GetISystem(), PROFILE_RENDERER);
 
     if (gEnv->pStatoscope)
@@ -3526,7 +3694,21 @@ void SRenderThread::WaitFlushFinishedCond()
             m_nFlush = 0;
         }
 #else
-        m_FlushFinishedCondition.Wait(m_LockFlushNotify);
+        const int OneHunderdMilliseconds = 100;
+        bool timedOut = !(m_FlushFinishedCondition.TimedWait(m_LockFlushNotify, OneHunderdMilliseconds));
+#if defined(AZ_PLATFORM_IOS) && !defined(_RELEASE)
+        // When we trigger asserts or warnings from a thread other than the main thread, the dialog box has to be
+        // presented from the main thread. So, we need to pump the system event loop while the main thread is waiting.
+        // We're using locks for waiting on iOS. This means that once the main thread goes into the wait, it's not
+        // going to be able to pump system events. To handle this, we use a timed wait with 100ms. In most cases,
+        // the render thread will complete within 100ms. But, when we need to display a dialog from the render thread,
+        // it times out and pumps the system event loop so we can display the dialog. After that, since m_nFlush is still
+        // true, we will go back into the wait and let the render thread complete.
+        if (timedOut)
+        {
+            AzFramework::ApplicationRequests::Bus::Broadcast(&AzFramework::ApplicationRequests::PumpSystemEventLoopUntilEmpty);
+        }
+#endif
 #endif
     }
     m_LockFlushNotify.Unlock();
@@ -3537,7 +3719,7 @@ void SRenderThread::WaitFlushFinishedCond()
 #ifdef WIN32
         AzFramework::ApplicationRequests::Bus::Broadcast(&AzFramework::ApplicationRequests::PumpSystemEventLoopUntilEmpty);
         Sleep(0);
-#elif defined(AZ_PLATFORM_APPLE_OSX) && !defined(_RELEASE)
+#elif defined(AZ_PLATFORM_MAC) && !defined(_RELEASE)
         // On MacOS, we display blocking alerts(dialogs) to provide notifications to users(eg: assert failed).
         // These alerts(NSAlert) can be triggered only from the main thread. If we run into an assert on the render thread,
         // this block of code ensures that the alert is displayed on the main thread and we're not deadlocked with render thread.

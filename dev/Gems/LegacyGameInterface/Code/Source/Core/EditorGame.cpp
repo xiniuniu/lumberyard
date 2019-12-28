@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "LegacyGameInterface_precompiled.h"
 #include "EditorGame.h"
 #include "System/GameStartup.h"
 #include "IGameRulesSystem.h"
@@ -102,7 +102,12 @@ namespace LegacyGameInterface
         SEntityEvent startLevelEvent(ENTITY_EVENT_START_LEVEL);
         gEnv->pEntitySystem->SendEventToAll(startLevelEvent);
 
-        m_Game->GetIGameFramework()->MarkGameStarted();
+        m_Game->GetIGameFramework()->MarkGameStarted(true);
+    }
+
+    void EditorGame::OnCloseLevel()
+    {
+        m_Game->GetIGameFramework()->MarkGameStarted(false);
     }
 
     IFlowSystem* EditorGame::GetIFlowSystem()

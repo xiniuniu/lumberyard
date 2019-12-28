@@ -230,12 +230,18 @@ namespace ScriptCanvasEditor
         ScriptCanvasAssetFileInfo scFileInfo;
         AZ::Data::AssetInfo assetInfo;
         AZStd::string rootFilePath;
-        AzToolsFramework::AssetSystemRequestBus::Broadcast(&AzToolsFramework::AssetSystemRequestBus::Events::GetAssetInfoById, assetId, azrtti_typeid<ScriptCanvasAsset>(), assetInfo, rootFilePath);
+        bool foundAssetInfo = false;
+        AzToolsFramework::AssetSystemRequestBus::BroadcastResult(foundAssetInfo, &AzToolsFramework::AssetSystemRequestBus::Events::GetAssetInfoById, assetId, azrtti_typeid<ScriptCanvasAsset>(), assetInfo, rootFilePath);
+        if (!foundAssetInfo)
+        {
+            return {};
+        }
+
         AzFramework::StringFunc::Path::Join(rootFilePath.data(), assetInfo.m_relativePath.data(), scFileInfo.m_absolutePath);
         m_scriptCanvasAssetFileInfo.emplace(assetId, AZStd::move(scFileInfo));
 
         AZ::Data::AssetBus::MultiHandler::BusConnect(assetId);
-        auto loadingAsset = AZ::Data::AssetManager::Instance().GetAsset(assetId, ScriptCanvasAssetHandler::GetAssetTypeStatic(), true, &AZ::ObjectStream::AssetFilterDefault, loadBlocking);
+        auto loadingAsset = AZ::Data::AssetManager::Instance().GetAsset(assetId, ScriptCanvasAssetHandler::GetAssetTypeStatic(), true, nullptr, loadBlocking);
 
         Metrics::MetricsEventsBus::Broadcast(&Metrics::MetricsEventRequests::SendMetric, ScriptCanvasEditor::Metrics::Events::Canvas::OpenGraph);
 
@@ -257,6 +263,7 @@ namespace ScriptCanvasEditor
         DocumentContextNotificationBus::Event(assetId, &DocumentContextNotifications::OnAssetModificationStateChanged, scFileInfo.m_fileModificationState);
 
         DocumentContextNotificationBus::Event(asset.GetId(), &DocumentContextNotifications::OnScriptCanvasAssetReady, asset);
+        AZ::Data::AssetBus::MultiHandler::BusDisconnect(assetId);
     }
 
     void DocumentContext::OnAssetReloaded(AZ::Data::Asset<AZ::Data::AssetData> asset)
@@ -270,12 +277,26 @@ namespace ScriptCanvasEditor
 
     void DocumentContext::OnAssetError(AZ::Data::Asset<AZ::Data::AssetData> asset)
     {
-        AZ_Error("Script Canvas", asset.IsReady(), "Failed to load graph asset with id \"%s\".", asset.GetId().ToString<AZStd::string>().data());
+        auto assetFileInfoIt = m_scriptCanvasAssetFileInfo.find(asset.GetId());
+        if (assetFileInfoIt != m_scriptCanvasAssetFileInfo.end())
+        {
+            AZ_Error("Script Canvas", asset.IsReady(), "Failed to load graph asset %s with AssetId: %s", assetFileInfoIt->second.m_absolutePath.c_str(), asset.ToString<AZStd::string>().c_str());
+        }
+        else
+        {
+            // backup strategy - we dont know what the actual absolute path is, so at least provide the asset info alone.
+            AZ_Error("Script Canvas", asset.IsReady(), "Failed to load graph asset %s", asset.ToString<AZStd::string>().c_str());
+        }
+        
+        const AZ::Data::AssetId* busId = AZ::Data::AssetBus::GetCurrentBusId();
+        const AZ::Data::AssetId assetId = busId ? *busId : asset.GetId();
+        AZ::Data::AssetBus::MultiHandler::BusDisconnect(assetId);
     }
 
     void DocumentContext::OnAssetUnloaded(const AZ::Data::AssetId assetId, const AZ::Data::AssetType)
     {
         DocumentContextNotificationBus::Event(assetId, &DocumentContextNotifications::OnScriptCanvasAssetUnloaded, assetId);
+        AZ::Data::AssetBus::MultiHandler::BusDisconnect(assetId);
     }
 
     void DocumentContext::SourceFileChanged(AZStd::string relPath, AZStd::string scanFolder, AZ::Uuid sourceAssetId)
@@ -308,7 +329,6 @@ namespace ScriptCanvasEditor
         if (registeredFileInfo == m_scriptCanvasAssetFileInfo.end())
         {
             m_scriptCanvasAssetFileInfo.emplace(assetId, assetFileInfo);
-            AZ::Data::AssetBus::MultiHandler::BusConnect(assetId);
             return true;
         }
 
@@ -318,7 +338,6 @@ namespace ScriptCanvasEditor
 
     bool DocumentContext::UnregisterScriptCanvasAsset(const AZ::Data::AssetId& assetId)
     {
-        AZ::Data::AssetBus::MultiHandler::BusDisconnect(assetId);
         auto registeredFileInfo = m_scriptCanvasAssetFileInfo.find(assetId);
         if (registeredFileInfo != m_scriptCanvasAssetFileInfo.end())
         {

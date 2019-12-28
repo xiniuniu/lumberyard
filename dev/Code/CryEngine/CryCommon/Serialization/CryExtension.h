@@ -22,15 +22,15 @@
 
 namespace Serialization
 {
-    // Allows to have boost::shared_ptr<TPointer> but serialize it by
+    // Allows to have AZStd::shared_ptr<TPointer> but serialize it by
     // interface-casting to TSerializable, i.e. implementing Serialization through
     // separate interface.
     template<class TPointer, class TSerializable = TPointer>
     struct CryExtensionPointer
     {
-        boost::shared_ptr<TPointer>& ptr;
+        AZStd::shared_ptr<TPointer>& ptr;
 
-        CryExtensionPointer(boost::shared_ptr<TPointer>& _ptr)
+        CryExtensionPointer(AZStd::shared_ptr<TPointer>& _ptr)
             : ptr(_ptr) {}
         void Serialize(Serialization::IArchive& ar);
     };
@@ -38,7 +38,7 @@ namespace Serialization
 
 // This function treats T as a type derived from CryUnknown type.
 template<class T>
-bool Serialize(Serialization::IArchive& ar, boost::shared_ptr<T>& ptr, const char* name, const char* label);
+bool Serialize(Serialization::IArchive& ar, AZStd::shared_ptr<T>& ptr, const char* name, const char* label);
 
 #include "CryExtensionImpl.h"
 #endif // CRYINCLUDE_CRYCOMMON_SERIALIZATION_CRYEXTENSION_H

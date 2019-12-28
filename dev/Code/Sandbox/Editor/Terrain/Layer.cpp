@@ -25,6 +25,8 @@
 
 #include <QPainter>
 
+#include <AzCore/Math/Uuid.h>
+
 //! Size of the texture preview
 #define LAYER_TEX_PREVIEW_CX 128
 //! Size of the texture preview
@@ -77,7 +79,7 @@ CLayer::CLayer()
     m_minSlopeAngle = 0;
     m_maxSlopeAngle = 90;
 
-    m_guid = QUuid::createUuid();
+    m_guid = AZ::Uuid::CreateRandom();
 
     // Create the bitmap
     m_bmpLayerTexPrev = QImage(LAYER_TEX_PREVIEW_CX, LAYER_TEX_PREVIEW_CX, QImage::Format_RGBA8888);
@@ -294,7 +296,7 @@ void CLayer::Serialize(CXmlArchive& xmlAr)
             // Load it
             if (!LoadTexture((DWORD*)pData, m_cTextureDimensions.width(), m_cTextureDimensions.height()))
             {
-                Warning("Failed to load texture for layer %s", m_strLayerName.toLatin1().data());
+                Warning("Failed to load texture for layer %s", m_strLayerName.toUtf8().data());
             }
         }
         else if (xmlAr.pNamedData)
@@ -302,7 +304,7 @@ void CLayer::Serialize(CXmlArchive& xmlAr)
             // Try loading texture from external file,
             if (!m_strLayerTexPath.isEmpty() && !LoadTexture(m_strLayerTexPath))
             {
-                GetISystem()->Warning(VALIDATOR_MODULE_EDITOR, VALIDATOR_ERROR, VALIDATOR_FLAG_FILE, m_strLayerTexPath.toLatin1().data(), "Failed to load texture for layer %s", m_strLayerName.toLatin1().data());
+                GetISystem()->Warning(VALIDATOR_MODULE_EDITOR, VALIDATOR_ERROR, VALIDATOR_FLAG_FILE, m_strLayerTexPath.toUtf8().data(), "Failed to load texture for layer %s", m_strLayerName.toUtf8().data());
             }
         }
     }
@@ -311,19 +313,19 @@ void CLayer::Serialize(CXmlArchive& xmlAr)
         XmlNodeRef layer = xmlAr.root;
 
         // Name
-        layer->setAttr("Name", m_strLayerName.toLatin1().data());
+        layer->setAttr("Name", m_strLayerName.toUtf8().data());
 
         //GUID
         layer->setAttr("GUID", m_guid);
 
         // Texture
-        layer->setAttr("Texture", m_strLayerTexPath.toLatin1().data());
+        layer->setAttr("Texture", m_strLayerTexPath.toUtf8().data());
         layer->setAttr("TextureWidth", m_cTextureDimensions.width());
         layer->setAttr("TextureHeight", m_cTextureDimensions.height());
 
         if (!m_splatMapPath.isEmpty())
         {
-            layer->setAttr("SplatMapPath", m_splatMapPath.toLatin1().data());
+            layer->setAttr("SplatMapPath", m_splatMapPath.toUtf8().data());
         }
 
         // Parameters (Altitude, Slope...)
@@ -348,7 +350,7 @@ void CLayer::Serialize(CXmlArchive& xmlAr)
                 sSurfaceType = pSurfaceType->GetName();
             }
 
-            layer->setAttr("SurfaceType", sSurfaceType.toLatin1().data());
+            layer->setAttr("SurfaceType", sSurfaceType.toUtf8().data());
         }
 
         {
@@ -424,7 +426,7 @@ bool CLayer::LoadTexture(const QString& lpBitmapName, UINT iWidth, UINT iHeight)
     // Retrieve the bits from the bitmap
     memcpy(m_texture.GetData(), bmpLoad.bits(), 128 * 128 * sizeof(DWORD));
     // no alpha-channel wanted
-    std::transform(m_texture.GetData(), m_texture.GetData() + 128 * 128, m_texture.GetData(), [](unsigned int i) { return 0x00ffffff & i; });
+    AZStd::transform(m_texture.GetData(), m_texture.GetData() + 128 * 128, m_texture.GetData(), [](unsigned int i) { return 0x00ffffff & i; });
 
     return true;
 }
@@ -443,14 +445,8 @@ inline bool IsPower2(int n)
 
 bool CLayer::LoadTexture(QString strFileName)
 {
-    CLogFile::FormatLine("Loading layer texture (%s)...", strFileName.toLatin1().data());
-
-    // Save the filename
     m_strLayerTexPath = Path::FullPathToGamePath(strFileName);
-    if (m_strLayerTexPath.isEmpty())
-    {
-        m_strLayerTexPath = strFileName;
-    }
+    CLogFile::FormatLine("Loading layer texture %s from %s...", m_strLayerTexPath.toUtf8().data(), strFileName.toUtf8().data());
 
     return LoadTextureFromPath();
 }
@@ -467,7 +463,7 @@ bool CLayer::LoadTextureFromPath()
         // we failed to load the source asset itself, try the output compiled asset instead:
         if (!CImageUtil::LoadImage(m_strLayerTexPath, m_texture, &bQualityLoss))
         {
-            CLogFile::FormatLine("Error loading layer texture (%s)...", m_strLayerTexPath.toLatin1().data());
+            CLogFile::FormatLine("Error loading layer texture (%s)...", m_strLayerTexPath.toUtf8().data());
             bError = true;
         }
     }
@@ -593,7 +589,7 @@ void CLayer::PrecacheTexture()
 
     if (!LoadTextureFromPath())
     {
-        Error("Error caching layer texture (%s)...", m_strLayerTexPath.toLatin1().data());
+        Error("Error caching layer texture (%s)...", m_strLayerTexPath.toUtf8().data());
         m_cTextureDimensions = QSize(4, 4);
         m_texture.Allocate(m_cTextureDimensions.width(), m_cTextureDimensions.height());
         m_texture.Fill(0xff);

@@ -12,9 +12,11 @@
 
 from botocore.exceptions import ClientError
 from errors import HandledError
+from resource_manager_common import constant
 
 import os
 import imp
+import importlib
 import sys
 import os.path
 import traceback
@@ -30,7 +32,6 @@ class HookContext(object):
     def load_modules(self, module_name):
 
         module_hooks = []
-        gems_seen = set()
 
         project_module_path = os.path.join(self.context.config.aws_directory_path, module_name)
         if os.path.isfile(project_module_path):
@@ -41,19 +42,15 @@ class HookContext(object):
             resource_group_module_path = os.path.join(resource_group_directory_path, module_name)
             if os.path.isfile(resource_group_module_path):
                 module_hooks.append(HookModule(self.context, resource_group_module_path, resource_group = resource_group))
-            if resource_group.gem:
-                gems_seen.add(resource_group.gem)
 
-        for gem in self.context.gem.enabled_gems:
-            if gem in gems_seen:
-                continue
+        for gem in self.context.gem.enabled_gems:            
             gem_module_path = os.path.join(gem.aws_directory_path, module_name)
             if os.path.isfile(gem_module_path):
-                module_hooks.append(HookModule(self.context, gem_module_path, gem = gem))
+                module_hooks.append(HookModule(self.context, gem_module_path, gem = gem))            
 
         self.__hook_modules[module_name] = module_hooks
 
-    def call_single_module_handler(self, module_name, handler_name, resource_group_name, args=(), kwargs={}, deprecated=False):
+    def call_single_module_handler(self, module_name, handler_name, resource_group_name, args=(), kwargs={}, deprecated=False, disabled=False):
         '''Calls a function in a hook module for a specified resource group.
 
         Args:
@@ -79,10 +76,12 @@ class HookContext(object):
         resource_group = self.context.resource_groups.get(resource_group_name)
 
         for hook_module in hook_modules:
+            if not disabled and hook_module.is_disabled:
+                continue
             if hook_module.resource_group == resource_group:
                 hook_module.call_handler(handler_name, args = args, kwargs = kwargs, deprecated = deprecated)
 
-    def call_module_handlers(self, module_name, handler_name, args=(), kwargs={}, deprecated=None):
+    def call_module_handlers(self, module_name, handler_name, args=(), kwargs={}, deprecated=None, disabled=False):
         '''Calls a function in a hook module.
 
         Args:
@@ -105,6 +104,8 @@ class HookContext(object):
         hook_modules = self.__hook_modules[module_name]
 
         for hook_module in hook_modules:
+            if not disabled and hook_module.is_disabled:
+                continue
             hook_module.call_handler(handler_name, args = args, kwargs = kwargs, deprecated = deprecated)
 
 
@@ -135,8 +136,11 @@ class HookModule(object):
                 if self.__module is not None:
                     imp.release_lock()
                     return
-                added_paths = self.__add_plugin_paths()
+                added_paths, multi_imports = self.__add_plugin_paths()
                 try:
+                    for module, imported_gem_names in multi_imports.iteritems():
+                        loader = MultiImportModuleLoader(module, imported_gem_names)
+                        loader.load_module(module)
                     self.__module = imp.load_source(self.__hook_module_name, self.__module_path)
                 finally:
                     self.__remove_plugin_paths(added_paths)
@@ -160,13 +164,15 @@ class HookModule(object):
 
     def __add_plugin_paths(self):
         added_paths = [self.__module_directory, self.__module_lib_directory]
-        added_paths.extend(common_code.resolve_imports(self.context, self.__module_directory))
+        imported_paths, multi_imports = common_code.resolve_imports(self.context, self.__module_directory)
+        added_paths.extend(imported_paths)
         sys.path.extend(added_paths)
-        return added_paths
+        return added_paths, multi_imports
 
     def __remove_plugin_paths(self, added_paths):
         for added_path in added_paths: 
-            sys.path.remove(added_path)
+            if added_path in sys.path:
+                sys.path.remove(added_path)
    
     @property
     def context(self):
@@ -204,3 +210,62 @@ class HookModule(object):
         '''Path to the resource group or Gem directory where the hook is defined.'''
         return self.__module_directory
 
+    @property
+    def is_disabled(self):
+        '''If a hook belongs to a resource group, check if it is enabled'''
+        if self.__resource_group:
+            return self.__resource_group.is_enabled == False
+
+        if self.__gem:
+            if self.__gem.name in self.__context.config.local_project_settings.get(constant.DISABLED_RESOURCE_GROUPS_KEY, []):
+                return True
+        return False
+
+class MultiImportModuleLoader(object):
+
+    '''A module loader that handles loading multiple sub-modules from different directories that need to be imported into a single module namespace.
+    The implementation here should be the local workspace equivalent of how zip_and_upload_lambda_function_code in uploader.py handles multi-imports.'''
+
+    def __init__(self, import_package_name, imported_gem_names):
+        self.__import_package_name = import_package_name
+        self.__imported_gem_names = sorted(imported_gem_names)
+
+    def load_module(self, fullname):
+        if fullname != self.__import_package_name:
+            raise ImportError('Unable to load {}. This loader only supports loading {}'.format(fullname, self.__import_package_name))
+
+        imp.acquire_lock()
+        try:
+            module_name = self.__import_package_name
+            module = sys.modules.get(module_name)
+            if module is not None:
+                return module
+
+            module = imp.new_module(module_name)
+            module.__file__ = '<CloudCanvas::import::{}>'.format(self.__import_package_name)
+            module.__loader__ = self
+            module.__path__ = []
+            module.__package__ = module_name
+
+            # Define __all__ for "from package import *".
+            module.__all__ = self.__imported_gem_names
+
+            module.imported_modules = {}
+
+            for gem_name in self.__imported_gem_names:
+                top_level_name = '{}__{}'.format(module_name, gem_name)
+                try:
+                    imported_module = importlib.import_module(top_level_name)
+                except:
+                    raise HandledError('Failed to import {} while importing "*.{}". {}'.format(top_level_name, module_name, traceback.format_exc()))
+
+                # Import each top level module ( MyModule__CloudGemName ) using the gem name as the sub-module name ( MyModule.CloudGemName ).
+                setattr(module, gem_name, imported_module)
+
+                # A dictionary of gem name to loaded module for easy iterating ( imported_modules = { CloudGemName: <the_loaded_CloudGemName_module> } ).
+                module.imported_modules[gem_name] = imported_module
+
+            sys.modules[module_name] = module
+            return module
+        finally:
+            imp.release_lock()

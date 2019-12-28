@@ -13,7 +13,7 @@
 #pragma once
 
 #include <CryHeaders.h>
-#include <SceneAPI/SceneCore/Components/ExportingComponent.h>
+#include <SceneAPI/SceneCore/Components/RCExportingComponent.h>
 
 class CMesh;
 
@@ -31,10 +31,10 @@ namespace AZ
         struct NodeExportContext;
 
         class MeshExporter
-            : public SceneAPI::SceneCore::ExportingComponent
+            : public SceneAPI::SceneCore::RCExportingComponent
         {
         public:
-            AZ_COMPONENT(MeshExporter, "{1F826DB8-D6B0-4392-90C8-8F6E63F649CA}", SceneAPI::SceneCore::ExportingComponent);
+            AZ_COMPONENT(MeshExporter, "{1F826DB8-D6B0-4392-90C8-8F6E63F649CA}", SceneAPI::SceneCore::RCExportingComponent);
 
             MeshExporter();
             ~MeshExporter() override = default;
@@ -44,11 +44,6 @@ namespace AZ
             SceneAPI::Events::ProcessingResult ProcessMesh(NodeExportContext& context) const;
 
         protected:
-#if defined(AZ_COMPILER_MSVC) && AZ_COMPILER_MSVC <= 1800
-            // Workaround for VS2013 - Delete the copy constructor and make it private
-            // https://connect.microsoft.com/VisualStudio/feedback/details/800328/std-is-copy-constructible-is-broken
-            MeshExporter(const MeshExporter&) = delete;
-#endif
             void SetMeshFaces(const SceneAPI::DataTypes::IMeshData& meshData, CMesh& mesh, EPhysicsGeomType physicalizeType) const;
             bool SetMeshVertices(const SceneAPI::DataTypes::IMeshData& meshData, CMesh& mesh) const;
             bool SetMeshNormals(const SceneAPI::DataTypes::IMeshData& meshData, CMesh& mesh) const;

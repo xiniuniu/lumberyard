@@ -9,12 +9,12 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "StartingPointCamera_precompiled.h"
 #include "SlideAlongAxisBasedOnAngle.h"
 #include "StartingPointCamera/StartingPointCameraUtilities.h"
 #include <AzCore/Math/Quaternion.h>
 #include <AzCore/Serialization/EditContext.h>
-#include <AzFramework/Math/MathUtils.h>
+#include <AzCore/Math/Transform.h>
 
 namespace Camera
 {

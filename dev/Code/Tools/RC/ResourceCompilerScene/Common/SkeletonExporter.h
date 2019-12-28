@@ -13,7 +13,7 @@
 #pragma once
 
 #include <AzCore/std/string/string.h>
-#include <SceneAPI/SceneCore/Components/ExportingComponent.h>
+#include <SceneAPI/SceneCore/Components/RCExportingComponent.h>
 #include <SceneAPI/SceneCore/Containers/SceneGraph.h>
 
 struct CryBoneDescData;
@@ -31,10 +31,10 @@ namespace AZ
         struct AddBonesToSkinningInfoContext;
 
         class SkeletonExporter
-            : public SceneAPI::SceneCore::ExportingComponent
+            : public SceneAPI::SceneCore::RCExportingComponent
         {
         public:
-            AZ_COMPONENT(SkeletonExporter, "{FDEC2360-3D9C-4027-BCFB-E8C99CAADB43}", SceneAPI::SceneCore::ExportingComponent);
+            AZ_COMPONENT(SkeletonExporter, "{FDEC2360-3D9C-4027-BCFB-E8C99CAADB43}", SceneAPI::SceneCore::RCExportingComponent);
 
             SkeletonExporter();
             ~SkeletonExporter() override = default;
@@ -47,11 +47,6 @@ namespace AZ
             SceneAPI::Events::ProcessingResult ProcessSkeleton(SkeletonExportContext& context);
             
         protected:
-#if defined(AZ_COMPILER_MSVC) && AZ_COMPILER_MSVC <= 1800
-            // Workaround for VS2013 - Delete the copy constructor and make it private
-            // https://connect.microsoft.com/VisualStudio/feedback/details/800328/std-is-copy-constructible-is-broken
-            SkeletonExporter(const SkeletonExporter&) = delete;
-#endif
             bool AddBonesToSkinningInfo(CSkinningInfo& skinningInfo,
                 const AZ::SceneAPI::Containers::SceneGraph& graph, const AZStd::string& rootBoneName) const;
             bool BuildBoneMap(AZStd::unordered_map<AZStd::string, int>& boneNameIdMap, 

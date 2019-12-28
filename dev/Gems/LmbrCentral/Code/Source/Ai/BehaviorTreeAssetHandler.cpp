@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 
 #include <AzCore/IO/GenericStreams.h>
 #include <AzCore/IO/FileIO.h>
@@ -101,7 +101,7 @@ namespace LmbrCentral
 
     const char* BehaviorTreeAssetHandler::GetBrowserIcon() const
     {
-        return "Editor/Icons/Components/BehaviorTree.png";
+        return "Editor/Icons/Components/BehaviorTree.svg";
     }
 
     AZ::Uuid BehaviorTreeAssetHandler::GetComponentTypeId() const

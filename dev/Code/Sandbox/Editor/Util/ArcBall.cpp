@@ -11,9 +11,9 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "IRenderAuxGeom.h"
-#include "arcball.h"
+#include "ArcBall.h"
 
 bool CArcBall3D::ArcControl(const Matrix34& reference, const Ray& ray, uint32 mouseleft)
 {

@@ -16,10 +16,11 @@
 #pragma once
 
 #include <AzFramework/IO/LocalFileIO.h>
+#include <AzCore/IO/SystemFile.h>
 
 #include <AzCore/PlatformIncl.h>
 
-#if defined(AZ_PLATFORM_APPLE)
+#if AZ_TRAIT_OS_PLATFORM_APPLE
 #include <utime.h>
 #endif
 
@@ -147,9 +148,9 @@ namespace FileUtil
 
     inline FILETIME GetLastWriteFileTime(const char* filename)
     {          
-        FILETIME timeModify;
-#if defined(AZ_PLATFORM_WINDOWS)		
-        GetFileTimes(filename, nullptr, nullptr, &timeModify);		
+        FILETIME timeModify = GetInvalidFileTime();
+#if defined(AZ_PLATFORM_WINDOWS)
+        GetFileTimes(filename, nullptr, nullptr, &timeModify);
 #else
         AZ::u64 modTime = 0;
         GetFileTimes(filename, nullptr, nullptr, &modTime);

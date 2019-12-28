@@ -10,8 +10,6 @@
 *
 */
 
-#ifdef UNIT_TEST
-
 #include "AssetScannerUnitTests.h"
 #include "native/AssetManager/assetScanner.h"
 #include "native/utilities/PlatformConfiguration.h"
@@ -63,23 +61,46 @@ void AssetScannerUnitTest::StartTest()
     expectedFiles.remove(tempPath.absoluteFilePath("subfolder3/aaa/bbb/basefile.txt"));
     expectedFiles.remove(tempPath.absoluteFilePath("subfolder3/aaa/bbb/ccc/basefile.txt"));
 
+    QSet<QString> expectedFolders;
+    expectedFolders << tempPath.absoluteFilePath("subfolder2/aaa");
+    expectedFolders << tempPath.absoluteFilePath("subfolder2/aaa/bbb");
+    expectedFolders << tempPath.absoluteFilePath("subfolder2/aaa/bbb/ccc");
+    expectedFolders << tempPath.absoluteFilePath("subfolder2/aaa/bbb/ccc/ddd");
+    expectedFolders << tempPath.absoluteFilePath("subfolder2/aaa/bbb/ccc/ddd/eee.fff.ggg");
+
+
     PlatformConfiguration config;
-    //                                               PATH               DisplayName  PortKey outputfolder  root  recurse
-    config.AddScanFolder(ScanFolderInfo(tempPath.absolutePath(),         "temp",       "ap1",   "",        true,  false));  // note:  "Recurse" set to false.
-    config.AddScanFolder(ScanFolderInfo(tempPath.filePath("subfolder1"), "",           "ap2",   "",        false, true));
-    config.AddScanFolder(ScanFolderInfo(tempPath.filePath("subfolder2"), "",           "ap3",   "",        false, true));
-    config.AddScanFolder(ScanFolderInfo(tempPath.filePath("subfolder3"), "",           "ap4",   "",        false, false)); // note:  "Recurse" set to false.
+    AZStd::vector<AssetBuilderSDK::PlatformInfo> platforms;
+    config.PopulatePlatformsForScanFolder(platforms);
+    //                                               PATH               DisplayName  PortKey outputfolder  root recurse  platforms
+    config.AddScanFolder(ScanFolderInfo(tempPath.absolutePath(),         "temp",       "ap1",   "",        true,  false, platforms));  // note:  "Recurse" set to false.
+    config.AddScanFolder(ScanFolderInfo(tempPath.filePath("subfolder1"), "",           "ap2",   "",       false,  true,  platforms));
+    config.AddScanFolder(ScanFolderInfo(tempPath.filePath("subfolder2"), "",           "ap3",   "",       false,  true,  platforms));
+    config.AddScanFolder(ScanFolderInfo(tempPath.filePath("subfolder3"), "",           "ap4",   "",       false,  false, platforms)); // note:  "Recurse" set to false.
     AssetScanner scanner(&config);
 
-    QList<QString> actuallyFound;
+    QList<AssetFileInfo> filesFound;
+    QList<AssetFileInfo> foldersFound;
 
     bool doneScan = false;
 
-    connect(&scanner, &AssetScanner::FileOfInterestFound, this, [&actuallyFound](QString file)
+    connect(&scanner, &AssetScanner::FilesFound, this, [&filesFound](QSet<AssetFileInfo> fileList)
         {
-            actuallyFound.append(file);
+            for (AssetFileInfo foundFile : fileList)
+            {
+                filesFound.push_back(foundFile);
+            }
         }
         );
+
+    connect(&scanner, &AssetScanner::FoldersFound, this, [&foldersFound](QSet<AssetFileInfo> folderList)
+    {
+        for (AssetFileInfo foundFolder : folderList)
+        {
+            foldersFound.push_back(foundFolder);
+        }
+    }
+    );
 
     connect(&scanner, &AssetScanner::AssetScanningStatusChanged, this, [&doneScan](AssetProcessor::AssetScanningStatus status)
         {
@@ -108,11 +129,16 @@ void AssetScannerUnitTest::StartTest()
     }
 
     UNIT_TEST_EXPECT_TRUE(doneScan);
-    UNIT_TEST_EXPECT_TRUE(actuallyFound.count() == expectedFiles.count());
+    UNIT_TEST_EXPECT_TRUE(filesFound.count() == expectedFiles.count());
 
-    for (const QString& search : actuallyFound)
+    for (const AssetFileInfo& file : filesFound)
     {
-        UNIT_TEST_EXPECT_TRUE(expectedFiles.find(search) != expectedFiles.end());
+        UNIT_TEST_EXPECT_TRUE(expectedFiles.find(file.m_filePath) != expectedFiles.end());
+    }
+
+    for (const AssetFileInfo& folder : foldersFound)
+    {
+        UNIT_TEST_EXPECT_TRUE(expectedFolders.find(folder.m_filePath) != expectedFolders.end());
     }
 
     Q_EMIT UnitTestPassed();
@@ -121,5 +147,3 @@ void AssetScannerUnitTest::StartTest()
 #include <native/unittests/AssetScannerUnitTests.moc>
 
 REGISTER_UNIT_TEST(AssetScannerUnitTest)
-
-#endif //UNIT_TEST

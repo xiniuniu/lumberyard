@@ -12,14 +12,22 @@
 #pragma once
 
 #include <AzCore/Asset/AssetCommon.h>
+#include <AzCore/UserSettings/UserSettings.h>
 #include <AzFramework/Asset/AssetCatalogBus.h>
 #include <AzToolsFramework/UI/PropertyEditor/PropertyEditorAPI_Internals.h>
 
 #include <QWidget>
+#include <QTimer>
 
 namespace AZ
 {
     class SerializeContext;
+}
+
+namespace Ui
+{
+    class AssetEditorToolbar;
+    class AssetEditorStatusBar;
 }
 
 namespace AzToolsFramework
@@ -28,9 +36,27 @@ namespace AzToolsFramework
 
     namespace AssetEditor
     {
+        class AssetEditorWidgetUserSettings
+            : public AZ::UserSettings
+        {
+        public:
+            AZ_RTTI(AssetEditorWidgetUserSettings, "{382FE424-4541-4D93-9BA4-DE17A6DF8676}", AZ::UserSettings);
+            AZ_CLASS_ALLOCATOR(AssetEditorWidgetUserSettings, AZ::SystemAllocator, 0);
+
+            static void Reflect(AZ::ReflectContext* context);
+
+            AssetEditorWidgetUserSettings();
+            ~AssetEditorWidgetUserSettings() override = default;
+
+            void AddRecentPath(const AZStd::string& recentPath);
+
+            AZStd::string m_lastSavePath;
+            AZStd::vector< AZStd::string > m_recentPaths;
+        };
+
         /**
-         * Provides ability to create, edit, and save reflected assets.
-         */
+        * Provides ability to create, edit, and save reflected assets.
+        */
         class AssetEditorWidget
             : public QWidget
             , private AZ::Data::AssetBus::Handler
@@ -45,17 +71,28 @@ namespace AzToolsFramework
             explicit AssetEditorWidget(QWidget* parent = nullptr);
             ~AssetEditorWidget() override = default;
 
-            void SetAsset(const AZ::Data::Asset<AZ::Data::AssetData>& asset);
+            void CreateAsset(AZ::Data::AssetType assetType);
+            void OpenAsset(const AZ::Data::Asset<AZ::Data::AssetData> asset);
 
             void OnAssetReady(AZ::Data::Asset<AZ::Data::AssetData> asset) override;
             void OnAssetReloaded(AZ::Data::Asset<AZ::Data::AssetData> asset) override;
+            void OnAssetError(AZ::Data::Asset<AZ::Data::AssetData> asset) override;
 
             bool IsDirty() const { return m_dirty; }
             bool TrySave(const AZStd::function<void()>& savedCallback);
+            bool WaitingToSave() const;
+            void SetCloseAfterSave();
 
         public Q_SLOTS:
-            void OpenAsset();
+            void OpenAssetWithDialog();
+            void OpenAssetFromPath(const AZStd::string& fullPath);
+
             void SaveAsset();
+            void SaveAssetAs();
+            void ExpandAll();
+            void CollapseAll();
+
+            void OnNewAsset();
 
         Q_SIGNALS:
             void OnAssetSavedSignal();
@@ -69,7 +106,8 @@ namespace AzToolsFramework
             void AfterPropertyModified(InstanceDataNode* /*node*/) override;
             void RequestPropertyContextMenu(InstanceDataNode*, const QPoint&) override;
 
-            void BeforePropertyModified(InstanceDataNode* /*node*/) override {}
+            void BeforePropertyModified(InstanceDataNode* node) override;
+
             void SetPropertyEditingActive(InstanceDataNode* /*node*/) override {}
             void SetPropertyEditingComplete(InstanceDataNode* /*node*/) override {}
             void SealUndoStack() override {};
@@ -78,24 +116,50 @@ namespace AzToolsFramework
             void OnCatalogAssetRemoved(const AZ::Data::AssetId& assetId) override;
 
         private:
+
+            void DirtyAsset();
+
+            void SetStatusText(const QString& assetStatus);
+
+            void AddRecentPath(const AZStd::string& recentPath);
+            void PopulateRecentMenu();
+
             AZStd::vector<AZ::Data::AssetType> m_genericAssetTypes;
-
+            AZ::Data::AssetId                    m_sourceAssetId;
+            AZ::Data::Asset<AZ::Data::AssetData> m_inMemoryAsset;
             ReflectedPropertyEditor* m_propertyEditor;
-
-            AZ::Data::Asset<AZ::Data::AssetData> m_asset;
-            AZ::Data::Asset<AZ::Data::AssetData> m_assetOriginal;
-
-            AZStd::string m_newAssetPath;
-            AZ::Data::AssetType m_newAssetType;
-
-            bool m_dirty = false;
-
             AZ::SerializeContext* m_serializeContext = nullptr;
 
+            // Ids can change when an asset goes from in-memory to saved on disk.
+            // If there is a failure, the asset will be removed from the catalog.
+            // The only reliable mechanism to be certain the asset being added/removed 
+            // from the catalog is the same one that was added is to compare its file path.
+            AZStd::string m_expectedAddedAssetPath; 
+            AZStd::string m_recentlyAddedAssetPath;
+
+            bool m_dirty = false;
+            
+            QString m_currentAsset;
+
             QAction* m_saveAssetAction;
+            QAction* m_saveAsAssetAction;
+
+            QMenu* m_recentFileMenu;
+
+            AZStd::vector<AZ::u8> m_saveData;
+            bool m_closeAfterSave = false;
+            bool m_waitingToSave = false;
+
+            AZStd::intrusive_ptr<AssetEditorWidgetUserSettings> m_userSettings;
+            AZStd::unique_ptr< Ui::AssetEditorStatusBar > m_statusBar;
 
             void PopulateGenericAssetTypes();
-            void CreateAsset(AZ::Data::AssetType assetType);
+            void CreateAssetImpl(AZ::Data::AssetType assetType);
+            bool SaveAsDialog(AZ::Data::Asset<AZ::Data::AssetData>& asset);
+            void LoadAsset(AZ::Data::AssetId assetId, AZ::Data::AssetType assetType);
+            void UpdatePropertyEditor(AZ::Data::Asset<AZ::Data::AssetData>& asset);
+
+            void GenerateSaveDataSnapshot();
         };
     } // namespace AssetEditor
 } // namespace AzToolsFramework

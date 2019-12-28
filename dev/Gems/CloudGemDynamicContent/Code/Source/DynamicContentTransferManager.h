@@ -23,10 +23,10 @@
 #include <AzCore/EBus/EBus.h>
 #include <AzCore/Component/TickBus.h>
 
-#include <PresignedURL/PresignedURLBus.h>
 #include <FileTransferSupport/FileTransferSupport.h>
 
 #include <DynamicContent/DynamicContentBus.h>
+#include <PresignedURL/PresignedURLBus.h>
 
 #include <chrono>
 
@@ -70,6 +70,10 @@ namespace CloudCanvas
             // Convenience call for a single request
             virtual bool RequestFileStatus(const char* fileName, const char* writeFile) override;
 
+            virtual bool UpdateFileStatusList(const AZStd::vector<AZStd::string>& requestList) override;
+            virtual bool UpdateFileStatus(const char* fileName);
+
+            virtual bool RequestDownload(const AZStd::string& fileName, bool forceDownload) override;
             // Clear (And unmount) all pak records from Dynamic Content
             virtual bool ClearAllContent() override;
 
@@ -81,6 +85,7 @@ namespace CloudCanvas
             // for updates or making any calls to aws
             virtual bool LoadManifest(const AZStd::string& manifestName) override;
 
+            virtual bool IsUpdated(const char* fileName) override;
             // Load a specific pak into the dynamic content system
             virtual bool LoadPak(const AZStd::string& manifestName) override;
 
@@ -97,6 +102,9 @@ namespace CloudCanvas
             virtual AZStd::vector<AZStd::string> GetDownloadablePaks() override;
             virtual int GetPakStatus(const char* fileName) override;
             virtual AZStd::string GetPakStatusString(const char* fileName) override;
+            // Handle a JSON status update string
+            // Intended for messages from CloudGemWebCommunicator
+            virtual void HandleWebCommunicatorUpdate(const AZStd::string& messageData) override;
 
             bool RequestFileStatus(const char* fileName, const char* writeFile, bool manifestRequest);
             bool RequestFileStatus(FileTransferSupport::FileRequestMap& requestVec, bool manifestRequest);
@@ -127,7 +135,7 @@ namespace CloudCanvas
         protected:
             //////////////////////////////////////////////////////////////////////////
             // TickBus
-            void	OnTick(float deltaTime, AZ::ScriptTimePoint time) override;
+            void OnTick(float deltaTime, AZ::ScriptTimePoint time) override;
             //////////////////////////////////////////////////////////////////////////
 
         private:

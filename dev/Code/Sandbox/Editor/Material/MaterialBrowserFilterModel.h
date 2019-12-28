@@ -35,6 +35,7 @@ namespace AZ
 }
 
 class SubMaterialSearchFilter;
+class LevelMaterialSearchFilter;
 
 //////////////////////////////////////////////////////////////////////////
 // Item class for browser.
@@ -124,10 +125,13 @@ public:
     static const AZ::EBusAddressPolicy AddressPolicy = AZ::EBusAddressPolicy::Single; // theres only one listener
     virtual ~MaterialBrowserWidgetEvents() {}
 
-    //! Indicates that a material has finished being loaded in the background
+    //! Indicates that a material has finished being processed by the asset processor
     virtual void MaterialFinishedProcessing(_smart_ptr<CMaterial> material, const QPersistentModelIndex &filterModelIndex) = 0;
 
-    //! Indicates that material record update has finished
+    //! Indicates that a material has finished being added to the material browser
+    virtual void MaterialAddFinished() = 0;
+
+    //! Indicates that the material record update for initially populating the material browser has finished
     virtual void MaterialRecordUpdateFinished() = 0;
 };
 
@@ -145,8 +149,8 @@ AZ::Data::AssetId GetMaterialProductAssetIdFromAssetBrowserEntry(const AzToolsFr
 class MaterialBrowserFilterModel
     : public AzToolsFramework::AssetBrowser::AssetBrowserFilterModel
     , public MaterialBrowserSourceControlBus::Handler
-    , public AzToolsFramework::AssetBrowser::AssetBrowserModelNotificationsBus::Handler
-    , public AzToolsFramework::MaterialBrowser::MaterialBrowserRequestsBus::Handler
+    , public AzToolsFramework::AssetBrowser::AssetBrowserModelNotificationBus::Handler
+    , public AzToolsFramework::MaterialBrowser::MaterialBrowserRequestBus::Handler
     , private AzFramework::AssetCatalogEventBus::Handler
 {
 public:
@@ -169,13 +173,15 @@ public:
     QModelIndex GetIndexFromMaterial(_smart_ptr<CMaterial> material) const;
     QModelIndex GetFilterModelIndex(const AZ::Data::AssetId &assetId) const;
 
-    // AssetBrowserModelNotificationsBus event handlers
+    // AssetBrowserModelNotificationBus event handlers
     void EntryAdded(const AzToolsFramework::AssetBrowser::AssetBrowserEntry* entry) override;
     
     void OnCatalogAssetChanged(const AZ::Data::AssetId& assetId) override;
-    // MaterialBrowserRequestsBus
+    // MaterialBrowserRequestBus
     bool HasRecord(const AZ::Data::AssetId& assetId) override;
     bool IsMultiMaterial(const AZ::Data::AssetId& assetId) override;
+
+    void ShowOnlyLevelMaterials(bool levelOnly, bool invalidateFilterNow = false);
 
     public Q_SLOTS:
     void SearchFilterUpdated();
@@ -188,6 +194,7 @@ private:
     QVector<QPixmap> m_imageList;
     AzToolsFramework::AssetBrowser::FilterConstType m_assetTypeFilter;
     SubMaterialSearchFilter* m_subMaterialSearchFilter;
+    LevelMaterialSearchFilter* m_levelMaterialSearchFilter;
     const AzToolsFramework::AssetBrowser::SearchWidget* m_searchWidget;
 
     void InitializeRecordUpdateJob();

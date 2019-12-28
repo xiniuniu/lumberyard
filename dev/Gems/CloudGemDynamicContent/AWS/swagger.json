@@ -18,6 +18,11 @@
         "lambda": "$ServiceLambdaArn$"
     },
     "paths": {
+        "/loadtest": {
+            "x-cloud-gem-framework-interface-implementation": {
+                "interface": "CloudGemDynamicContent_LoadTest_1_0_0"
+            }
+        },
         "/service/status": {
             "x-amazon-cloud-canvas-lambda-dispatch": {
                 "module": "service_status"
@@ -214,6 +219,10 @@
                     "items": {
                         "type": "string"
                     }
+                },
+                "ManifestData": {
+                    "description": "Flag to indicate data usually found in the manifest should be included (Hash, size)",
+                    "type": "boolean"
                 }
             },
             "required": [
@@ -262,6 +271,12 @@
                     "type": "string"
                 },
                 "Signature": {
+                    "type": "string"
+                },
+                "Size": {
+                    "type": "string"
+                },
+                "Hash": {
                     "type": "string"
                 }
             },

@@ -13,6 +13,7 @@
 
 #include "StdAfx.h"
 #include "DefragAllocator.h"
+#include "IRenderAuxGeom.h"
 
 CDefragAllocatorWalker::CDefragAllocatorWalker(CDefragAllocator& alloc)
 {
@@ -169,7 +170,8 @@ void CDefragAllocator::DumpState(const char* filename)
 {
     CryOptionalAutoLock<CryCriticalSection> lock(m_lock, m_isThreadSafe);
 
-    FILE* fp = fopen(filename, "wb");
+    FILE* fp = nullptr;
+    azfopen(&fp, filename, "wb");
     if (fp)
     {
         uint32 magic = 0xdef7a6e7;
@@ -203,7 +205,8 @@ void CDefragAllocator::RestoreState(const char* filename)
 {
     CryOptionalAutoLock<CryCriticalSection> lock(m_lock, m_isThreadSafe);
 
-    FILE* fp = fopen(filename, "rb");
+    FILE* fp = nullptr;
+    azfopen(&fp, filename, "rb");
     if (fp)
     {
         uint32 magic;
@@ -636,6 +639,102 @@ CDefragAllocator::Index CDefragAllocator::AllocateChunk()
     return result;
 }
 
+void CDefragAllocator::DisplayMemoryUsage(const char* title, unsigned int allocatorDisplayOffset)
+{
+#if !defined(_RELEASE) || defined(PERFORMANCE_BUILD) // We want this vis in Performance builds
+    if (IRenderAuxGeom* pAuxGeom = gEnv->pRenderer->GetIRenderAuxGeom())
+    {
+        int width = gEnv->pRenderer->GetWidth();
+        int height = gEnv->pRenderer->GetHeight();
+
+        // The height of the bar is 40 pixels, but DrawTriangles is in screen UV coords
+        const float c_barHeight = 40.0f / height;
+
+        unsigned int currentSize = 0;
+        unsigned int chunkCount = m_chunks.size();
+        AZStd::vector<Vec3> chunkVerts;
+        chunkVerts.reserve(chunkCount * 4);
+        AZStd::vector<vtx_idx> chunkIndices;
+        chunkIndices.reserve(chunkCount * 6);
+        AZStd::vector<ColorB> chunkColors;
+        chunkColors.reserve(chunkCount * 4);
+
+        // Chunks use banded colors to show delineations between adjacent allocations
+        const ColorB usedColor[2] = { ColorB(255, 0, 0), ColorB(200, 0, 0) };
+        const ColorB freeColor[2] = { ColorB(0, 255, 0), ColorB(0, 200, 0) };
+
+        uint32 i = 0;
+        float minBarY = 1.0f - allocatorDisplayOffset * c_barHeight;
+        float maxBarY = 1.0f - (allocatorDisplayOffset + 1) * c_barHeight;
+        for (size_t idx = m_chunks[0].addrNextIdx; idx != 0; idx = m_chunks[idx].addrNextIdx)
+        {
+            SDefragAllocChunk& chunk = m_chunks[idx];
+            unsigned int chunkSize = chunk.attr.GetSize();
+            if (chunkSize != 0)
+            {
+                // Start and end x locations in screen UV coords
+                float startX = static_cast<float>(currentSize) / m_capacity;
+                float endX = static_cast<float>(currentSize + chunkSize) / m_capacity;
+
+                // Ensure a valid size is at least one pixel wide
+                endX = AZStd::max(endX, startX + 1.0f / width);
+
+                chunkVerts.push_back(Vec3(startX, minBarY, 0.0f));
+                chunkVerts.push_back(Vec3(endX, minBarY, 0.0f));
+                chunkVerts.push_back(Vec3(endX, maxBarY, 0.0f));
+                chunkVerts.push_back(Vec3(startX, maxBarY, 0.0f));
+
+                chunkIndices.push_back(i * 4 + 0);
+                chunkIndices.push_back(i * 4 + 1);
+                chunkIndices.push_back(i * 4 + 2);
+                chunkIndices.push_back(i * 4 + 0);
+                chunkIndices.push_back(i * 4 + 2);
+                chunkIndices.push_back(i * 4 + 3);
+
+                if (chunk.attr.IsPinned())
+                {
+                    chunkColors.push_back(usedColor[i & 1]);
+                    chunkColors.push_back(usedColor[i & 1]);
+                    chunkColors.push_back(usedColor[i & 1]);
+                    chunkColors.push_back(usedColor[i & 1]);
+                }
+                else
+                {
+                    chunkColors.push_back(freeColor[i & 1]);
+                    chunkColors.push_back(freeColor[i & 1]);
+                    chunkColors.push_back(freeColor[i & 1]);
+                    chunkColors.push_back(freeColor[i & 1]);
+                }
+
+                currentSize += chunkSize;
+                i++;
+            }
+        }
+
+        SAuxGeomRenderFlags savedFlags = pAuxGeom->GetRenderFlags();
+        SAuxGeomRenderFlags tempFlags;
+        tempFlags.SetMode2D3DFlag(e_Mode2D);
+        pAuxGeom->SetRenderFlags(tempFlags);
+        pAuxGeom->DrawTriangles(chunkVerts.data(), chunkVerts.size(), chunkIndices.data(), chunkIndices.size(), chunkColors.data());
+        pAuxGeom->SetRenderFlags(savedFlags);
+
+        // Draw other stats about the system
+        const float statisticsWidth = 384.0f;
+        float statsXOffset = allocatorDisplayOffset * statisticsWidth;
+        IDefragAllocatorStats stats = GetStats();
+        ColorF statsTextColor(1.0f, 1.0f, 0.5f, 1.0f);
+        pAuxGeom->Draw2dLabel(10 + statsXOffset, 85, 1.7f, statsTextColor, false, title);
+        pAuxGeom->Draw2dLabel(20 + statsXOffset, 110, 1.5f, statsTextColor, false, "Capacity (MB):           %.2f", stats.nCapacity / 1024.0f / 1024.0f);
+        pAuxGeom->Draw2dLabel(20 + statsXOffset, 130, 1.5f, statsTextColor, false, "In Use (MB):             %.2f", stats.nInUseSize / 1024.0f / 1024.0f);
+        pAuxGeom->Draw2dLabel(20 + statsXOffset, 150, 1.5f, statsTextColor, false, "In Use Blocks:           %u", stats.nInUseBlocks);
+        pAuxGeom->Draw2dLabel(20 + statsXOffset, 170, 1.5f, statsTextColor, false, "Free Blocks:             %u", stats.nFreeBlocks);
+        pAuxGeom->Draw2dLabel(20 + statsXOffset, 190, 1.5f, statsTextColor, false, "Largest Free Block (B):  %u", stats.nLargestFreeBlockSize);
+        pAuxGeom->Draw2dLabel(20 + statsXOffset, 210, 1.5f, statsTextColor, false, "Smallest Free Block (B): %u", stats.nSmallestFreeBlockSize);
+        pAuxGeom->Draw2dLabel(20 + statsXOffset, 230, 1.5f, statsTextColor, false, "Mean Free Block (B):     %u", stats.nMeanFreeBlockSize);
+    }
+#endif
+}
+
 void CDefragAllocator::ReleaseChunk(Index idx)
 {
     m_unusedChunks.push_back(idx);
@@ -673,7 +772,7 @@ void CDefragAllocator::LinkFreeChunk(Index idx)
 
 IDefragAllocator::Hdl CDefragAllocator::Allocate_Locked(size_t sz, size_t alignment, const char* source, void* pContext)
 {
-#if defined(DURANGO) || defined(WIN64)
+#if AZ_LEGACY_CRYSYSTEM_TRAIT_USE_BIT64
     CDBA_ASSERT(sz <= (BIT64(NumBuckets)));
 #else
     CDBA_ASSERT(sz <= (BIT(NumBuckets)));
@@ -1076,7 +1175,7 @@ size_t CDefragAllocator::Defrag_FindMovesBwd(PendingMove** pMoves, size_t maxMov
 
                 if (IsMoveableCandidate(candidateChunkAttr, 0xffffffff))
                 {
-#if defined(WIN64) || defined(DURANGO) || defined(ORBIS)
+#if AZ_LEGACY_CRYSYSTEM_TRAIT_USE_BIT64
                     size_t candidateChunkAlign = BIT64(candidateChunk.logAlign);
 #else
                     size_t candidateChunkAlign = BIT(candidateChunk.logAlign);
@@ -1162,7 +1261,7 @@ size_t CDefragAllocator::Defrag_FindMovesBwd(PendingMove** pMoves, size_t maxMov
 
                 if (IsMoveableCandidate(candidateChunkAttr, 0xffffffff))
                 {
-#if defined(WIN64) || defined(DURANGO) || defined(ORBIS)
+#if AZ_LEGACY_CRYSYSTEM_TRAIT_USE_BIT64
                     size_t candidateChunkAlign = BIT64(candidateChunk.logAlign);
 #else
                     size_t candidateChunkAlign = BIT(candidateChunk.logAlign);
@@ -1273,7 +1372,7 @@ size_t CDefragAllocator::Defrag_FindMovesFwd(PendingMove** pMoves, size_t maxMov
 
             if (IsMoveableCandidate(candidateChunkAttr, 0xffffffff))
             {
-#if defined(WIN64) || defined(DURANGO) || defined(ORBIS)
+#if AZ_LEGACY_CRYSYSTEM_TRAIT_USE_BIT64
                 size_t candidateChunkAlign = BIT64(candidateChunk.logAlign);
 #else
                 size_t candidateChunkAlign = BIT(candidateChunk.logAlign);
@@ -1753,7 +1852,7 @@ void CDefragAllocator::SyncMoveSegment(uint32 seg)
             CDBA_ASSERT(!pChunk->attr.IsPinned());
             CDBA_ASSERT(m_policy.pDefragPolicy != NULL);
 
-#if defined(WIN64) || defined(DURANGO) || defined(ORBIS)
+#if AZ_LEGACY_CRYSYSTEM_TRAIT_USE_BIT64
             size_t chunkAlign = BIT64(pChunk->logAlign);
 #else
             size_t chunkAlign = BIT(pChunk->logAlign);

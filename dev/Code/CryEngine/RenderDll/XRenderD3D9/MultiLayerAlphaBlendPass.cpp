@@ -59,6 +59,19 @@ bool MultiLayerAlphaBlendPass::IsSupported()
 {
     if (m_supported == SupportLevel::UNKNOWN)
     {
+        // Disabled on NVIDIA hardware with driver version < 398.82 to avoid a crash
+        const unsigned long NVIDIA_DRIVER_VERSION_THAT_FIXES_OIT_CRASH = 39882;
+        int gpuVendor = gRenDev->GetFeatures() & RFT_HW_MASK;
+        unsigned long driverVersion = gRenDev->GetNvidiaDriverVersion();
+        if (gpuVendor == RFT_HW_NVIDIA && driverVersion < NVIDIA_DRIVER_VERSION_THAT_FIXES_OIT_CRASH)
+        {
+            m_supported = SupportLevel::NOT_SUPPORTED;
+            unsigned long majorDriverVersion = (driverVersion - driverVersion % 100) / 100;
+            unsigned long minorDriverVersion = driverVersion % 100;
+            AZ_Warning("Rendering", false, "Multi-layer alpha blend is currently disabled on NVIDIA hardware with driver version < 398.82 due to a bug in the NVIDIA driver that leads to a device timeout. The currently installed driver version is %lu.%lu. Update your driver version to 398.82 or later to use this feature.", majorDriverVersion, minorDriverVersion);
+            return false;
+        }
+
         #if SUPPORTS_WINDOWS_10_SDK
 
         D3D11_FEATURE_DATA_D3D11_OPTIONS2 featureData;
@@ -69,11 +82,14 @@ bool MultiLayerAlphaBlendPass::IsSupported()
             m_supported = SupportLevel::SUPPORTED;
         }
         else
-        #endif
         {
             m_supported = SupportLevel::NOT_SUPPORTED;
-            AZ_Warning("Rendering", false, "Multi-Layer Alpha Blending is not supported on this device.");
+            AZ_Warning("Rendering", false, "Multi-Layer Alpha Blending is not supported on this GPU.");
         }
+        #else
+            m_supported = SupportLevel::NOT_SUPPORTED;
+            AZ_Warning("Rendering", false, "Multi-Layer Alpha Blending requires Lumberyard to have been built with the Windows 10 SDK or higher.");
+        #endif
     }
 
     return m_supported == SupportLevel::SUPPORTED;

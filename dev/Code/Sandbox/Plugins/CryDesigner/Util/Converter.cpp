@@ -196,8 +196,8 @@ namespace CD
                         if (s.m_pIndexedMesh == NULL)
                         {
                             QString sFilename(slotInfo.pStatObj->GetFilePath());
-                            CContentCGF cgf(sFilename.toLatin1().data());
-                            if (!GetIEditor()->Get3DEngine()->LoadChunkFileContent(&cgf, sFilename.toLatin1().data()))
+                            CContentCGF cgf(sFilename.toUtf8().data());
+                            if (!GetIEditor()->Get3DEngine()->LoadChunkFileContent(&cgf, sFilename.toUtf8().data()))
                             {
                                 continue;
                             }
@@ -356,7 +356,7 @@ namespace CD
 
         const char* tag = pSolidNode->getChild(0)->getTag();
 
-        if (!stricmp(tag, "Face"))
+        if (!azstricmp(tag, "Face"))
         {
             int numFaces = pSolidNode->getChildCount();
             std::vector<SSolidPolygon> polygonlist;
@@ -386,7 +386,7 @@ namespace CD
             }
             AddPolygonsToDesigner(polygonlist, vertexlist, pDesignerObject);
         }
-        else if (!stricmp(tag, "Polygon"))
+        else if (!azstricmp(tag, "Polygon"))
         {
             std::vector<SSolidPolygon> polylist;
             int numberOfChildren = pSolidNode->getChildCount();
@@ -461,7 +461,7 @@ namespace CD
             QString attribute;
             attribute = QStringLiteral("v%1").arg(nCount++);
             int16 vertexindex;
-            bool ok = polygonNode->getAttr(attribute.toLatin1().data(), vertexindex);
+            bool ok = polygonNode->getAttr(attribute.toUtf8().data(), vertexindex);
             if (ok == false)
             {
                 break;
@@ -487,7 +487,7 @@ namespace CD
             Vec3 position;
             QString attribute;
             attribute = QStringLiteral("p%1").arg(nCount++);
-            bool ok = vertexNode->getAttr(attribute.toLatin1().data(), position);
+            bool ok = vertexNode->getAttr(attribute.toUtf8().data(), position);
             if (ok == false)
             {
                 break;

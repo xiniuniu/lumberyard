@@ -15,10 +15,29 @@
 #define CRYINCLUDE_EDITOR_UTIL_BOOSTPYTHONHELPERS_H
 #pragma once
 
+#include <AzCore/PlatformDef.h>
+
+// MSVC warns that these typedef members are being used and therefore must be acknowledged by using the following macro
+#pragma push_macro("_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS")
+#ifndef _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
+#define _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
+#endif
+
+// Disabling C++17 warning C5033: 'register' is no longer a supported storage class which occurs in Python 2.7
 // Suppress warning in pymath.h where a conflict with round exists with VS 12.0 math.h ::  pymath.h(22) : warning C4273: 'round' : inconsistent dll linkage
-#pragma warning( disable: 4273)
+// Suppress warning in boost/python/opaque_pointer_converter.hpp, boost/python/return_opaque_pointer.hpp and python/detail/dealloc.hpp
+// for non UTF-8 characters.
+AZ_PUSH_DISABLE_WARNING(4068 4273 4828 5033, "-Wregister")
+AZ_PUSH_DISABLE_WARNING(, "-Wunused-local-typedef")
+AZ_PUSH_DISABLE_WARNING(4996, "-Wdeprecated-declarations")
 #include <boost/python.hpp>
-#pragma warning( default: 4273)
+AZ_POP_DISABLE_WARNING
+AZ_POP_DISABLE_WARNING
+AZ_POP_DISABLE_WARNING
+
+#pragma pop_macro("_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS")
+
+#include <AzCore/std/containers/fixed_vector.h>
 
 // Forward Declarations
 class CBaseObject;
@@ -108,15 +127,18 @@ public:
 
     struct SModule
     {
-        string name;
+        const char* name;
         void (* initFunc)();
 
         bool operator == (const SModule& other) const
         {
-            return name == other.name;
+            return name == other.name || (strcmp(name, other.name) == 0);
         }
     };
-    typedef std::vector<SModule> ModuleList;
+    // No one should be adding to this, as it's deprecated, and there are 13 modules
+    // If for some reason we need to, just increase the size of this vector
+    // It must not allocate, as it is filled at static init time
+    typedef AZStd::fixed_vector<SModule, 16> ModuleList;
     static ModuleList s_modules;
 };
 
@@ -757,6 +779,8 @@ namespace PyScript
     {
         virtual void OnStdOut(const char* pString) = 0;
         virtual void OnStdErr(const char* pString) = 0;
+
+        virtual ~IPyScriptListener() {}
     };
 
     // Initialize python for use in sandbox

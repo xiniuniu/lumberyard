@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 #include "RandomTimedSpawnerComponent.h"
 
 #include <AzCore/RTTI/BehaviorContext.h>
@@ -94,7 +94,10 @@ namespace LmbrCentral
 
     void RandomTimedSpawnerComponent::Activate()
     {
-        m_currentTime = 0.0;
+        AZStd::chrono::system_clock::time_point now = AZStd::chrono::system_clock::now();
+        m_currentTime = AZ::ScriptTimePoint(now).GetSeconds();
+        RandomTimedSpawnerComponentRequestBus::Handler::BusConnect(GetEntityId());
+
         CalculateNextSpawnTime();
 
         if (m_config.m_enabled)
@@ -109,6 +112,8 @@ namespace LmbrCentral
         {
             AZ::TickBus::Handler::BusDisconnect();
         }
+
+        RandomTimedSpawnerComponentRequestBus::Handler::BusDisconnect();
     }
 
     void RandomTimedSpawnerComponent::OnTick(float deltaTime, AZ::ScriptTimePoint time)

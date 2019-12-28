@@ -14,8 +14,6 @@
 // Description : This file should only be included Once in DLL module.
 
 
-#ifndef CRYINCLUDE_CRYCOMMON_PLATFORM_IMPL_H
-#define CRYINCLUDE_CRYCOMMON_PLATFORM_IMPL_H
 #pragma once
 
 #include <platform.h>
@@ -24,18 +22,45 @@
 #include <ITestSystem.h>
 #include <CryExtension/Impl/RegFactoryNode.h>
 #include <CryExtension/Impl/ICryFactoryRegistryImpl.h>
+#include <IComponentFactory.h>
 #include <UnicodeFunctions.h>
 
 #include <AzCore/Debug/Profiler.h>
 #include <AzCore/Debug/ProfileModuleInit.h>
 #include <AzCore/Module/Environment.h>
 
+// Section dictionary
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define PLATFORM_IMPL_H_SECTION_TRAITS 1
+#define PLATFORM_IMPL_H_SECTION_CRYLOWLATENCYSLEEP 2
+#define PLATFORM_IMPL_H_SECTION_CRYGETFILEATTRIBUTES 3
+#define PLATFORM_IMPL_H_SECTION_CRYSETFILEATTRIBUTES 4
+#define PLATFORM_IMPL_H_SECTION_CRY_FILE_ATTRIBUTE_STUBS 5
+#define PLATFORM_IMPL_H_SECTION_CRY_SYSTEM_FUNCTIONS 6
+#define PLATFORM_IMPL_H_SECTION_VIRTUAL_ALLOCATORS 7
+#endif
+
 #if !defined(AZ_MONOLITHIC_BUILD)
 SC_API struct SSystemGlobalEnvironment* gEnv = NULL;
+ComponentFactoryCreationNode* ComponentFactoryCreationNode::sm_head = nullptr;
+size_t ComponentFactoryCreationNode::sm_size = 0;
 #endif //AZ_MONOLITHIC_BUILD
 
+// Traits
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION PLATFORM_IMPL_H_SECTION_TRAITS
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/platform_impl_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/platform_impl_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/platform_impl_h_salem.inl"
+    #endif
+#elif defined(LINUX) || defined(APPLE)
+#define PLATFORM_IMPL_H_TRAIT_DEFINE_GLOBAL_SREGFACTORYNODE 1
+#endif
 
-#if defined(_LAUNCHER) && (defined(_RELEASE) || defined(AZ_PLATFORM_LINUX) || defined(AZ_PLATFORM_APPLE) || defined(AZ_PLATFORM_PS4) || defined(AZ_PLATFORM_XBONE)) || !defined(AZ_MONOLITHIC_BUILD)
+#if defined(_LAUNCHER) && (defined(_RELEASE) || PLATFORM_IMPL_H_TRAIT_DEFINE_GLOBAL_SREGFACTORYNODE) || !defined(AZ_MONOLITHIC_BUILD)
 //The reg factory is used for registering the different modules along the whole project
 struct SRegFactoryNode* g_pHeadToRegFactories = 0;
 #endif
@@ -83,7 +108,7 @@ void InitCRTHandlers() {}
 //////////////////////////////////////////////////////////////////////////
 // This is an entry to DLL initialization function that must be called for each loaded module
 //////////////////////////////////////////////////////////////////////////
-extern "C" DLL_EXPORT void ModuleInitISystem(ISystem* pSystem, const char* moduleName)
+extern "C" AZ_DLL_EXPORT void ModuleInitISystem(ISystem* pSystem, const char* moduleName)
 {
     if (gEnv) // Already registered.
     {
@@ -96,8 +121,12 @@ extern "C" DLL_EXPORT void ModuleInitISystem(ISystem* pSystem, const char* modul
     {
         gEnv = pSystem->GetGlobalEnvironment();
         assert(gEnv);
-
-        AZ::Environment::Attach(gEnv->pSharedEnvironment);
+        
+        if (!AZ::Environment::IsReady() || (AZ::Environment::GetInstance() != gEnv->pSharedEnvironment))
+        {
+            AZ::Environment::Attach(gEnv->pSharedEnvironment);
+            AZ::AllocatorManager::Instance();  // Force the AllocatorManager to instantiate and register any allocators defined in data sections
+        }
         AZ::Debug::ProfileModuleInit();
 
 #if !defined(AZ_MONOLITHIC_BUILD)
@@ -112,9 +141,25 @@ extern "C" DLL_EXPORT void ModuleInitISystem(ISystem* pSystem, const char* modul
     } // if pSystem
 }
 
-extern "C" DLL_EXPORT void ModuleShutdownISystem(ISystem* pSystem)
+extern "C" AZ_DLL_EXPORT void ModuleShutdownISystem(ISystem* pSystem)
 {
     // Unregister with AZ environment.
+    AZ::Environment::Detach();
+}
+
+extern "C" AZ_DLL_EXPORT void InjectEnvironment(void* env)
+{
+    static bool injected = false;
+    if (!injected)
+    {
+        AZ::Environment::Attach(reinterpret_cast<AZ::EnvironmentInstance>(env));
+        AZ::AllocatorManager::Instance();  // Force the AllocatorManager to instantiate and register any allocators defined in data sections
+        injected = true;
+    }
+}
+
+extern "C" AZ_DLL_EXPORT void DetachEnvironment()
+{
     AZ::Environment::Detach();
 }
 
@@ -165,12 +210,6 @@ void __stl_debug_message(const char* format_str, ...)
 #endif //_STLP_DEBUG_MESSAGE
 
 
-#ifdef WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#include <process.h>
-#endif
-
 #if defined(WIN32) || defined(WIN64)
 #include <intrin.h>
 #endif
@@ -182,6 +221,17 @@ void __stl_debug_message(const char* format_str, ...)
 
 #if defined(APPLE) || defined(LINUX)
 #include "CryAssert_impl.h"
+#endif
+
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION PLATFORM_IMPL_H_SECTION_CRY_SYSTEM_FUNCTIONS
+#if defined(AZ_PLATFORM_XENIA)
+#include "Xenia/platform_impl_h_xenia.inl"
+#elif defined(AZ_PLATFORM_PROVO)
+#include "Provo/platform_impl_h_provo.inl"
+#elif defined(AZ_PLATFORM_SALEM)
+#include "Salem/platform_impl_h_salem.inl"
+#endif
 #endif
 
 #if defined (_WIN32)
@@ -210,7 +260,21 @@ void CrySleep(unsigned int dwMilliseconds)
 void CryLowLatencySleep(unsigned int dwMilliseconds)
 {
     AZ_PROFILE_FUNCTION(AZ::Debug::ProfileCategory::System);
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION PLATFORM_IMPL_H_SECTION_CRYLOWLATENCYSLEEP
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/platform_impl_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/platform_impl_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/platform_impl_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#else
     CrySleep(dwMilliseconds);
+#endif
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -246,7 +310,7 @@ void CryGetCurrentDirectory(unsigned int nBufferLength, char* lpBuffer)
     // Get directory in UTF-16
     std::vector<wchar_t> buffer;
     {
-        const size_t requiredLength = ::GetCurrentDirectoryW(0, 0);
+        const DWORD requiredLength = ::GetCurrentDirectoryW(0, 0);
 
         if (requiredLength <= 0)
         {
@@ -335,7 +399,7 @@ LONG  CryInterlockedDecrement(int volatile* lpAddend)
 }
 
 //////////////////////////////////////////////////////////////////////////
-LONG    CryInterlockedExchangeAdd(LONG volatile* lpAddend, LONG Value)
+LONG  CryInterlockedExchangeAdd(LONG volatile* lpAddend, LONG Value)
 {
     return InterlockedExchangeAdd(lpAddend, Value);
 }
@@ -345,17 +409,17 @@ LONG  CryInterlockedOr(LONG volatile* Destination, LONG Value)
     return InterlockedOr(Destination, Value);
 }
 
-LONG    CryInterlockedCompareExchange(LONG volatile* dst, LONG exchange, LONG comperand)
+LONG  CryInterlockedCompareExchange(LONG volatile* dst, LONG exchange, LONG comperand)
 {
     return InterlockedCompareExchange(dst, exchange, comperand);
 }
 
-void*   CryInterlockedCompareExchangePointer(void* volatile* dst, void* exchange, void* comperand)
+void* CryInterlockedCompareExchangePointer(void* volatile* dst, void* exchange, void* comperand)
 {
     return InterlockedCompareExchangePointer(dst, exchange, comperand);
 }
 
-void*   CryInterlockedExchangePointer(void* volatile* dst, void* exchange)
+void* CryInterlockedExchangePointer(void* volatile* dst, void* exchange)
 {
     return InterlockedExchangePointer(dst, exchange);
 }
@@ -429,14 +493,42 @@ uint32 CryGetFileAttributes(const char* lpFileName)
 {
     WIN32_FILE_ATTRIBUTE_DATA data;
     BOOL res;
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION PLATFORM_IMPL_H_SECTION_CRYGETFILEATTRIBUTES
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/platform_impl_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/platform_impl_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/platform_impl_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#else
     res = GetFileAttributesEx(lpFileName, GetFileExInfoStandard, &data);
+#endif
     return res ? data.dwFileAttributes : -1;
 }
 
 //////////////////////////////////////////////////////////////////////////
 bool CrySetFileAttributes(const char* lpFileName, uint32 dwFileAttributes)
 {
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION PLATFORM_IMPL_H_SECTION_CRYSETFILEATTRIBUTES
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/platform_impl_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/platform_impl_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/platform_impl_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#else
     return SetFileAttributes(lpFileName, dwFileAttributes) != 0;
+#endif
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -447,8 +539,18 @@ threadID CryGetCurrentThreadId()
 
 #endif // _WIN32
 
-#endif //AZ_MONOLITHIC_BUILD
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION PLATFORM_IMPL_H_SECTION_CRY_FILE_ATTRIBUTE_STUBS
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/platform_impl_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/platform_impl_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/platform_impl_h_salem.inl"
+    #endif
+#endif
 
+#endif //AZ_MONOLITHIC_BUILD
 
 #if defined(AZ_PLATFORM_WINDOWS) && (!defined(AZ_MONOLITHIC_BUILD) || defined(_LAUNCHER))
 int64 CryGetTicks()
@@ -564,5 +666,21 @@ _MS_ALIGN(64) uint32  BoxSides[0x40 * 8] = {
     0, 0, 0, 0, 0, 0, 0, 0, //3e
     0, 0, 0, 0, 0, 0, 0, 0, //3f
 };
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION PLATFORM_IMPL_H_SECTION_VIRTUAL_ALLOCATORS
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/platform_impl_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/platform_impl_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/platform_impl_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#endif
+
 #endif // !AZ_MONOLITHIC_BUILD || _LAUNCHER
-#endif // CRYINCLUDE_CRYCOMMON_PLATFORM_IMPL_H
+

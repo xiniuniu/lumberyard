@@ -11,36 +11,17 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "AssetBrowserManager.h"
 #include "Util/FileUtil.h"
 #include "Util/IndexedFiles.h"
 #include "Include/IAssetItemDatabase.h"
 #include "Include/IAssetItem.h"
 #include "AssetBrowser/AssetBrowserDialog.h"
-#include "IAssetTagging.h"
 #include "IEditor.h"
-#include "AssetBrowser/AssetBrowserMetaTaggingDlg.h"
 #include "Objects/BrushObject.h"
 
 static CAssetBrowserManager* s_pInstance = 0;
-
-namespace AssetBrowser
-{
-    // details at http://www.cse.yorku.ca/~oz/hash.html
-    unsigned int HashStringSbdm(const char* pStr)
-    {
-        unsigned long hash = 0;
-        int c;
-
-        while (c = *pStr++)
-        {
-            hash = c + (hash << 6) + (hash << 16) - hash;
-        }
-
-        return hash;
-    }
-}
 
 CAssetBrowserManager* CAssetBrowserManager::Instance()
 {
@@ -81,19 +62,11 @@ void CAssetBrowserManager::Initialize()
 {
     CreateAssetDatabases();
     LoadCache();
-    InitializeTagging();
 }
 
 void CAssetBrowserManager::Shutdown()
 {
     FreeAssetDatabases();
-
-    if (GetIEditor()->GetObjectManager())
-    {
-        GetIEditor()->GetObjectManager()->RemoveObjectEventListener(functor(*this, &CAssetBrowserManager::OnObjectEvent));
-    }
-
-    GetIEditor()->UnregisterNotifyListener(this);
 }
 
 bool CAssetBrowserManager::LoadCache()
@@ -122,7 +95,7 @@ bool CAssetBrowserManager::LoadCache()
 void CAssetBrowserManager::CreateThumbsFolderPath()
 {
     AZStd::string strUserFolder;
-    AzFramework::StringFunc::Path::ConstructFull(Path::GetUserSandboxFolder().toUtf8().data(), AssetBrowser::kThumbnailsRoot, strUserFolder);
+    AzFramework::StringFunc::Path::ConstructFull(Path::GetUserSandboxFolder().toUtf8().data(), AssetBrowserCommon::kThumbnailsRoot, strUserFolder);
 
     // create the thumbs folder
     AZ::IO::FileIOBase::GetInstance()->CreatePath(strUserFolder.c_str());
@@ -226,7 +199,7 @@ bool CAssetBrowserManager::CacheAssets(TAssetDatabases dbsToCache, bool bForceCa
                             .arg(m_cachedAssetCount)
                             .arg(totalAssetCount)
                             .arg(progress);
-                        bStop = pProgressCallback(progress, progressStr.toLatin1().data());
+                        bStop = pProgressCallback(progress, progressStr.toUtf8().data());
                     }
                 }
 
@@ -280,12 +253,13 @@ bool CAssetBrowserManager::OnNewTransaction(const IAssetItem* pAssetItem)
             // Add the time stamp info.
             QString buf;
             buf = QString::number(fd.time_write);
-            newTransactionNode->setAttr("timeStamp", buf.toLatin1().data());
+            newTransactionNode->setAttr("timeStamp", buf.toUtf8().data());
         }
     }
 
     //2. Append the new transaction to the file.
-    FILE* transactionFile = fopen(fullPath.toUtf8().data(), "r+t");
+    FILE* transactionFile = nullptr;
+    azfopen(&transactionFile, fullPath.toUtf8().data(), "r+t");
 
     if (transactionFile == NULL)
     {
@@ -343,7 +317,7 @@ XmlNodeRef CAssetBrowserManager::ReadAndVerifyMainDB(const QString& fileName)
     }
     else
     {
-        root = GetISystem()->LoadXmlFromFile(fileName.toLatin1().data());
+        root = GetISystem()->LoadXmlFromFile(fileName.toUtf8().data());
 
         if (root == NULL)
         {
@@ -411,7 +385,7 @@ void CAssetBrowserManager::ReadTransactionsAndUpdateDB(const QString& fullPath, 
 
             uint64 size;
 
-            if (CFileUtil::GetDiskFileSize(filePath.toLatin1().data(), size))
+            if (CFileUtil::GetDiskFileSize(filePath.toUtf8().data(), size))
             {
                 if (!size)
                 {
@@ -423,7 +397,7 @@ void CAssetBrowserManager::ReadTransactionsAndUpdateDB(const QString& fullPath, 
                 continue;
             }
 
-            XmlNodeRef rootTransaction = GetISystem()->LoadXmlFromFile(filePath.toLatin1().data());
+            XmlNodeRef rootTransaction = GetISystem()->LoadXmlFromFile(filePath.toUtf8().data());
 
             if (rootTransaction == NULL)
             {
@@ -477,7 +451,8 @@ void CAssetBrowserManager::ClearTransactionsAndApplyMetaData(const QString& full
         if (assetDatabasePlugins[i]->QueryInterface(__uuidof(IAssetItemDatabase), (void**)&pCurrentDatabaseInterface) == S_OK)
         {
             QString filePath = fullPath + pCurrentDatabaseInterface->GetTransactionFilename();
-            FILE* file = fopen(filePath.toLatin1().data(), "wt");
+            FILE* file = nullptr;
+            azfopen(&file, filePath.toUtf8().data(), "wt");
 
             if (file == NULL)
             {
@@ -504,7 +479,7 @@ IAssetItemDatabase* CAssetBrowserManager::GetDatabaseByName(const char* pName)
 {
     for (size_t i = 0, iCount = m_assetDatabases.size(); i < iCount; ++i)
     {
-        if (!_stricmp(m_assetDatabases[i]->GetDatabaseName(), pName))
+        if (!azstricmp(m_assetDatabases[i]->GetDatabaseName(), pName))
         {
             return m_assetDatabases[i];
         }
@@ -518,606 +493,22 @@ void CAssetBrowserManager::EnqueueAssetForThumbLoad(IAssetItem* pAsset)
     m_thumbLoadQueue.insert(pAsset);
 }
 
-void CAssetBrowserManager::OnObjectEvent(CBaseObject* pObject, int nEvent)
-{
-    if (!pObject)
-    {
-        return;
-    }
-}
-
-void CAssetBrowserManager::OnEditorNotifyEvent(EEditorNotifyEvent event)
-{
-    switch (event)
-    {
-    case eNotify_OnBeginSceneOpen:
-        m_bLevelLoading = true;
-        break;
-
-    case eNotify_OnEndSceneOpen:
-        m_bLevelLoading = false;
-        break;
-
-    case eNotify_OnLayerImportBegin:
-        m_bLevelLoading = true;
-        break;
-
-    case eNotify_OnLayerImportEnd:
-        m_bLevelLoading = false;
-        break;
-    }
-}
-
 void CAssetBrowserManager::Run()
 {
 }
 
-void CAssetBrowserManager::InitializeTagging()
+unsigned int CAssetBrowserManager::HashStringSbdm(const char* pStr)
 {
-    if (GetIEditor()->GetObjectManager())
+    // details at http://www.cse.yorku.ca/~oz/hash.html
+    unsigned long hash = 0;
+    int c;
+
+    while (c = *pStr++)
     {
-        GetIEditor()->GetObjectManager()->AddObjectEventListener(functor(*this, &CAssetBrowserManager::OnObjectEvent));
+        hash = c + (hash << 6) + (hash << 16) - hash;
     }
 
-    GetIEditor()->RegisterNotifyListener(this);
-
-    IAssetTagging* pAssetTagging = GetIEditor()->GetAssetTagging();
-
-    if (pAssetTagging)
-    {
-        pAssetTagging->Initialize(Path::GetResolvedUserSandboxFolder().toUtf8().data());
-    }
-}
-
-int CAssetBrowserManager::CreateTag(const QString& tag, const QString& category)
-{
-    IAssetTagging* pAssetTagging = GetIEditor()->GetAssetTagging();
-
-    if (pAssetTagging)
-    {
-        return pAssetTagging->CreateTag(tag.toLatin1().data(), category.toLatin1().data());
-    }
-
-    return 0;
-}
-
-int CAssetBrowserManager::CreateAsset(const QString& path, const QString& project)
-{
-    IAssetTagging* pAssetTagging = GetIEditor()->GetAssetTagging();
-
-    if (pAssetTagging)
-    {
-        return pAssetTagging->CreateAsset(path.toLatin1().data(), project.toLatin1().data());
-    }
-
-    return 0;
-}
-
-int CAssetBrowserManager::CreateProject(const QString& project)
-{
-    IAssetTagging* pAssetTagging = GetIEditor()->GetAssetTagging();
-
-    if (pAssetTagging)
-    {
-        return pAssetTagging->CreateProject(project.toLatin1().data());
-    }
-
-    return 0;
-}
-
-void CAssetBrowserManager::AddAssetsToTag(const QString& tag, const QString& category, const StrVector& assets)
-{
-    IAssetTagging* pAssetTagging = GetIEditor()->GetAssetTagging();
-
-    if (pAssetTagging)
-    {
-        const int assetArrayLen = assets.size();
-
-        if (assetArrayLen == 0)
-        {
-            return;
-        }
-
-        const int kMaxStrLen = pAssetTagging->GetMaxStringLen();
-
-        char** assetsStr = new char*[assetArrayLen];
-
-        for (int idx = 0; idx < assetArrayLen; ++idx)
-        {
-            assetsStr[idx] = new char[kMaxStrLen];
-            _snprintf(assetsStr[idx], kMaxStrLen, "%s", assets[idx]);
-        }
-
-        pAssetTagging->AddAssetsToTag(tag.toLatin1().data(), category.toLatin1().data(), GetProjectName().toLatin1().data(), assetsStr, assetArrayLen);
-
-        for (int idx = 0; idx < assetArrayLen; ++idx)
-        {
-            delete[] assetsStr[idx];
-        }
-
-        delete[] assetsStr;
-    }
-}
-
-void CAssetBrowserManager::AddTagsToAsset(const QString& asset, const QString& tag, const QString& category)
-{
-    StrVector newtags;
-    StrVector assets;
-
-    assets.push_back(asset);
-    AddAssetsToTag(tag, category, assets);
-}
-
-void CAssetBrowserManager::RemoveAssetsFromTag(const QString& tag, const QString& category, const StrVector& assets)
-{
-    IAssetTagging* pAssetTagging = GetIEditor()->GetAssetTagging();
-
-    if (pAssetTagging)
-    {
-        const int kAssetArrayLen = assets.size();
-
-        if (kAssetArrayLen == 0)
-        {
-            return;
-        }
-
-        const int maxStrLen = pAssetTagging->GetMaxStringLen();
-
-        char** assetsStr = new char*[kAssetArrayLen];
-
-        for (int idx = 0; idx < kAssetArrayLen; ++idx)
-        {
-            assetsStr[idx] = new char[maxStrLen];
-            _snprintf(assetsStr[idx], maxStrLen, "%s", assets[idx]);
-        }
-
-        pAssetTagging->RemoveAssetsFromTag(tag.toLatin1().data(), category.toLatin1().data(), GetProjectName().toLatin1().data(), assetsStr, kAssetArrayLen);
-
-        for (int idx = 0; idx < kAssetArrayLen; ++idx)
-        {
-            delete[] assetsStr[idx];
-        }
-
-        delete[] assetsStr;
-    }
-}
-
-void CAssetBrowserManager::RemoveTagFromAsset(const QString& tag, const QString& category, const QString& asset)
-{
-    IAssetTagging* pAssetTagging = GetIEditor()->GetAssetTagging();
-
-    if (!pAssetTagging)
-    {
-        return;
-    }
-
-    pAssetTagging->RemoveTagFromAsset(tag.toLatin1().data(), category.toLatin1().data(), GetProjectName().toLatin1().data(), asset.toLatin1().data());
-}
-
-void CAssetBrowserManager::DestroyTag(const QString& tag)
-{
-    IAssetTagging* pAssetTagging = GetIEditor()->GetAssetTagging();
-
-    if (pAssetTagging)
-    {
-        pAssetTagging->DestroyTag(tag.toLatin1().data());
-    }
-}
-
-int CAssetBrowserManager::GetTagsForAsset(StrVector& tags, const QString& asset)
-{
-    IAssetTagging* pAssetTagging = GetIEditor()->GetAssetTagging();
-
-    if (!pAssetTagging)
-    {
-        return 0;
-    }
-
-    const int kNumTags = pAssetTagging->GetNumTagsForAsset(asset.toLatin1().data());
-
-    if (!kNumTags)
-    {
-        return 0;
-    }
-
-    const int kMaxStrLen = pAssetTagging->GetMaxStringLen();
-
-    char** ppTagsRet = new char*[kNumTags];
-
-    for (int idx = 0; idx < kNumTags; ++idx)
-    {
-        ppTagsRet[idx] = new char[kMaxStrLen];
-        memset(ppTagsRet[idx], '\0', kMaxStrLen);
-    }
-
-    const int kCountRet = pAssetTagging->GetTagsForAsset(ppTagsRet, kNumTags, asset.toLatin1().data());
-
-    if (kCountRet > 0)
-    {
-        for (int idx = 0; idx < kCountRet; ++idx)
-        {
-            QString tag = ppTagsRet[idx];
-            tags.push_back(tag);
-        }
-    }
-
-    for (int idx = 0; idx < kNumTags; ++idx)
-    {
-        delete[] ppTagsRet[idx];
-    }
-
-    delete[] ppTagsRet;
-
-    return kCountRet;
-}
-
-int CAssetBrowserManager::GetTagForAssetInCategory(QString& tag, const QString& asset, const QString& category)
-{
-    IAssetTagging* pAssetTagging = GetIEditor()->GetAssetTagging();
-
-    if (!pAssetTagging)
-    {
-        return 0;
-    }
-
-    const int kMaxStrLen = pAssetTagging->GetMaxStringLen();
-
-    char* tagsRet = new char[kMaxStrLen];
-    memset(tagsRet, '\0', kMaxStrLen);
-    pAssetTagging->GetTagForAssetInCategory(tagsRet, asset.toLatin1().data(), category.toLatin1().data());
-    tag = tagsRet;
-
-    delete[] tagsRet;
-    return 1;
-}
-
-int CAssetBrowserManager::GetAssetsForTag(StrVector& assets, const QString& tag)
-{
-    IAssetTagging* pAssetTagging = GetIEditor()->GetAssetTagging();
-
-    if (!pAssetTagging)
-    {
-        return 0;
-    }
-
-    const int kNumAssets = pAssetTagging->GetNumAssetsForTag(tag.toLatin1().data());
-
-    if (!kNumAssets)
-    {
-        return 0;
-    }
-
-    const int kMaxStrLen = pAssetTagging->GetMaxStringLen();
-
-    char** ppAssetsRet = new char*[kNumAssets];
-
-    for (int idx = 0; idx < kNumAssets; idx++)
-    {
-        ppAssetsRet[idx] = new char[kMaxStrLen];
-        memset(ppAssetsRet[idx], '\0', kMaxStrLen);
-    }
-
-    const int kRetAssets = pAssetTagging->GetAssetsForTag(ppAssetsRet, kNumAssets, tag.toLatin1().data());
-
-    if (kRetAssets > 0)
-    {
-        for (int idx = 0; idx < kRetAssets; ++idx)
-        {
-            QString asset(ppAssetsRet[idx]);
-            assets.push_back(asset);
-        }
-    }
-
-    for (int idx = 0; idx < kNumAssets; ++idx)
-    {
-        delete[] ppAssetsRet[idx];
-    }
-
-    delete[] ppAssetsRet;
-
-    return kRetAssets;
-}
-
-int CAssetBrowserManager::GetAssetCountForTag(const QString& tag)
-{
-    IAssetTagging* pAssetTagging = GetIEditor()->GetAssetTagging();
-
-    if (!pAssetTagging)
-    {
-        return 0;
-    }
-
-    return pAssetTagging->GetNumAssetsForTag(tag.toLatin1().data());
-}
-
-int CAssetBrowserManager::GetAssetsWithDescription(StrVector& assets, const QString& description)
-{
-    IAssetTagging* pAssetTagging = GetIEditor()->GetAssetTagging();
-
-    if (!pAssetTagging)
-    {
-        return 0;
-    }
-
-    const int kNumAssets = pAssetTagging->GetNumAssetsWithDescription(description.toLatin1().data());
-
-    if (!kNumAssets)
-    {
-        return 0;
-    }
-
-    const int kMaxStrLen = pAssetTagging->GetMaxStringLen();
-
-    char** ppAssetsRet = new char*[kNumAssets];
-
-    for (int idx = 0; idx < kNumAssets; idx++)
-    {
-        ppAssetsRet[idx] = new char[kMaxStrLen];
-        memset(ppAssetsRet[idx], '\0', kMaxStrLen);
-    }
-
-    const int kRetAssets = pAssetTagging->GetAssetsWithDescription(ppAssetsRet, kNumAssets, description.toLatin1().data());
-
-    if (kRetAssets > 0)
-    {
-        for (int idx = 0; idx < kRetAssets; ++idx)
-        {
-            QString asset(ppAssetsRet[idx]);
-            assets.push_back(asset);
-        }
-    }
-
-    for (int idx = 0; idx < kNumAssets; ++idx)
-    {
-        delete[] ppAssetsRet[idx];
-    }
-
-    delete[] ppAssetsRet;
-
-    return kRetAssets;
-}
-
-int CAssetBrowserManager::GetAllTags(StrVector& tags)
-{
-    IAssetTagging* pAssetTagging = GetIEditor()->GetAssetTagging();
-
-    if (!pAssetTagging)
-    {
-        return 0;
-    }
-
-    const int kNumTags = pAssetTagging->GetNumTags();
-
-    if (kNumTags == 0)
-    {
-        return 0;
-    }
-
-    const int kMaxStrLen = pAssetTagging->GetMaxStringLen();
-
-    char** ppTagsRet = new char*[kNumTags];
-
-    for (int idx = 0; idx < kNumTags; idx++)
-    {
-        ppTagsRet[idx] = new char[kMaxStrLen];
-        memset(ppTagsRet[idx], '\0', kMaxStrLen);
-    }
-
-    const int kRetTags = pAssetTagging->GetAllTags(ppTagsRet, kNumTags);
-
-    if (kRetTags > 0)
-    {
-        for (int idx = 0; idx < kRetTags; idx++)
-        {
-            QString tag(ppTagsRet[idx]);
-            tags.push_back(tag);
-        }
-    }
-
-    for (int idx = 0; idx < kNumTags; idx++)
-    {
-        delete[] ppTagsRet[idx];
-    }
-
-    delete[] ppTagsRet;
-
-    return kRetTags;
-}
-
-int CAssetBrowserManager::GetAllTagCategories(StrVector& categories)
-{
-    IAssetTagging* pAssetTagging = GetIEditor()->GetAssetTagging();
-
-    if (!pAssetTagging)
-    {
-        return 0;
-    }
-
-    const int numCategories = pAssetTagging->GetNumCategories();
-
-    if (numCategories == 0)
-    {
-        return 0;
-    }
-
-    const int maxStrLen = pAssetTagging->GetMaxStringLen();
-
-    char** categoriesRet = new char*[numCategories];
-
-    for (int idx = 0; idx < numCategories; idx++)
-    {
-        categoriesRet[idx] = new char[maxStrLen];
-        memset(categoriesRet[idx], '\0', maxStrLen);
-    }
-
-    const int nRetCategories = pAssetTagging->GetAllCategories(categoriesRet, numCategories);
-
-    if (nRetCategories > 0)
-    {
-        for (int idx = 0; idx < nRetCategories; idx++)
-        {
-            QString category(categoriesRet[idx]);
-            categories.push_back(category);
-        }
-    }
-
-    for (int idx = 0; idx < numCategories; idx++)
-    {
-        delete[] categoriesRet[idx];
-    }
-
-    delete[] categoriesRet;
-
-    return nRetCategories;
-}
-
-int CAssetBrowserManager::GetTagsForCategory(const QString& category, StrVector& tags)
-{
-    IAssetTagging* pAssetTagging = GetIEditor()->GetAssetTagging();
-
-    if (!pAssetTagging)
-    {
-        return 0;
-    }
-
-    const int kNumTags = pAssetTagging->GetNumTagsForCategory(category.toLatin1().data());
-
-    if (!kNumTags)
-    {
-        return 0;
-    }
-
-    const int kMaxStrLen = pAssetTagging->GetMaxStringLen();
-
-    char** ppTagsRet = new char*[kNumTags];
-
-    for (int idx = 0; idx < kNumTags; idx++)
-    {
-        ppTagsRet[idx] = new char[kMaxStrLen];
-        memset(ppTagsRet[idx], '\0', kMaxStrLen);
-    }
-
-    const int kRetTags = pAssetTagging->GetTagsForCategory(category.toLatin1().data(), ppTagsRet, kNumTags);
-
-    if (kRetTags > 0)
-    {
-        for (int idx = 0; idx < kRetTags; idx++)
-        {
-            QString tag(ppTagsRet[idx]);
-            tags.push_back(tag);
-        }
-    }
-
-    for (int idx = 0; idx < kNumTags; idx++)
-    {
-        delete[] ppTagsRet[idx];
-    }
-
-    delete[] ppTagsRet;
-
-    return kRetTags;
-}
-
-int CAssetBrowserManager::TagExists(const QString& tag, const QString& category)
-{
-    IAssetTagging* pAssetTagging = GetIEditor()->GetAssetTagging();
-
-    if (pAssetTagging)
-    {
-        return pAssetTagging->TagExists(tag.toLatin1().data(), category.toLatin1().data());
-    }
-
-    return 0;
-}
-
-int CAssetBrowserManager::AssetExists(const QString& relpath)
-{
-    IAssetTagging* pAssetTagging = GetIEditor()->GetAssetTagging();
-
-    if (pAssetTagging)
-    {
-        return pAssetTagging->AssetExists(relpath.toLatin1().data());
-    }
-
-    return 0;
-}
-
-int CAssetBrowserManager::ProjectExists(const QString& project)
-{
-    IAssetTagging* pAssetTagging = GetIEditor()->GetAssetTagging();
-
-    if (pAssetTagging)
-    {
-        return pAssetTagging->ProjectExists(project.toLatin1().data());
-    }
-
-    return 0;
-}
-
-bool CAssetBrowserManager::GetAssetDescription(const QString& relpath, QString& description)
-{
-    IAssetTagging* pAssetTagging = GetIEditor()->GetAssetTagging();
-
-    if (!pAssetTagging)
-    {
-        return false;
-    }
-
-    const int maxStrLen = pAssetTagging->GetMaxStringLen();
-
-    char* assetDescription = new char[maxStrLen];
-    memset(assetDescription, '\0', maxStrLen);
-
-    bool bGot = pAssetTagging->GetAssetDescription(relpath.toLatin1().data(), assetDescription, maxStrLen);
-
-    if (bGot)
-    {
-        description = assetDescription;
-    }
-
-    delete[] assetDescription;
-    assetDescription = NULL;
-
-    return bGot;
-}
-
-bool CAssetBrowserManager::GetAutocompleteDescription(const QString& partDesc, QString& description)
-{
-    IAssetTagging* pAssetTagging = GetIEditor()->GetAssetTagging();
-
-    if (!pAssetTagging)
-    {
-        return false;
-    }
-
-    const int maxStrLen = pAssetTagging->GetMaxStringLen();
-
-    char* fullDescription = new char[maxStrLen];
-    memset(fullDescription, '\0', maxStrLen);
-
-    bool bGot = pAssetTagging->AutoCompleteDescription(partDesc.toLatin1().data(), fullDescription, maxStrLen);
-
-    if (bGot)
-    {
-        description = fullDescription;
-    }
-
-    delete[] fullDescription;
-    fullDescription = NULL;
-
-    return bGot;
-}
-
-void CAssetBrowserManager::SetAssetDescription(const QString& relpath, const QString& description)
-{
-    IAssetTagging* pAssetTagging = GetIEditor()->GetAssetTagging();
-
-    if (!pAssetTagging)
-    {
-        return;
-    }
-
-    pAssetTagging->SetAssetDescription(relpath.toLatin1().data(), GetProjectName().toLatin1().data(), description.toLatin1().data());
+    return hash;
 }
 
 QString CAssetBrowserManager::GetProjectName()
@@ -1223,7 +614,7 @@ void CAssetBrowserManager::MarkUsedInLevelAssets()
                 bool bUsed = (usedResources.files.end() != std::find(usedResources.files.begin(), usedResources.files.end(), iterAsset->first));
 
                 // special case for images
-                if (!bUsed && IResourceCompilerHelper::IsGameImageFormatSupported(pItem->GetFileExtension().toLatin1().data()))
+                if (!bUsed && IResourceCompilerHelper::IsGameImageFormatSupported(pItem->GetFileExtension().toUtf8().data()))
                 {
                     QString fileName = pItem->GetRelativePath() + pItem->GetFilename();
 

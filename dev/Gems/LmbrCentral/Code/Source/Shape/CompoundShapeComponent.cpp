@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 #include "CompoundShapeComponent.h"
 #include <AzCore/Math/Transform.h>
 #include "Cry_GeoOverlap.h"
@@ -48,6 +48,7 @@ namespace LmbrCentral
         AZ::EntityBus::MultiHandler::BusDisconnect();
         CompoundShapeComponentRequestsBus::Handler::BusDisconnect();
         ShapeComponentRequestsBus::Handler::BusDisconnect();
+        ShapeComponentNotificationsBus::MultiHandler::BusDisconnect();
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -95,6 +96,21 @@ namespace LmbrCentral
             }
         }
         return smallestDistanceSquared;
+    }
+
+    bool CompoundShapeComponent::IntersectRay(const AZ::Vector3& src, const AZ::Vector3& dir, AZ::VectorFloat& distance)
+    {
+        bool intersection = false;
+        for (const AZ::EntityId childEntity : m_configuration.GetChildEntities())
+        {
+            ShapeComponentRequestsBus::EventResult(intersection, childEntity, &ShapeComponentRequests::IntersectRay, src, dir, distance);
+            if (intersection)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     void CompoundShapeComponent::OnEntityActivated(const AZ::EntityId& id)

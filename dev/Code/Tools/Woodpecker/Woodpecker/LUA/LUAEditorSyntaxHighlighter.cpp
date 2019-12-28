@@ -48,6 +48,7 @@ namespace LUAEditor
         class BaseParserState
         {
         public:
+            virtual ~BaseParserState() {}
             virtual bool IsMultilineState(LUASyntaxHighlighter::StateMachine& machine) const { (void*)&machine; return false; }
             virtual void StartState(LUASyntaxHighlighter::StateMachine& machine) { (void*)&machine; }
             //note you only get 13 bits of usable space here. see QTBlockState m_syntaxHighlighterStateExtra
@@ -595,6 +596,18 @@ namespace LUAEditor
         textFormat.setForeground(colors->GetTextColor());
         setFormat(0, cBlock.length(), textFormat);
 
+        QTextCharFormat spaceFormat = QTextCharFormat();
+        spaceFormat.setForeground(colors->GetTextWhitespaceColor());
+
+        QRegExp tabsAndSpaces("( |\t)+");
+        int index = tabsAndSpaces.indexIn(text);
+        while (index >= 0)
+        {
+            int length = tabsAndSpaces.matchedLength();
+            setFormat(index, length, spaceFormat);
+            index = tabsAndSpaces.indexIn(text, index + length);
+        }
+
         //first take care of bracket highlighting. let later overwrite to handle case of brackets inside of a comment,ect
         if (m_openBracketPos >= 0 && m_closeBracketPos >= 0)
         {
@@ -716,7 +729,7 @@ namespace LUAEditor
 
         if (oldOpenBracketPos >= 0)
         {
-            auto openBlock = document()->findBlock(oldOpenBracketPos);
+            openBlock = document()->findBlock(oldOpenBracketPos);
             if (openBlock.isValid())
             {
                 rehighlightBlock(openBlock);
@@ -724,7 +737,7 @@ namespace LUAEditor
         }
         if (oldcloseBracketPos >= 0)
         {
-            auto closeBlock = document()->findBlock(oldcloseBracketPos);
+            closeBlock = document()->findBlock(oldcloseBracketPos);
             if (closeBlock.isValid())
             {
                 rehighlightBlock(closeBlock);

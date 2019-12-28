@@ -9,7 +9,9 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
+#include "LmbrCentralReflectionTest.h"
+
 #include <AzCore/Asset/AssetManager.h>
 #include <AzCore/Asset/AssetManagerComponent.h>
 #include <AzCore/Memory/MemoryComponent.h>
@@ -20,9 +22,17 @@
 #include <AzFramework/Components/BootstrapReaderComponent.h>
 #include <AzFramework/Components/TransformComponent.h>
 #include <AzFramework/Entity/GameEntityContextComponent.h>
-#include <Tests/TestTypes.h>
+#include <AzCore/UnitTest/TestTypes.h>
 // LmbrCentral/Source
 #include "Scripting/SpawnerComponent.h"
+#include "LmbrCentral.h"
+
+#ifdef LMBR_CENTRAL_EDITOR
+#include <AzToolsFramework/Application/ToolsApplication.h>
+#include <AzToolsFramework/ToolsComponents/GenericComponentWrapper.h>
+#include "LmbrCentralEditor.h"
+#include "Scripting/EditorSpawnerComponent.h"
+#endif
 
 // Tracks SpawnerComponentNotificationBus events
 class SpawnWatcher
@@ -89,6 +99,12 @@ class SpawnerApplication
             azrtti_typeid<AzFramework::GameEntityContextComponent>(),
             azrtti_typeid<AzFramework::AssetSystem::AssetSystemComponent>(),
         };
+    }
+
+    void RegisterCoreComponents() override
+    {
+        AzFramework::Application::RegisterCoreComponents();
+        RegisterComponentDescriptor(LmbrCentral::SpawnerComponent::CreateDescriptor());
     }
 };
 
@@ -260,15 +276,15 @@ TEST_F(SpawnerComponentTest, OnSpawnedSliceDestroyed_FiresAfterEntitiesDeleted)
 }
 
 
-TEST_F(SpawnerComponentTest, DISABLED_OnSpawnedSliceDestroyed_FiresWhenSpawningBadAssets) // disabled because AZ_TEST_START_ASSERTTEST isn't currently suppressing the asserts
+TEST_F(SpawnerComponentTest, DISABLED_OnSpawnedSliceDestroyed_FiresWhenSpawningBadAssets) // disabled because AZ_TEST_START_TRACE_SUPPRESSION isn't currently suppressing the asserts
 {
     // ID is made up and not registered with asset manager
     auto nonexistentAsset = AZ::Data::Asset<AZ::SliceAsset>(AZ::Data::AssetId("{9E3862CC-B6DF-485F-A9D8-5F4A966DE88B}"), AZ::AzTypeInfo<AZ::SliceAsset>::Uuid());
     AzFramework::SliceInstantiationTicket ticket = m_spawnerComponent->SpawnSlice(nonexistentAsset);
 
-    AZ_TEST_START_ASSERTTEST;
+    AZ_TEST_START_TRACE_SUPPRESSION;
     bool spawnDestructionFired = TickUntil([this, ticket]() { return m_spawnWatcher->m_tickets[ticket].m_onSpawnedSliceDestroyed; });
-    AZ_TEST_STOP_ASSERTTEST(1);
+    AZ_TEST_STOP_TRACE_SUPPRESSION(1);
     EXPECT_TRUE(spawnDestructionFired);
 }
 
@@ -523,3 +539,155 @@ TEST_F(SpawnerComponentTest, GetAllCurrentlySpawnedEntities_ReturnsEntities)
     EXPECT_EQ(numEntities, entities.size());
     EXPECT_TRUE(allEntitiesFound);
 }
+
+// Legacy SpawnerComponent from game data
+// Should get converted into modern SpawnerComponent
+const char kWrappedGameSpawnerComponent[] =
+R"DELIMITER(<ObjectStream version="3">
+    <Class name="SpawnerComponent" field="element" version="1" type="{8022A627-FA7D-4516-A155-657A0927A3CA}">
+        <Class name="AZ::Component" field="BaseClass1" type="{EDFCB2CF-F75D-43BE-B26B-F35821B29247}">
+            <Class name="AZ::u64" field="Id" value="8317941343245109563" type="{D6597933-47CD-4FC8-B911-63F3E2B0993A}"/>
+        </Class>
+        <Class name="Asset" field="Slice" value="id={6F11134F-84C9-559F-AABA-3D1778656707}:2,type={78802ABF-9595-463A-8D2B-D022F906F9B1},hint={slices/particle_electrical_damage.dynamicslice}" version="1" type="{77A19D40-8731-4D3C-9041-1B43047366A4}"/>
+        <Class name="bool" field="SpawnOnActivate" value="true" type="{A0CA880C-AFE4-43CB-926C-59AC48496112}"/>
+        <Class name="bool" field="DestroyOnDeactivate" value="true" type="{A0CA880C-AFE4-43CB-926C-59AC48496112}"/>
+    </Class>
+</ObjectStream>)DELIMITER";
+
+class LoadSpawnerComponentFromLegacyGameData
+    : public LoadReflectedObjectTest<AzFramework::Application, LmbrCentral::LmbrCentralModule, LmbrCentral::SpawnerComponent>
+{
+public:
+    const char* GetSourceDataBuffer() const { return kWrappedGameSpawnerComponent; }
+
+    void SetUp()
+    {
+        LoadReflectedObjectTest::SetUp();
+
+        if (m_object)
+        {
+            m_readConfigSuccess = m_object->GetConfiguration(m_spawnerConfig);
+        }
+    }
+
+    LmbrCentral::SpawnerConfig m_spawnerConfig;
+    bool m_readConfigSuccess = false;
+};
+
+TEST_F(LoadSpawnerComponentFromLegacyGameData, Fixture_SanityCheck)
+{
+    EXPECT_NE(nullptr, GetApplication());
+}
+
+TEST_F(LoadSpawnerComponentFromLegacyGameData, SpawnerComponent_LoadsFromData)
+{
+    EXPECT_NE(nullptr, m_object.get());
+}
+
+TEST_F(LoadSpawnerComponentFromLegacyGameData, ComponentId_ValuePreserved)
+{
+    EXPECT_EQ(AZ::ComponentId(8317941343245109563ULL), m_object->GetId());
+}
+
+TEST_F(LoadSpawnerComponentFromLegacyGameData, SliceAsset_ValuePreserved)
+{
+    EXPECT_EQ(AZ::Uuid("{6F11134F-84C9-559F-AABA-3D1778656707}"), m_spawnerConfig.m_sliceAsset.GetId().m_guid);
+}
+
+TEST_F(LoadSpawnerComponentFromLegacyGameData, SpawnOnActivate_ValuePreserved)
+{
+    EXPECT_TRUE(m_spawnerConfig.m_spawnOnActivate);
+}
+
+TEST_F(LoadSpawnerComponentFromLegacyGameData, DestroyOnDeactivate_ValuePreserved)
+{
+    EXPECT_TRUE(m_spawnerConfig.m_destroyOnDeactivate);
+}
+
+#ifdef LMBR_CENTRAL_EDITOR
+// Legacy SpawnerComponent from editor data (wrapped inside a GenericComponentWrapper)
+// Should get converted into EditorSpawnerComponent
+const char kWrappedLegacySpawnerComponent[] =
+R"DELIMITER(<ObjectStream version="3">
+    <Class name="GenericComponentWrapper" field="element" type="{68D358CA-89B9-4730-8BA6-E181DEA28FDE}">
+        <Class name="EditorComponentBase" field="BaseClass1" version="1" type="{D5346BD4-7F20-444E-B370-327ACD03D4A0}">
+            <Class name="AZ::Component" field="BaseClass1" type="{EDFCB2CF-F75D-43BE-B26B-F35821B29247}">
+                <Class name="AZ::u64" field="Id" value="6866719809809621109" type="{D6597933-47CD-4FC8-B911-63F3E2B0993A}"/>
+            </Class>
+        </Class>
+        <Class name="SpawnerComponent" field="m_template" version="1" type="{8022A627-FA7D-4516-A155-657A0927A3CA}">
+            <Class name="AZ::Component" field="BaseClass1" type="{EDFCB2CF-F75D-43BE-B26B-F35821B29247}">
+                <Class name="AZ::u64" field="Id" value="0" type="{D6597933-47CD-4FC8-B911-63F3E2B0993A}"/>
+            </Class>
+            <Class name="Asset" field="Slice" value="id={3987FC80-0CF5-5A22-BE55-1EEDF382909E}:2,type={78802ABF-9595-463A-8D2B-D022F906F9B1},hint={slices/ai_walker.dynamicslice}" version="1" type="{77A19D40-8731-4D3C-9041-1B43047366A4}"/>
+            <Class name="bool" field="SpawnOnActivate" value="true" type="{A0CA880C-AFE4-43CB-926C-59AC48496112}"/>
+            <Class name="bool" field="DestroyOnDeactivate" value="true" type="{A0CA880C-AFE4-43CB-926C-59AC48496112}"/>
+        </Class>
+    </Class>
+</ObjectStream>)DELIMITER";
+
+class LoadSpawnerComponentFromLegacyEditorData
+    : public LoadReflectedObjectTest<AzToolsFramework::ToolsApplication, LmbrCentral::LmbrCentralEditorModule, AzToolsFramework::Components::GenericComponentWrapper>
+{
+public:
+    const char* GetSourceDataBuffer() const override { return kWrappedLegacySpawnerComponent; }
+
+    void SetUp() override
+    {
+        LoadReflectedObjectTest::SetUp();
+
+        // reset values from previous run
+        m_editorSpawnerComponent = nullptr;
+        m_readConfigSuccess = false;
+
+        if (m_object)
+        {
+            if (m_editorSpawnerComponent = azrtti_cast<LmbrCentral::EditorSpawnerComponent*>(m_object->GetTemplate()))
+            {
+                m_readConfigSuccess = m_editorSpawnerComponent->GetConfiguration(m_spawnerConfig);
+            }
+        }
+    }
+
+    LmbrCentral::EditorSpawnerComponent* m_editorSpawnerComponent;
+    LmbrCentral::SpawnerConfig m_spawnerConfig;
+    bool m_readConfigSuccess;
+
+};
+
+TEST_F(LoadSpawnerComponentFromLegacyEditorData, Fixture_SanityCheck)
+{
+    EXPECT_NE(nullptr, GetApplication());
+}
+
+TEST_F(LoadSpawnerComponentFromLegacyEditorData, ObjectStream_LoadsComponents)
+{
+    EXPECT_NE(nullptr, m_object.get());
+}
+
+TEST_F(LoadSpawnerComponentFromLegacyEditorData, LegacySpawnerComponent_TurnedIntoEditorSpawnerComponent)
+{
+    EXPECT_NE(nullptr, m_editorSpawnerComponent);
+}
+
+TEST_F(LoadSpawnerComponentFromLegacyEditorData, SpawnerConfig_SuccessfullyRead)
+{
+    EXPECT_TRUE(m_readConfigSuccess);
+}
+
+TEST_F(LoadSpawnerComponentFromLegacyEditorData, SliceAsset_ValuePreserved)
+{
+    EXPECT_EQ(AZ::Uuid("{3987FC80-0CF5-5A22-BE55-1EEDF382909E}"), m_spawnerConfig.m_sliceAsset.GetId().m_guid);
+}
+
+TEST_F(LoadSpawnerComponentFromLegacyEditorData, SpawnOnActivate_ValuePreserved)
+{
+    EXPECT_TRUE(m_spawnerConfig.m_spawnOnActivate);
+}
+
+TEST_F(LoadSpawnerComponentFromLegacyEditorData, DestroyOnDeactivate_ValuePreserved)
+{
+    EXPECT_TRUE(m_spawnerConfig.m_destroyOnDeactivate);
+}
+
+#endif // LMBR_CENTRAL_EDITOR

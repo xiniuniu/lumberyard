@@ -14,8 +14,6 @@
 // Description : Common math class
 
 
-#ifndef CRYINCLUDE_CRYCOMMON_CRY_MATH_H
-#define CRYINCLUDE_CRYCOMMON_CRY_MATH_H
 #pragma once
 
 //========================================================================================
@@ -495,9 +493,19 @@ ILINE float approxOneExp(float x) {     return x * fres(1.f + x); }
 
 ILINE int ilog2(uint64 x)   // if x==1<<i (i=0..63), returns i
 {
-// TODO: Hoist this to a trait definition somewhere else
 #if defined(CRY_PLATFORM_X64)
-# if   defined(CRY_PLATFORM_LINUX)
+# if defined(AZ_RESTRICTED_PLATFORM)
+#  if defined(AZ_PLATFORM_XENIA)
+#   include "Xenia/Cry_Math_h_xenia.inl"
+#  elif defined(AZ_PLATFORM_PROVO)
+#   include "Provo/Cry_Math_h_provo.inl"
+#  elif defined(AZ_PLATFORM_SALEM)
+#   include "Salem/Cry_Math_h_salem.inl"
+#  endif
+# endif
+# if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#  undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+# elif defined(CRY_PLATFORM_LINUX)
 #  define HAS_BIT_SCAN_FORWARD64 0
 # else
 #  define HAS_BIT_SCAN_FORWARD64 1
@@ -688,5 +696,3 @@ inline void GetBasisVectors(const Vec3& n, Vec3& b1, Vec3& b2)
     b1 = Vec3(1.0f - n.x * n.x * a, b, -n.x);
     b2 = Vec3(b, 1.0f - n.y * n.y * a, -n.y);
 }
-
-#endif // CRYINCLUDE_CRYCOMMON_CRY_MATH_H

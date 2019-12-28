@@ -9,8 +9,10 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include <UI/UICore/QBetterLabel.h>
+#include <AzQtComponents/Components/ExtendedLabel.h>
+AZ_PUSH_DISABLE_WARNING(4251, "-Wunknown-warning-option") // 4251: class 'QFlags<Qt::AlignmentFlag>' needs to have dll-interface to be used by clients of class 'QLayoutItem'
 #include <AssetBrowser/Search/ui_FilterByWidget.h>
+AZ_POP_DISABLE_WARNING
 #include <AzToolsFramework/AssetBrowser/Search/FilterByWidget.h>
 
 namespace AzToolsFramework
@@ -22,7 +24,7 @@ namespace AzToolsFramework
             , m_ui(new Ui::FilterByWidgetClass)
         {
             m_ui->setupUi(this);
-            connect(m_ui->m_clearFiltersButton, &QBetterLabel::clicked, this, &FilterByWidget::ClearSignal);
+            connect(m_ui->m_clearFiltersButton, &AzQtComponents::ExtendedLabel::clicked, this, &FilterByWidget::ClearSignal);
             // hide clear button as filters are reset at the startup
             ToggleClearButton(false);
         }

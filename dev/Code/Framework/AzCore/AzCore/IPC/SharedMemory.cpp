@@ -9,15 +9,13 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#ifndef AZ_UNITY_BUILD
+
 #include <AzCore/PlatformIncl.h>
 #include <AzCore/IPC/SharedMemory.h>
 
 #include <AzCore/std/algorithm.h>
 
 #include <AzCore/std/parallel/spin_mutex.h>
-
-#if defined(AZ_PLATFORM_WINDOWS)
 
 namespace AZ
 {
@@ -48,14 +46,8 @@ using namespace AZ;
 // [4/27/2011]
 //=========================================================================
 SharedMemory::SharedMemory()
-    : m_mappedBase(nullptr)
-    , m_data(nullptr)
-    , m_dataSize(0)
-    , m_mapHandle(NULL)
-    , m_globalMutex(NULL)
-    , m_lastLockResult(WAIT_FAILED)
+    : m_data(nullptr)
 {
-    m_name[0] = '\0';
 }
 
 //=========================================================================
@@ -72,49 +64,19 @@ SharedMemory::~SharedMemory()
 // Create
 // [4/27/2011]
 //=========================================================================
-SharedMemory::CreateResult
+SharedMemory_Common::CreateResult
 SharedMemory::Create(const char* name, unsigned int size, bool openIfCreated)
 {
     AZ_Assert(name && strlen(name) > 1, "Invalid name!");
     AZ_Assert(size > 0, "Invalid buffer size!");
-    if (m_mapHandle != NULL || m_globalMutex != NULL)
+    if (IsReady())
     {
         return CreateFailed;
     }
 
-    char fullName[256];
-    azstrncpy(m_name, name, AZ_ARRAY_SIZE(m_name));
+    CreateResult result = Platform::Create(name, size, openIfCreated);
 
-    // Security attributes
-    SECURITY_ATTRIBUTES secAttr;
-    char secDesc[ SECURITY_DESCRIPTOR_MIN_LENGTH ];
-    secAttr.nLength = sizeof(secAttr);
-    secAttr.bInheritHandle = TRUE;
-    secAttr.lpSecurityDescriptor = &secDesc;
-    InitializeSecurityDescriptor(secAttr.lpSecurityDescriptor, SECURITY_DESCRIPTOR_REVISION);
-    SetSecurityDescriptorDacl(secAttr.lpSecurityDescriptor, TRUE, 0, FALSE);
-
-    // Obtain global mutex
-    azsnprintf(fullName, AZ_ARRAY_SIZE(fullName), "%s_Mutex", name);
-    m_globalMutex = CreateMutex(&secAttr, FALSE, fullName);
-    DWORD error = GetLastError();
-    if (m_globalMutex == NULL || (error == ERROR_ALREADY_EXISTS && openIfCreated == false))
-    {
-        AZ_TracePrintf("AZSystem", "CreateMutex failed with error %d\n", error);
-        return CreateFailed;
-    }
-
-    // Create the file mapping.
-    azsnprintf(fullName, AZ_ARRAY_SIZE(fullName), "%s_Data", name);
-    m_mapHandle = CreateFileMapping(INVALID_HANDLE_VALUE, &secAttr, PAGE_READWRITE, 0, size, fullName);
-    error = GetLastError();
-    if (m_mapHandle == NULL || (error == ERROR_ALREADY_EXISTS && openIfCreated == false))
-    {
-        AZ_TracePrintf("AZSystem", "CreateFileMapping failed with error %d\n", error);
-        return CreateFailed;
-    }
-
-    if (error != ERROR_ALREADY_EXISTS)
+    if (result != CreatedExisting)
     {
         MemoryGuard l(*this);
         if (Map())
@@ -141,32 +103,12 @@ SharedMemory::Open(const char* name)
 {
     AZ_Assert(name && strlen(name) > 1, "Invalid name!");
 
-    if (m_mapHandle != NULL || m_globalMutex != NULL)
+    if (Platform::IsMapHandleValid() || m_globalMutex)
     {
         return false;
     }
 
-    char fullName[256];
-    azstrncpy(m_name, name, AZ_ARRAY_SIZE(m_name));
-
-    azsnprintf(fullName, AZ_ARRAY_SIZE(fullName), "%s_Mutex", name);
-    m_globalMutex = OpenMutex(SYNCHRONIZE, TRUE, fullName);
-    AZ_Warning("AZSystem", m_globalMutex != NULL, "Failed to open OS mutex [%s]\n", m_name);
-    if (m_globalMutex == NULL)
-    {
-        AZ_TracePrintf("AZSystem", "OpenMutex %s failed with error %d\n", m_name, GetLastError());
-        return false;
-    }
-
-    azsnprintf(fullName, AZ_ARRAY_SIZE(fullName), "%s_Data", name);
-    m_mapHandle = OpenFileMapping(FILE_MAP_WRITE, false, fullName);
-    if (m_mapHandle == NULL)
-    {
-        AZ_TracePrintf("AZSystem", "OpenFileMapping %s failed with error %d\n", m_name, GetLastError());
-        return false;
-    }
-
-    return true;
+    return Platform::Open(name);
 }
 
 //=========================================================================
@@ -177,16 +119,7 @@ void
 SharedMemory::Close()
 {
     UnMap();
-    if (m_mapHandle != NULL && !CloseHandle(m_mapHandle))
-    {
-        AZ_TracePrintf("AZSystem", "CloseHandle failed with error %d\n", GetLastError());
-    }
-    m_mapHandle = NULL;
-    if (m_globalMutex != NULL && !CloseHandle(m_globalMutex))
-    {
-        AZ_TracePrintf("AZSystem", "CloseHandle failed with error %d\n", GetLastError());
-    }
-    m_globalMutex = NULL;
+    Platform::Close();
 }
 
 //=========================================================================
@@ -197,25 +130,16 @@ bool
 SharedMemory::Map(AccessMode mode, unsigned int size)
 {
     AZ_Assert(m_mappedBase == NULL, "We already have data mapped");
-    AZ_Assert(m_mapHandle != NULL, "You must call Map() first!");
-    DWORD dwDesiredAccess = (mode == ReadOnly ? FILE_MAP_READ : FILE_MAP_WRITE);
-    m_mappedBase = MapViewOfFile(m_mapHandle, dwDesiredAccess, 0, 0, size);
-    if (m_mappedBase == nullptr)
+    AZ_Assert(Platform::IsMapHandleValid(), "You must call Map() first!");
+
+    bool result = Platform::Map(mode, size);
+
+    if (result)
     {
-        AZ_TracePrintf("AZSystem", "MapViewOfFile failed with error %d\n", GetLastError());
-        Close();
-        return false;
+        m_data = reinterpret_cast<char*>(m_mappedBase);
     }
-    // Grab the size of the memory we have been given (a multiple of 4K on windows)
-    MEMORY_BASIC_INFORMATION info;
-    if (!VirtualQuery(m_mappedBase, &info, sizeof(info)))
-    {
-        AZ_TracePrintf("AZSystem", "VirtualQuery failed\n");
-        return false;
-    }
-    m_dataSize = static_cast<unsigned int>(info.RegionSize);
-    m_data = reinterpret_cast<char*>(m_mappedBase);
-    return true;
+
+    return result;
 }
 
 //=========================================================================
@@ -229,7 +153,7 @@ SharedMemory::UnMap()
     {
         return false;
     }
-    if (UnmapViewOfFile(m_mappedBase) == FALSE)
+    if (!Platform::UnMap())
     {
         AZ_TracePrintf("AZSystem", "UnmapViewOfFile failed with error %d\n", GetLastError());
         return false;
@@ -247,38 +171,7 @@ SharedMemory::UnMap()
 void SharedMemory::lock()
 {
     AZ_Assert(m_globalMutex, "You need to create/open the global mutex first! Call Create or Open!");
-    DWORD lockResult = 0;
-    do 
-    {
-        lockResult = WaitForSingleObject(m_globalMutex, 5);
-        if (lockResult == WAIT_OBJECT_0 || lockResult == WAIT_ABANDONED)
-        {
-            break;
-        }
-
-        // If the wait failed, we need to re-acquire the mutex, because most likely
-        // something bad has happened to it (we have experienced what looks to be a
-        // reference counting issue where the mutex is killed for a process, and an
-        // INFINITE wait will indeed wait...infinitely on that mutex, while other
-        // processes are able to acquire it just fine)
-        if (lockResult == WAIT_FAILED)
-        {
-            DWORD lastError = ::GetLastError();
-            (void)lastError;
-            AZ_Warning("AZSystem", lockResult != WAIT_FAILED, "WaitForSingleObject failed with code %u", lastError);
-            Close();
-            Open(m_name);
-        }
-        else if (lockResult != WAIT_TIMEOUT)
-        {
-            // According to the docs: https://msdn.microsoft.com/en-us/library/windows/desktop/ms687032(v=vs.85).aspx
-            // WaitForSingleObject can only return WAIT_OBJECT_0, WAIT_ABANDONED, WAIT_FAILED, and WAIT_TIMEOUT
-            AZ_Error("AZSystem", false, "WaitForSingleObject returned an undocumented error code: %u, GetLastError: %u", lockResult, ::GetLastError());
-        }
-    } while (lockResult != WAIT_OBJECT_0 && lockResult != WAIT_ABANDONED);
-    
-    m_lastLockResult = lockResult;
-    AZ_Warning("AZSystem", m_lastLockResult != WAIT_ABANDONED, "We locked an abandoned Mutex, the shared memory data may be in instable state (corrupted)!");
+    Platform::lock();
 }
 
 //=========================================================================
@@ -288,9 +181,7 @@ void SharedMemory::lock()
 bool SharedMemory::try_lock()
 {
     AZ_Assert(m_globalMutex, "You need to create/open the global mutex first! Call Create or Open!");
-    m_lastLockResult = WaitForSingleObject(m_globalMutex, 0);
-    AZ_Warning("AZSystem", m_lastLockResult != WAIT_ABANDONED, "We locked an abandoned Mutex, the shared memory data may be in instable state (corrupted)!");
-    return (m_lastLockResult == WAIT_OBJECT_0) || (m_lastLockResult == WAIT_ABANDONED);
+    return Platform::try_lock();
 }
 
 //=========================================================================
@@ -300,13 +191,12 @@ bool SharedMemory::try_lock()
 void SharedMemory::unlock()
 {
     AZ_Assert(m_globalMutex, "You need to create/open the global mutex first! Call Create or Open!");
-    ReleaseMutex(m_globalMutex);
-    m_lastLockResult = WAIT_FAILED;
+    Platform::unlock();
 }
 
 bool SharedMemory::IsLockAbandoned()
 { 
-    return (m_lastLockResult == WAIT_ABANDONED); 
+    return Platform::IsLockAbandoned();
 }
 
 //=========================================================================
@@ -317,9 +207,22 @@ void  SharedMemory::Clear()
 {
     if (m_mappedBase != nullptr)
     {
-        AZ_Warning("AZSystem", m_lastLockResult != WAIT_FAILED, "You are clearing the shared memory %s while the Global lock is NOT locked! This can lead to data corruption!", m_name);
+        AZ_Warning("AZSystem", !Platform::IsWaitFailed(), "You are clearing the shared memory %s while the Global lock is NOT locked! This can lead to data corruption!", m_name);
         memset(m_data, 0, m_dataSize);
     }
+}
+
+bool SharedMemory::CheckMappedBaseValid()
+{
+    // Check that m_mappedBase is valid, and clean up if it isn't
+    if (m_mappedBase == nullptr)
+    {
+        AZ_TracePrintf("AZSystem", "MapViewOfFile failed with error %d\n", GetLastError());
+        Close();
+        return false;
+    }
+
+    return true;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -391,7 +294,7 @@ SharedMemoryRingBuffer::UnMap()
 bool
 SharedMemoryRingBuffer::Write(const void* data, unsigned int dataSize)
 {
-    AZ_Warning("AZSystem", m_lastLockResult != WAIT_FAILED, "You are writing the ring buffer %s while the Global lock is NOT locked! This can lead to data corruption!", m_name);
+    AZ_Warning("AZSystem", !Platform::IsWaitFailed(), "You are writing the ring buffer %s while the Global lock is NOT locked! This can lead to data corruption!", m_name);
     AZ_Assert(m_info != NULL, "You need to Create and Map the buffer first!");
     if (m_info->m_writeOffset >= m_info->m_readOffset)
     {
@@ -440,7 +343,7 @@ SharedMemoryRingBuffer::Write(const void* data, unsigned int dataSize)
 unsigned int
 SharedMemoryRingBuffer::Read(void* data, unsigned int maxDataSize)
 {
-    AZ_Warning("AZSystem", m_lastLockResult != WAIT_FAILED, "You are reading the ring buffer %s while the Global lock is NOT locked! This can lead to data corruption!", m_name);
+    AZ_Warning("AZSystem", !Platform::IsWaitFailed(), "You are reading the ring buffer %s while the Global lock is NOT locked! This can lead to data corruption!", m_name);
 
     if (m_info->m_dataToRead == 0)
     {
@@ -519,7 +422,3 @@ SharedMemoryRingBuffer::Clear()
         m_info->m_dataToRead = 0;
     }
 }
-
-#endif // AZ_PLATFORM_WINDOWS
-
-#endif // #ifndef AZ_UNITY_BUILD

@@ -79,11 +79,10 @@ namespace BehaviorTree
 
     protected:
         typedef std::vector<ChildType> Children;
-        typedef typename Children::iterator ChildIterator;
         Children m_children;
     };
 
-    class CompositeWithChildLoader
+	class CompositeWithChildLoader
         : public Composite<INodePtr>
     {
         typedef Composite<INodePtr> BaseClass;

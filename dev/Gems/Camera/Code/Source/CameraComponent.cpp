@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "Camera_precompiled.h"
 #include <AzCore/Serialization/EditContext.h>
 #include <AzCore/Component/TransformBus.h>
 #include <AzFramework/Entity/EntityDebugDisplayBus.h>
@@ -40,9 +40,9 @@ namespace Camera
 
     void CameraComponent::Init()
     {
-        m_system = gEnv->pGame->GetIGameFramework()->GetISystem();
+        m_system = gEnv->pSystem;
         // Initialize local view.
-        m_viewSystem = gEnv->pGame->GetIGameFramework()->GetIViewSystem();
+        m_viewSystem = gEnv->pSystem->GetIViewSystem();
         if (!m_viewSystem)
         {
             AZ_Error("CameraComponent", m_viewSystem != nullptr, "The CameraComponent shouldn't be used without a local view system");
@@ -110,17 +110,26 @@ namespace Camera
             behaviorContext->EBus<CameraRequestBus>("CameraRequestBus")
                 ->Event("GetNearClipDistance", &CameraRequestBus::Events::GetNearClipDistance)
                 ->Event("GetFarClipDistance", &CameraRequestBus::Events::GetFarClipDistance)
-                ->Event("GetFov", &CameraRequestBus::Events::GetFov)
-                ->Event("SetFov", &CameraRequestBus::Events::SetFov)
+                ->Event("GetFovDegrees", &CameraRequestBus::Events::GetFovDegrees)
+                ->Event("SetFovDegrees", &CameraRequestBus::Events::SetFovDegrees)
+                ->Event("GetFovRadians", &CameraRequestBus::Events::GetFovRadians)
+                ->Event("SetFovRadians", &CameraRequestBus::Events::SetFovRadians)
+                ->Event("GetFov", &CameraRequestBus::Events::GetFov) // Deprecated in 1.13
+                ->Event("SetFov", &CameraRequestBus::Events::SetFov) // Deprecated in 1.13
                 ->Event("SetNearClipDistance", &CameraRequestBus::Events::SetNearClipDistance)
                 ->Event("SetFarClipDistance", &CameraRequestBus::Events::SetFarClipDistance)
                 ->Event("MakeActiveView", &CameraRequestBus::Events::MakeActiveView)
-                ->VirtualProperty("FieldOfView","GetFov","SetFov")
+                ->VirtualProperty("FieldOfView","GetFovDegrees","SetFovDegrees")
                 ->VirtualProperty("NearClipDistance", "GetNearClipDistance", "SetNearClipDistance")
                 ->VirtualProperty("FarClipDistance", "GetFarClipDistance", "SetFarClipDistance")
                 ;
 
             behaviorContext->Class<CameraComponent>()->RequestBus("CameraRequestBus");
+
+            behaviorContext->EBus<CameraSystemRequestBus>("CameraSystemRequestBus")
+                ->Attribute(AZ::Script::Attributes::Category, "Camera")
+                ->Event("GetActiveCamera", &CameraSystemRequestBus::Events::GetActiveCamera)
+                ;
         }
     }
 
@@ -148,9 +157,14 @@ namespace Camera
         m_view->SetCurrentParams(viewParams);
     }
 
-    float CameraComponent::GetFov()
+    float CameraComponent::GetFovDegrees()
     {
         return m_fov;
+    }
+
+    float CameraComponent::GetFovRadians()
+    {
+        return AZ::DegToRad(m_fov);
     }
 
     float CameraComponent::GetNearClipDistance()
@@ -173,29 +187,39 @@ namespace Camera
         return m_frustumHeight;
     }
 
-    void CameraComponent::SetFov(float fov)
+    void CameraComponent::SetFovDegrees(float fovDegrees)
     {
-        m_fov = AZ::GetClamp(fov, s_minFoV, s_maxFoV); UpdateCamera();
+        m_fov = AZ::GetClamp(fovDegrees, s_minFoV, s_maxFoV);
+        UpdateCamera();
+    }
+
+    void CameraComponent::SetFovRadians(float fovRadians)
+    {
+        SetFovDegrees(AZ::RadToDeg(fovRadians));
     }
 
     void CameraComponent::SetNearClipDistance(float nearClipDistance) 
     {
-        m_nearClipPlaneDistance = AZ::GetMin(nearClipDistance, m_farClipPlaneDistance); UpdateCamera();
+        m_nearClipPlaneDistance = AZ::GetMin(nearClipDistance, m_farClipPlaneDistance);
+        UpdateCamera();
     }
 
     void CameraComponent::SetFarClipDistance(float farClipDistance) 
     {
-        m_farClipPlaneDistance = AZ::GetMax(farClipDistance, m_nearClipPlaneDistance); UpdateCamera();
+        m_farClipPlaneDistance = AZ::GetMax(farClipDistance, m_nearClipPlaneDistance);
+        UpdateCamera();
     }
 
     void CameraComponent::SetFrustumWidth(float width) 
     {
-        m_frustumWidth = width; UpdateCamera();
+        m_frustumWidth = width;
+        UpdateCamera();
     }
 
     void CameraComponent::SetFrustumHeight(float height) 
     {
-        m_frustumHeight = height; UpdateCamera();
+        m_frustumHeight = height;
+        UpdateCamera();
     }
 
     void CameraComponent::MakeActiveView()

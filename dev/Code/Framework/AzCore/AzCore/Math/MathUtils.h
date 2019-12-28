@@ -32,11 +32,12 @@ namespace AZ
      */
     namespace Constants
     {
-        static const float Pi       = 3.14159265358979323846f;
-        static const float TwoPi    = 6.28318530717958623200f;
-        static const float HalfPi   = 1.57079632679489655800f;
+        static const float Pi = 3.14159265358979323846f;
+        static const float TwoPi = 6.28318530717958647692f;
+        static const float HalfPi = 1.57079632679489661923f;
+        static const float QuarterPi = 0.78539816339744830962f;
         static const float MaxFloatBeforePrecisionLoss  = 100000.f;
-    };
+    }
 
     /**
      * Degrees/radians conversion
@@ -45,7 +46,6 @@ namespace AZ
     AZ_MATH_FORCE_INLINE float RadToDeg(float rad)      { return rad * 180.0f / Constants::Pi; }
     AZ_MATH_FORCE_INLINE float DegToRad(float deg)      { return deg * Constants::Pi / 180.0f; }
     /*@}*/
-
 
     AZ_MATH_FORCE_INLINE bool IsClose(float a, float b, float tolerance) { return (fabsf(a - b) <= tolerance); }
     AZ_MATH_FORCE_INLINE bool IsClose(double a, double b, double tolerance) { return (fabs(a - b) <= tolerance); }
@@ -128,6 +128,9 @@ namespace AZ
         return a % 2 != 0;
     }
 
+    AZ_MATH_FORCE_INLINE float GetAbs(float a) { return std::fabs(a); }
+    AZ_MATH_FORCE_INLINE double GetAbs(double a) { return std::abs(a); }
+
     AZ_MATH_FORCE_INLINE float GetMod(float a, float b) { return fmod(a, b); }
     AZ_MATH_FORCE_INLINE double GetMod(double a, double b) { return fmod(a, b); }
 
@@ -146,7 +149,7 @@ namespace AZ
     template<typename T>
     AZ_MATH_FORCE_INLINE bool IsCloseMag(T x, T y, T epsilonValue = std::numeric_limits<T>::epsilon())
     {
-        return (std::fabs(x - y) <= epsilonValue * GetMax(GetMax(T(1.0), std::fabs(x)), std::fabs(y)));
+        return (std::fabs(x - y) <= epsilonValue * GetMax<T>(GetMax<T>(T(1.0), std::fabs(x)), std::fabs(y)));
     }
 
     //! ClampIfCloseMag(x, y, epsilon) returns y when x and y are within epsilon of each other (taking magnitude into account).  Otherwise returns x.

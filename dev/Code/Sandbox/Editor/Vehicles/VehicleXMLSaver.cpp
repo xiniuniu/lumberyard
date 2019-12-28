@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "VehicleXMLSaver.h"
 
 #include <stack>
@@ -155,7 +155,6 @@ namespace
     }
 
     struct CGetValueVisitor
-        : public boost::static_visitor<void>
     {
     public:
         CGetValueVisitor(IVariablePtr pNode, const char* name)
@@ -170,7 +169,7 @@ namespace
             if (IVariable* child = GetChildVar(m_pNode, m_name))
             {
                 child->Get(sVal);
-                data = sVal.toLatin1();
+                data = sVal.toUtf8();
                 value = data;
                 m_ok = true;
             }
@@ -201,7 +200,6 @@ namespace
     };
 
     struct CGetAtVisitor
-        : public boost::static_visitor<void>
     {
     public:
         CGetAtVisitor(IVariablePtr pNode, int elem)
@@ -226,7 +224,7 @@ namespace
             if (IVariable* child = m_pNode->GetVariable(m_elem - 1))
             {
                 child->Get(sVal);
-                data = sVal.toLatin1();
+                data = sVal.toUtf8();
                 value = data;
                 m_ok = true;
             }
@@ -250,14 +248,14 @@ namespace
 bool CVehicleDataSaver::GetValue(const char* name, TValue& value, const XmlNodeRef& definition)
 {
     CGetValueVisitor visitor(CurNode(), name);
-    boost::apply_visitor(visitor, value);
+    AZStd::visit(visitor, value);
     return visitor.Ok();
 }
 
 bool CVehicleDataSaver::GetAt(int elem, TValue& value, const XmlNodeRef& definition)
 {
     CGetAtVisitor visitor(CurNode(), elem);
-    boost::apply_visitor(visitor, value);
+    AZStd::visit(visitor, value);
     return visitor.Ok();
 }
 
@@ -419,7 +417,7 @@ void VehicleDataMerge_ProcessArray(XmlNodeRef source, XmlNodeRef definition, IVa
         IVariable* var = array->GetVariable(i);
         QString dataName = var->GetName();
 
-        XmlNodeRef propertyDef = definitionList.GetDefinition(dataName.toLatin1().data());
+        XmlNodeRef propertyDef = definitionList.GetDefinition(dataName.toUtf8().data());
         if (!propertyDef)
         {
             continue;
@@ -428,7 +426,7 @@ void VehicleDataMerge_ProcessArray(XmlNodeRef source, XmlNodeRef definition, IVa
         if (_stricmp(propertyDef->getTag(), "Property") == 0)
         {
             // Has the var changed from the src var?
-            if (IVariablePtr srcVar = VehicleXml::CreateSimpleVar(dataName.toLatin1().data(), source->getAttr(dataName.toLatin1().data()), propertyDef))
+            if (IVariablePtr srcVar = VehicleXml::CreateSimpleVar(dataName.toUtf8().data(), source->getAttr(dataName.toUtf8().data()), propertyDef))
             {
                 if (srcVar->GetDisplayValue() == var->GetDisplayValue())
                 {
@@ -438,7 +436,7 @@ void VehicleDataMerge_ProcessArray(XmlNodeRef source, XmlNodeRef definition, IVa
 
             // Patch/add the data to the source xml
             QString dataDisplayName = GetDisplayValue(var);
-            source->setAttr(dataName.toLatin1().data(), dataDisplayName.toLatin1().data());
+            source->setAttr(dataName.toUtf8().data(), dataDisplayName.toUtf8().data());
         }
 
         // We expect the sub-variable to be an array
@@ -448,8 +446,8 @@ void VehicleDataMerge_ProcessArray(XmlNodeRef source, XmlNodeRef definition, IVa
         }
 
         // Load Table
-        int& index = sourceNodeIndex[dataName.toLatin1().data()];
-        XmlNodeRef xmlTable = findChild(dataName.toLatin1().data(), source, index);
+        int& index = sourceNodeIndex[dataName.toUtf8().data()];
+        XmlNodeRef xmlTable = findChild(dataName.toUtf8().data(), source, index);
         if (!xmlTable)
         {
             continue;
@@ -478,7 +476,7 @@ void VehicleDataMerge_ProcessArray(XmlNodeRef source, XmlNodeRef definition, IVa
                     {
                         XmlNodeRef xmlChildElement = xmlTable->getChild(j);
                         QString dataDisplayName = GetDisplayValue(arrayRoot->GetVariable(j));
-                        xmlChildElement->setAttr("value", dataDisplayName.toLatin1().data());
+                        xmlChildElement->setAttr("value", dataDisplayName.toUtf8().data());
                     }
                 }
                 else

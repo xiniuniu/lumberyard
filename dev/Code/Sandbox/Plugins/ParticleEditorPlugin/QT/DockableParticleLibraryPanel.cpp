@@ -1,3 +1,14 @@
+/*
+* All or portions of this file Copyright (c) Amazon.com, Inc. or its affiliates, or 
+* a third party where indicated.
+*
+* For complete copyright and license terms please see the LICENSE at the root of this
+* distribution (the "License"). All use of this software is governed by the License,  
+* or, if provided, by the license below or the license accompanying this file. Do not
+* remove or modify any license notices. This file is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  
+*
+*/
 #include "stdafx.h"
 #include "DockableParticleLibraryPanel.h"
 
@@ -22,7 +33,7 @@
 
 #include <QAction>
 
-#include <Qt/DockableParticleLibraryPanel.moc>
+#include <QT/DockableParticleLibraryPanel.moc>
 #define QTUI_EDITOR_ACTIONGROUP_FUNCTIONNAME "ActionGroup"
 
 QAction* DockableParticleLibraryPanel::GetParticleAction(ParticleActions action, QString fullNameOfItem, QString displayAlias, bool overrideSafety /*= false*/, QWidget* owner /*= nullptr*/, Qt::ConnectionType connection /*= Qt::AutoConnection*/)
@@ -292,9 +303,9 @@ void DockableParticleLibraryPanel::ActionPaste(const QString& overrideSelection 
                         newItemFullName = destpathWithoutLib + "." + newItemName;
                         //Create the full path(with library name)
                         newItemFullNameWithLib = destlib + "." + newItemFullName;
-                        if (m_libraryManager->FindItemByName(newItemFullNameWithLib.toUtf8().data()) != nullptr)
+                        if (m_libraryManager->FindItemByName(newItemFullNameWithLib) != nullptr)
                         {
-                            newItemFullName = m_libraryManager->MakeUniqueItemName(newItemFullName.toUtf8().data());
+                            newItemFullName = m_libraryManager->MakeUniqueItemName(newItemFullName);
                             newItemFullNameWithLib = destlib + "." + newItemFullName;
                         }
                         //add a new item with that name
@@ -320,9 +331,9 @@ void DockableParticleLibraryPanel::ActionPaste(const QString& overrideSelection 
                     QString newItemFullName = pathList.join(".") + "." + newItemName;
                     //Create the full path(with library name)
                     QString newItemFullNameWithLib = destlib + "." + newItemFullName;
-                    if (m_libraryManager->FindItemByName(newItemFullNameWithLib.toUtf8().data()) != nullptr)
+                    if (m_libraryManager->FindItemByName(newItemFullNameWithLib) != nullptr)
                     {
-                        newItemFullName = m_libraryManager->MakeUniqueItemName(newItemFullName.toUtf8().data());
+                        newItemFullName = m_libraryManager->MakeUniqueItemName(newItemFullName);
                     }
                     //add a new item with that name
                     CBaseLibraryItem* item = destLibDock->AddItem(newItemFullName);
@@ -399,7 +410,7 @@ void DockableParticleLibraryPanel::ActionGroup(const QString& overrideSelection 
     CRY_ASSERT(library);
     QString defaultGroupName = "group";
     QString groupName = firstParent.isEmpty() ? defaultGroupName : firstParent + "." + defaultGroupName;
-    groupName = mngr->MakeUniqueItemName(groupName.toUtf8().data(), libName.toUtf8().data());
+    groupName = mngr->MakeUniqueItemName(groupName, libName);
     if (groupName.isEmpty())
     {
         return; //user cancelled
@@ -423,13 +434,13 @@ void DockableParticleLibraryPanel::ActionGroup(const QString& overrideSelection 
     if (GetLastAddedItemName().isEmpty())
     {
         //revert the deletion
-        CParticleItem* parentItem = static_cast<CParticleItem*>(GetIEditor()->GetParticleManager()->FindItemByName(fullParentPath.toUtf8().data()));
+        CParticleItem* parentItem = static_cast<CParticleItem*>(GetIEditor()->GetParticleManager()->FindItemByName(fullParentPath));
         CRY_ASSERT(parentItem);
         emit SignalItemPasted(parentItem);
         return;
     }
     //select the parent for the add
-    CParticleItem* parentItem = static_cast<CParticleItem*>(GetIEditor()->GetParticleManager()->FindItemByName(GetLastAddedItemName().toUtf8().data()));
+    CParticleItem* parentItem = static_cast<CParticleItem*>(GetIEditor()->GetParticleManager()->FindItemByName(GetLastAddedItemName()));
     ParticleParams params(parentItem->GetEffect()->GetParticleParams());
     params.bGroup = true;
     params.fCount = 0;

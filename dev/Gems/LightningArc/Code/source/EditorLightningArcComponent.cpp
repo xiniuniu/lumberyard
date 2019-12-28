@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "LightningArc_precompiled.h"
 #include "EditorLightningArcComponent.h"
 
 #include <AzCore/RTTI/BehaviorContext.h>
@@ -44,8 +44,8 @@ namespace Lightning
                     ->ClassElement(AZ::Edit::ClassElements::EditorData, "")
                     ->Attribute(AZ::Edit::Attributes::Visibility, AZ::Edit::PropertyVisibility::ShowChildrenOnly)
                     ->Attribute(AZ::Edit::Attributes::AutoExpand, true)
-                    
-                    ->DataElement(AZ::Edit::UIHandlers::ComboBox, &EditorLightningArcConfiguration::m_arcPresetName, "Arc Preset Name", "")
+
+                    ->DataElement(AZ::Edit::UIHandlers::ComboBox, &EditorLightningArcConfiguration::m_arcPresetName, "Arc Preset Name", "The name of the parameter presets to load.")
                     ->Attribute(AZ::Edit::Attributes::StringList, &EditorLightningArcComponent::GetPresetNames)
                     ->Attribute(AZ::Edit::Attributes::ChangeNotify, &EditorLightningArcConfiguration::OnPresetNameChange)
 
@@ -56,23 +56,23 @@ namespace Lightning
                     ->Attribute(AZ::Edit::Attributes::Visibility, AZ::Edit::PropertyVisibility::ShowChildrenOnly)
                     ->Attribute(AZ::Edit::Attributes::AutoExpand, true)
 
-                    ->DataElement(AZ::Edit::UIHandlers::Default, &LightningArcConfiguration::m_enabled, "Enabled", "")
+                    ->DataElement(AZ::Edit::UIHandlers::Default, &LightningArcConfiguration::m_enabled, "Enabled", "Sets if the lightning arc effect is enabled and will produce arcs.")
 
-                    ->DataElement(AZ::Edit::UIHandlers::Default, &LightningArcConfiguration::m_targets, "Targets", "")
+                    ->DataElement(AZ::Edit::UIHandlers::Default, &LightningArcConfiguration::m_targets, "Targets", "Entities that arcs will randomly target.")
 
-                    ->DataElement(AZ::Edit::UIHandlers::Default, &LightningArcConfiguration::m_arcParams, "Arc Parameters", "")
+                    ->DataElement(AZ::Edit::UIHandlers::Default, &LightningArcConfiguration::m_arcParams, "Arc Parameters", "A collection of parameters that describe the look and behavior of the arcs.")
                     ->Attribute(AZ::Edit::Attributes::ChangeNotify, &LightningArcConfiguration::OnParamsChange)
 
-                    ->DataElement(AZ::Edit::UIHandlers::Default, &LightningArcConfiguration::m_materialAsset, "Material", "")
+                    ->DataElement(AZ::Edit::UIHandlers::Default, &LightningArcConfiguration::m_materialAsset, "Material", "The material used to render the lightning arcs.")
 
                     ->ClassElement(AZ::Edit::ClassElements::Group, "Timing")
                     ->Attribute(AZ::Edit::Attributes::AutoExpand, false)
 
-                    ->DataElement(AZ::Edit::UIHandlers::Slider, &LightningArcConfiguration::m_delay, "Delay", "")
+                    ->DataElement(AZ::Edit::UIHandlers::Slider, &LightningArcConfiguration::m_delay, "Delay", "Time in seconds between arcs.")
                     ->Attribute(AZ::Edit::Attributes::Max, 100.0f)
                     ->Attribute(AZ::Edit::Attributes::Min, 0.0f)
 
-                    ->DataElement(AZ::Edit::UIHandlers::Slider, &LightningArcConfiguration::m_delayVariation, "DelayVariation", "")
+                    ->DataElement(AZ::Edit::UIHandlers::Slider, &LightningArcConfiguration::m_delayVariation, "DelayVariation", "A random variation applied to the Delay parameter.")
                     ->Attribute(AZ::Edit::Attributes::Max, 100.0f)
                     ->Attribute(AZ::Edit::Attributes::Min, 0.0f)
                     ;
@@ -80,13 +80,13 @@ namespace Lightning
         }
     }
 
-    AZ::Crc32 EditorLightningArcConfiguration::OnPresetNameChange() 
+    AZ::Crc32 EditorLightningArcConfiguration::OnPresetNameChange()
     {
         bool newParamsFound = false;
         const LightningArcParams* newParamsPtr = nullptr;
 
         LightningArcRequestBus::BroadcastResult(newParamsFound, &LightningArcRequestBus::Events::GetArcParamsForName, m_arcPresetName, newParamsPtr);
-    
+
         if (newParamsFound)
         {
             m_arcParams = *newParamsPtr;
@@ -123,13 +123,13 @@ namespace Lightning
                 ->Field("Config", &EditorLightningArcComponent::m_config)
                 ->Field("RefreshPresets", &EditorLightningArcComponent::m_refreshPresets)
                 ;
-            
+
             if (AZ::EditContext* editContext = serializeContext->GetEditContext())
             {
-                editContext->Class<EditorLightningArcComponent>("Lightning Arc", "")
+                editContext->Class<EditorLightningArcComponent>("Lightning Arc", "Produces an arcing effect that jumps to a random target entity.")
                     ->ClassElement(AZ::Edit::ClassElements::EditorData, "")
                     ->Attribute(AZ::Edit::Attributes::Category, "Rendering")
-                    ->Attribute(AZ::Edit::Attributes::Icon, "Editor/Icons/Components/LightningArc.png")
+                    ->Attribute(AZ::Edit::Attributes::Icon, "Editor/Icons/Components/LightningArc.svg")
                     ->Attribute(AZ::Edit::Attributes::ViewportIcon, "Editor/Icons/Components/Viewport/LightningArc.png")
                     ->Attribute(AZ::Edit::Attributes::AutoExpand, true)
                     ->Attribute(AZ::Edit::Attributes::AppearsInAddComponentMenu, AZ_CRC("Game", 0x232b318c))
@@ -137,7 +137,7 @@ namespace Lightning
 
                     ->DataElement(AZ::Edit::UIHandlers::Default, &EditorLightningArcComponent::m_config, "m_config", "No Description")
 
-                    ->DataElement("Button", &EditorLightningArcComponent::m_refreshPresets, "RefreshPresets", "Reloads all presets off the disk")
+                    ->DataElement("Button", &EditorLightningArcComponent::m_refreshPresets, "RefreshPresets", "Reloads all presets off the disk.")
                     ->Attribute(AZ::Edit::Attributes::ButtonText, "Refresh Presets")
                     ->Attribute(AZ::Edit::Attributes::ChangeNotify, &EditorLightningArcComponent::RefreshPresets)
                     ;
@@ -188,17 +188,16 @@ namespace Lightning
         {
             return nullptr;
         }
-        
+
         return gEnv->p3DEngine->GetMaterialManager()->LoadMaterial(materialPath.c_str());
     }
 
-    void EditorLightningArcComponent::DisplayEntity(bool& handled)
+    void EditorLightningArcComponent::DisplayEntityViewport(
+        const AzFramework::ViewportInfo& viewportInfo,
+        AzFramework::DebugDisplayRequests& debugDisplay)
     {
-        auto* dc = AzFramework::EntityDebugDisplayRequestBus::FindFirstHandler();
-        AZ_Assert(dc, "Invalid display context.");
-
         AZ::Color color(1.0f, 1.0f, 0.0f, 1.0f);
-        dc->SetColor(AZ::Vector4(color.GetR(), color.GetG(), color.GetB(), 1.f));
+        debugDisplay.SetColor(AZ::Vector4(color.GetR(), color.GetG(), color.GetB(), 1.f));
 
         AZ::Vector3 thisPos = AZ::Vector3::CreateZero();
         AZ::Vector3 targetPos = AZ::Vector3::CreateZero();
@@ -211,12 +210,9 @@ namespace Lightning
             if (entity.IsValid())
             {
                 AZ::TransformBus::EventResult(targetPos, entity, &AZ::TransformBus::Events::GetWorldTranslation);
-
-                dc->DrawLine(thisPos, targetPos);
+                debugDisplay.DrawLine(thisPos, targetPos);
             }
         }
-
-        handled = true;
     }
 
     AZ::Crc32 EditorLightningArcComponent::RefreshPresets()
@@ -239,7 +235,7 @@ namespace Lightning
     {
         if (!((AZStd::string(entityToConvert->metaObject()->className()) == "CEntityObject" &&
             AZStd::string(entityToConvert->metaObject()->className()) != "CEntityObject") ||
-                (entityToConvert->inherits("CEntityObject") && 
+                (entityToConvert->inherits("CEntityObject") &&
                     static_cast<CEntityObject *>(entityToConvert)->GetEntityClass() == "LightningArc")))
         {
             // We don't know how to convert this entity, whatever it is
@@ -256,7 +252,7 @@ namespace Lightning
 
         //Retrieve the underlying legacy CLightningArc object
         IEntity* legacyEntity = entityObject->GetIEntity();
-        std::shared_ptr<CLightningArc> arc = legacyEntity->GetComponent<CLightningArc>();
+        AZStd::shared_ptr<CLightningArc> arc = legacyEntity->GetComponent<CLightningArc>();
         if (!arc)
         {
             //Entity did not have a CLightningArc component
@@ -299,7 +295,7 @@ namespace Lightning
         LightningArcRequestBus::BroadcastResult(arcParamsFound, &LightningArcRequestBus::Events::GetArcParamsForName, arcPresetName, paramsPtr);
 
         /*
-            We can't actually determine the AZ::EntityIds of the 
+            We can't actually determine the AZ::EntityIds of the
             linked legacy entities but we can push back the right number
             of targets into the vector.
         */

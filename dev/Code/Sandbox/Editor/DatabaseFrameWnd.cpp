@@ -263,8 +263,8 @@ void CDatabaseFrameWnd::DeleteItem(CBaseLibraryItem* pItem)
 
 void CDatabaseFrameWnd::OnAddLibrary()
 {
-    StringDlg dlg(tr("New Library Name").toLatin1(), this);
-    CUndo undo(tr("Add Database Library").toLatin1());
+    StringDlg dlg(tr("New Library Name"), this);
+    CUndo undo(tr("Add Database Library").toUtf8());
     if (dlg.exec() == QDialog::Accepted)
     {
         if (!dlg.GetString().isEmpty())
@@ -324,7 +324,7 @@ void CDatabaseFrameWnd::OnRemoveItem()
             QString str = tr("Delete %1?").arg(m_pCurrentItem->GetName());
             if (QMessageBox::question(this, tr("Delete Confirmation"), str) == QMessageBox::Yes)
             {
-                CUndo undo(tr("Remove library item").toLatin1());
+                CUndo undo(tr("Remove library item").toUtf8());
                 TSmartPtr<CBaseLibraryItem> pCurrent = m_pCurrentItem;
                 DeleteItem(pCurrent);
                 m_pLibraryItemTreeModel->Remove(m_pCurrentItem);
@@ -389,7 +389,7 @@ void CDatabaseFrameWnd::OnRenameItem()
                 QMessageBox::warning(this, tr("Warning"), tr("Levels referencing this archetype will need to be exported."));
             }
 
-            CUndo undo(tr("Rename library item").toLatin1());
+            CUndo undo(tr("Rename library item").toUtf8());
             TSmartPtr<CBaseLibraryItem> curItem = m_pCurrentItem;
             SetItemName(curItem, dlg.GetGroup(), dlg.GetString());
             ReloadItems();
@@ -435,8 +435,12 @@ void CDatabaseFrameWnd::OnExportLibrary()
 
 void CDatabaseFrameWnd::OnSave()
 {
-    m_pItemManager->SaveAllLibs();
-    m_pLibrary->SetModified(false);
+    if (m_bLibsLoaded)
+    {
+        m_pLibrary->SetModified(true);
+        m_pItemManager->SaveAllLibs();
+        m_pLibrary->SetModified(false);
+    }
 }
 
 void CDatabaseFrameWnd::OnReloadLib()
@@ -492,7 +496,7 @@ AssetSelectionModel CDatabaseFrameWnd::GetAssetSelectionModel() const
 void CDatabaseFrameWnd::OnLoadLibrary()
 {
     assert(m_pItemManager);
-    CUndo undo(tr("Load Database Library").toLatin1());
+    CUndo undo(tr("Load Database Library").toUtf8());
     LoadLibrary();
 }
 
@@ -536,7 +540,7 @@ bool CDatabaseFrameWnd::SetItemName(CBaseLibraryItem* item, const QString& group
     if (pOtherItem && pOtherItem != item)
     {
         // Ensure uniqness of name.
-        Warning("Duplicate Item Name %s", name.toLatin1().data());
+        Warning("Duplicate Item Name %s", name.toUtf8().data());
         return false;
     }
     else
@@ -722,9 +726,12 @@ void CDatabaseFrameWnd::OnEditorNotifyEvent(EEditorNotifyEvent event)
     case eNotify_OnCloseScene:
     {
         m_bLibsLoaded = false;
-        CUndo undo(tr("Close Database Library").toLatin1());
-        SelectLibrary("");
-        SelectItem(0);
+        CUndo undo(tr("Close Database Library").toUtf8());       
+        GetTreeCtrl()->selectionModel()->clear();
+        GetTreeCtrl()->clearSelection();
+        m_pLibraryItemTreeModel->Clear();
+        m_pCurrentItem = nullptr;
+        m_cpoSelectedLibraryItems.clear();
     }
     break;
 
@@ -1033,7 +1040,7 @@ bool LibraryItemTreeModel::setData(const QModelIndex& index, const QVariant& val
             emit dataChanged(index, index);
         }
 
-        CUndo undo(tr("Rename FlareGroupItem").toLatin1());
+        CUndo undo(tr("Rename FlareGroupItem").toUtf8());
 
         auto group = targetEntry->second.get();
 
@@ -1070,7 +1077,7 @@ bool LibraryItemTreeModel::setData(const QModelIndex& index, const QVariant& val
             return false;
         }
 
-        CUndo undo(tr("Rename FlareGroupItem").toLatin1());
+        CUndo undo(tr("Rename FlareGroupItem").toUtf8());
         RenameItem(item, name);
 
         emit dataChanged(index, index);
@@ -1147,6 +1154,15 @@ static bool LibraryItemLess(const CBaseLibraryItem* left, const CBaseLibraryItem
     QString leftName = left->GetName();
     QString rightName = right->GetName();
     return leftName.compare(rightName) < 0;
+}
+
+void LibraryItemTreeModel::Clear()
+{
+    beginResetModel();
+
+    m_groups.clear();
+
+    endResetModel();
 }
 
 void LibraryItemTreeModel::Reload(CBaseLibrary* pLibrary)
@@ -1422,7 +1438,7 @@ bool LibraryItemTreeModel::dropMimeData(const QMimeData* data, Qt::DropAction ac
         auto entry = std::begin(m_groups);
         std::advance(entry, targetParent.row());
 
-        CUndo undo(tr("Copy/Cut & Paste for Lens Flare").toLatin1());
+        CUndo undo(tr("Copy/Cut & Paste for Lens Flare").toUtf8());
 
         for (int i = 0; i < count; i++)
         {

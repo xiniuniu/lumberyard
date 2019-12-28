@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "ToolsConfigPage.h"
 #include <ui_ToolsConfigPage.h>
 #include <ui_IconListDialog.h>
@@ -167,7 +167,6 @@ public:
         }
         macro()->SwapCommand(row, targetRow);
         endMoveRows();
-        CToolBoxManager::UpdateShortcutsAndIcons();
         return true;
     }
 
@@ -255,11 +254,17 @@ public:
     MacroModel(QObject* parent = nullptr)
         : QAbstractListModel(parent)
         , m_hasEmptyRow(false)
+        , m_currentlyRemovingRows(false)
     {
     }
 
     bool moveRow(int row, bool up)
     {
+        if (m_hasEmptyRow)
+        {
+            return false;
+        }
+
         const int targetRow = up ? row - 1 : row + 1;
         if (row < 0 || row >= rowCount() || targetRow < 0 || targetRow >= rowCount())
         {
@@ -275,7 +280,6 @@ public:
         }
         GetIEditor()->GetToolBoxManager()->SwapMacro(row, targetRow, true);
         endMoveRows();
-        CToolBoxManager::UpdateShortcutsAndIcons();
         return true;
     }
 
@@ -332,15 +336,18 @@ public:
         // check null data input
         if (data.toString().isEmpty())
         {
-            QMessageBox::critical(parentWidget, QString(), tr("Please enter a valid name!"));
-
-            // If this is a newly added empty row, then just delete it
-            // Otherwise if the user was renaming an existing row, the previous
-            // value will be restored
-            if (isEmptyRow(index))
+            if (!m_currentlyRemovingRows)
             {
-                removeRow(index.row());
-                assert(!m_hasEmptyRow);
+                QMessageBox::critical(parentWidget, QString(), tr("Please enter a valid name!"));
+
+                // If this is a newly added empty row, then just delete it
+                // Otherwise if the user was renaming an existing row, the previous
+                // value will be restored
+                if (isEmptyRow(index))
+                {
+                    removeRow(index.row());
+                    assert(!m_hasEmptyRow);
+                }
             }
 
             return false;
@@ -398,6 +405,7 @@ public:
             return false;
         }
 
+        m_currentlyRemovingRows = true;
         beginRemoveRows(QModelIndex(), row, row + count - 1);
 
         auto tools = GetIEditor()->GetToolBoxManager();
@@ -414,12 +422,13 @@ public:
         }
 
         endRemoveRows();
-        CToolBoxManager::UpdateShortcutsAndIcons();
+        m_currentlyRemovingRows = false;
         return true;
     }
 
 private:
     bool m_hasEmptyRow;
+    bool m_currentlyRemovingRows;
 
     // Empty row is the last row in the list if the proper flag is set
     bool isEmptyRow(const QModelIndex& index) const
@@ -466,18 +475,12 @@ CToolsConfigPage::CToolsConfigPage(QWidget* parent)
     , m_commandModel(new CommandModel(this))
     , m_completionModel(new QStringListModel(this))
     , m_ui(new Ui::ToolsConfigPage)
-#ifdef KDAB_TEMPORARILY_REMOVED
-    // We're porting away from XTPShortcutManager to KeyboardCustomizationSettings
-    // That means this dialog will need to be ported to QActions before we do that.
-    // So, when porting to Qt, uncomment this and use KeyboardCustomizationSettings
-    , m_macroShortcutKey(((CMainFrame*)AfxGetMainWnd())->XTPShortcutManager())
-#endif
 {
     m_ui->setupUi(this);
 
     m_ui->m_macroCmd->setCompleter(new QCompleter(m_completionModel));
 
-    connect(m_ui->m_macroShortcutKey, &QKeySequenceEdit::keySequenceChanged, [&](const QKeySequence &keySequence) {
+    connect(m_ui->m_macroShortcutKey, &QKeySequenceEdit::keySequenceChanged, this, [&](const QKeySequence &keySequence) {
         int numOfShortcuts = m_ui->m_macroShortcutKey->keySequence().count() - 1;
         if (numOfShortcuts >= 1)
         {
@@ -570,8 +573,7 @@ void CToolsConfigPage::OnSelchangeMacroList()
 
     if (m_ui->m_macroList->currentIndex().isValid())
     {
-        // Port to KeyboardCustomizationDialog after porting to Qt/QAction, , don't use XTPShortcutManager()
-        /// Update the shortcut.
+        // Update the shortcut.
         auto pShortcutMgr = MainWindow::instance()->GetShortcutManager();
         m_ui->m_macroShortcutKey->clear();
         if (pShortcutMgr && macro)
@@ -705,10 +707,6 @@ void CToolsConfigPage::OnAssignMacroShortcut()
 
     QKeySequence editorAccel = m_ui->m_macroShortcutKey->keySequence();
     CToolBoxMacro* pMacro = macroIndex.data(Qt::UserRole).value<CToolBoxMacro*>();
-#ifdef KDAB_TEMPORARILY_REMOVED
-    int id(macroIndex.row() + ID_TOOL_FIRST);
-    editorAccel.cmd = id;
-#endif
 
     QAction* action = pShortcutMgr->FindActionForShortcut(editorAccel);
     bool bReassign = false;
@@ -724,14 +722,7 @@ void CToolsConfigPage::OnAssignMacroShortcut()
         action->setShortcut(QKeySequence());
     }
 
-    if (true)//CToolBoxManager::AddShortcut(editorAccel) )
-    {
-        pMacro->SetShortcutName(m_ui->m_macroShortcutKey->keySequence());
-    }
-    else
-    {
-        QMessageBox::critical(this, QString(), tr("This macro can't be assigned."));
-    }
+    pMacro->SetShortcutName(m_ui->m_macroShortcutKey->keySequence());
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -793,7 +784,7 @@ void CToolsConfigPage::OnSelectMacroIcon()
         {
             const QPixmap pixmap(iconPath);
             m_ui->m_macroIcon->setPixmap(pixmap);
-            pMacro->SetIconPath(iconPath.toLatin1().data());
+            pMacro->SetIconPath(iconPath.toUtf8().data());
         }
     }
 }
@@ -836,7 +827,7 @@ void CToolsConfigPage::FillScriptCmds()
         = CAutoRegisterPythonModuleHelper::s_modules;
     for (size_t i = 0; i < modules.size(); ++i)
     {
-        commands.push_back(modules[i].name.c_str());
+        commands.push_back(modules[i].name);
     }
 
     // Add full command names to the auto-completion list.
@@ -844,7 +835,7 @@ void CToolsConfigPage::FillScriptCmds()
     while (pCurrent)
     {
         const QString command = pCurrent->m_name;
-        const QString fullCmd = QString("%1.%2()").arg(CAutoRegisterPythonModuleHelper::s_modules[pCurrent->m_moduleIndex].name.c_str()).arg(command);
+        const QString fullCmd = QString("%1.%2()").arg(CAutoRegisterPythonModuleHelper::s_modules[pCurrent->m_moduleIndex].name).arg(command);
 
         commands.push_back(fullCmd);
 

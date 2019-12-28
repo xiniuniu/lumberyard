@@ -14,10 +14,11 @@
 
 #include <AzFramework/Input/Buses/Requests/InputChannelRequestBus.h>
 #include <AzFramework/Input/Devices/InputDeviceId.h>
+#include <AzFramework/Input/User/LocalUserId.h>
 
 #include <AzCore/Math/Vector2.h>
 #include <AzCore/Memory/SystemAllocator.h>
-#include <AzCore/RTTI/RTTI.h>
+#include <AzCore/RTTI/ReflectContext.h>
 #include <AzCore/std/typetraits/is_base_of.h>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -81,12 +82,14 @@ namespace AzFramework
             State m_state;                   //!< The state of the input channel
             float m_value;                   //!< The value of the input channel
             float m_delta;                   //!< The delta of the input channel
+            LocalUserId m_localUserId;       //!< The local user id assigned to the input device
         };
 
         ////////////////////////////////////////////////////////////////////////////////////////////
         //! Base struct from which to derive all custom input data
         struct CustomData
         {
+            AZ_CLASS_ALLOCATOR(CustomData, AZ::SystemAllocator, 0);
             AZ_RTTI(CustomData, "{887E38BB-64AF-4F4E-A1AE-C1B02371F9EC}");
             virtual ~CustomData() = default;
         };
@@ -95,10 +98,29 @@ namespace AzFramework
         //! Custom data struct for input channels associated with a 2D position
         struct PositionData2D : public CustomData
         {
+            AZ_CLASS_ALLOCATOR(PositionData2D, AZ::SystemAllocator, 0);
             AZ_RTTI(PositionData2D, "{354437EC-6BFD-41D4-A0F2-7740018D3589}", CustomData);
             virtual ~PositionData2D() = default;
 
+            ////////////////////////////////////////////////////////////////////////////////////////
+            //! Convenience function to convert the normalized position to screen space coordinates
+            //! \param[in] screenWidth The width of the screen to use in the conversion
+            //! \param[in] screenHeight The height of the screen to use in the conversion
+            //! \return The position in screen space coordinates
+            AZ::Vector2 ConvertToScreenSpaceCoordinates(float screenWidth, float screenHeight) const;
+
+            ////////////////////////////////////////////////////////////////////////////////////////
+            //! Update both m_normalizedPosition and m_normalizedPositionDelta given a new position
+            //! \param[in] newNormalizedPosition The new normalized position
+            void UpdateNormalizedPositionAndDelta(const AZ::Vector2& newNormalizedPosition);
+
+            ////////////////////////////////////////////////////////////////////////////////////////
+            //! Normalized screen coordinates, where the top-left of the screen is at (0.0, 0.0) and
+            //! the bottom-right is at (1.0, 1.0)
             AZ::Vector2 m_normalizedPosition = AZ::Vector2(0.5f, 0.5f);
+
+            ////////////////////////////////////////////////////////////////////////////////////////
+            //! The delta between the current normalized position and the last one
             AZ::Vector2 m_normalizedPositionDelta = AZ::Vector2::CreateZero();
         };
 
@@ -109,6 +131,14 @@ namespace AzFramework
         ////////////////////////////////////////////////////////////////////////////////////////////
         // Allocator
         AZ_CLASS_ALLOCATOR(InputChannel, AZ::SystemAllocator, 0);
+
+        ////////////////////////////////////////////////////////////////////////////////////////////
+        // Type Info
+        AZ_RTTI(InputChannel, "{1C88625D-D297-4A1C-AE07-E17F88D138F3}");
+
+        ////////////////////////////////////////////////////////////////////////////////////////////
+        // Reflection
+        static void Reflect(AZ::ReflectContext* context);
 
         ////////////////////////////////////////////////////////////////////////////////////////////
         //! Constructor
@@ -175,9 +205,10 @@ namespace AzFramework
         virtual const CustomData* GetCustomData() const;
 
         ////////////////////////////////////////////////////////////////////////////////////////////
-        //! Access to any custom data associated with the input channel
-        //! \return Pointer to the custom data if it exists and is of type T, nullptr othewise
-        template<class T> const T* GetCustomData() const;
+        //! Access to any custom data of a specific type provided by the input channel
+        //! \tparam CustomDataType The specific type of custom data to be returned if it exists
+        //! \return Pointer to the data if it exists and is of type CustomDataType, nullptr othewise
+        template<class CustomDataType> const CustomDataType* GetCustomData() const;
 
         ////////////////////////////////////////////////////////////////////////////////////////////
         //! Update the channel's state based on whether it is active/engaged or inactive/idle, which
@@ -186,7 +217,7 @@ namespace AzFramework
         //! to ensure input channels broadcast no more than one event each frame (at the same time).
         //! \param[in] isChannelActive Whether the input channel is currently active/engaged
         //! \return Whether the update resulted in a state transition (was m_state changed)
-        virtual bool UpdateState(bool isChannelActive);
+        bool UpdateState(bool isChannelActive);
 
         ////////////////////////////////////////////////////////////////////////////////////////////
         //! \ref AzFramework::InputChannelRequests::ResetState
@@ -202,13 +233,13 @@ namespace AzFramework
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // Inline Implementation
-    template<class T>
-    inline const T* InputChannel::GetCustomData() const
+    template<class CustomDataType>
+    inline const CustomDataType* InputChannel::GetCustomData() const
     {
-        AZ_STATIC_ASSERT((AZStd::is_base_of<CustomData, T>::value),
+        AZ_STATIC_ASSERT((AZStd::is_base_of<CustomData, CustomDataType>::value),
             "Custom input data must inherit from InputChannel::CustomData");
 
         const CustomData* customData = GetCustomData();
-        return customData ? azdynamic_cast<const T*>(customData) : nullptr;
+        return customData ? azdynamic_cast<const CustomDataType*>(customData) : nullptr;
     }
 } // namespace AzFramework

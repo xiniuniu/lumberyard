@@ -9,11 +9,10 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "Maestro_precompiled.h"
 
 #if !defined(_RELEASE)
 
-#include "Cinematics/EntityNode.h"
 #include "Cinematics/CharacterTrack.h"
 #include "Cinematics/CharacterTrackAnimator.h"
 

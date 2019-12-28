@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "Stdafx.h"
+#include "StdAfx.h"
 #include "ModelCompiler.h"
 #include "Model.h"
 #include "Objects/DesignerObject.h"
@@ -522,7 +522,7 @@ namespace CD
         {
             QString generatedFilename;
             static_cast<DesignerObject*>(pBaseObject)->GenerateGameFilename(generatedFilename);
-            m_pStatObj[shelfID]->SetFilePath(generatedFilename.toLatin1().constData());
+            m_pStatObj[shelfID]->SetFilePath(generatedFilename.toUtf8().constData());
         }
 
         Matrix34A mtx = pBaseObject->GetWorldTM();

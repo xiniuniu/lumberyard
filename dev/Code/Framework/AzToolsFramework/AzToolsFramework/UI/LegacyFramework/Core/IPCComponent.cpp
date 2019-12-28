@@ -10,7 +10,7 @@
 *
 */
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "IPCComponent.h"
 #include <AzCore/std/parallel/thread.h>
 #include <AzCore/Component/TickBus.h>
@@ -23,9 +23,9 @@ namespace LegacyFramework
         AZ::SerializeContext* serializeContext = azrtti_cast<AZ::SerializeContext*>(reflection);
         if (serializeContext)
         {
-            serializeContext->Class<IPCComponent>()
+            serializeContext->Class<IPCComponent, AZ::Component>()
                 ->Version(1)
-                ->SerializerForEmptyClass();
+                ;
         }
     }
 
@@ -74,13 +74,12 @@ namespace LegacyFramework
     void IPCComponent::Deactivate()
     {
         m_ShutdownThread = true;
-        if (m_isMaster)
-        {
-            m_ProcessThread.join();
-        }
-
         if (m_success)
         {
+            if (m_isMaster)
+            {
+                m_ProcessThread.join();
+            }
             m_IPCBuffer.UnMap();
             m_IPCBuffer.Close();
         }

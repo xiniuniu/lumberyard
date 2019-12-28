@@ -36,7 +36,7 @@ class EDITOR_CORE_API CBaseLibrary
     Q_OBJECT
 
 public:
-    CBaseLibrary(IBaseLibraryManager* pManager);
+    explicit CBaseLibrary(IBaseLibraryManager* pManager);
     ~CBaseLibrary();
 
     //! Set library name.
@@ -63,7 +63,7 @@ public:
     //! Add a new prototype to library.
     void AddItem(IDataBaseItem* item, bool bRegister = true);
     //! Get number of known prototypes.
-    int GetItemCount() const { return m_items.size(); }
+    int GetItemCount() const { return static_cast<int>(m_items.size()); }
     //! Get prototype by index.
     IDataBaseItem* GetItem(int index);
 

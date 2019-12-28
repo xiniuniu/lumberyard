@@ -12,13 +12,11 @@
 
 #pragma once
 
-#include <PhysXSystemComponent.h>
+#include <Source/SystemComponent.h>
 
 namespace PhysX
 {
-    /**
-    * CPU dispatcher which directs tasks submitted by PhysX to the lumberyard scheduling system.
-    */
+    /// CPU dispatcher which directs tasks submitted by PhysX to the Lumberyard scheduling system.
     class AzPhysXCpuDispatcher
         : public physx::PxCpuDispatcher
     {
@@ -27,25 +25,13 @@ namespace PhysX
 
         AzPhysXCpuDispatcher();
         ~AzPhysXCpuDispatcher();
-
-        void release();
-
-        //---------------------------------------------------------------------------------
+        
+    private:
         // PxCpuDispatcher implementation
-        //---------------------------------------------------------------------------------
         virtual void submitTask(physx::PxBaseTask& task);
-
-        physx::PxU32 getWorkerCount() const override
-        {
-            // TODO: We can get the number of worker threads from the current context AZ::JobManager::GetNumWorkerThreads()
-            // However we need to wait for a couple of fixes from jwright@. That's 451283 and 455554.
-            // We could merge from directly from the con_yorktown branch but it was decided to wait for it to go to main and then merge from there.
-            return 4;
-        }
+        physx::PxU32 getWorkerCount() const override;
     };
 
-    /**
-    * Creates a CPU dispatcher which directs tasks submitted by PhysX to the lumberyard scheduling system.
-    */
+    /// Creates a CPU dispatcher which directs tasks submitted by PhysX to the Lumberyard scheduling system.
     AzPhysXCpuDispatcher* AzPhysXCpuDispatcherCreate();
 } // namespace PhysX

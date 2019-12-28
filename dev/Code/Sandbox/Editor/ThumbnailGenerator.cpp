@@ -12,11 +12,11 @@
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
 #include "StdAfx.h"
-#include "thumbnailgenerator.h"
+#include "ThumbnailGenerator.h"
 
 #include <I3DEngine.h>
 
-#if defined(AZ_PLATFORM_APPLE_OSX)
+#if defined(AZ_PLATFORM_MAC)
 #include <sys/types.h>
 #include <utime.h>
 #endif
@@ -95,7 +95,7 @@ inline bool ThumbFileTimeIsEqual(const FILETIME& ft1, const FILETIME& ft2)
 {
     return ft1.dwHighDateTime == ft2.dwHighDateTime && ft1.dwLowDateTime == ft2.dwLowDateTime;
 }
-#elif defined(AZ_PLATFORM_APPLE_OSX)
+#elif defined(AZ_PLATFORM_MAC)
 #define FileTimeType utimbuf
 
 inline void GetThumbFileTime(const char* fileName, utimbuf& times)
@@ -145,7 +145,7 @@ void CThumbnailGenerator::GenerateForDirectory(const QString& path)
     for (int i = 0; i < files.size(); i++)
     {
         QString file = dir + files[i];
-        _splitpath(file.toLatin1().data(), 0, fdir, fname, fext);
+        _splitpath(file.toUtf8().data(), 0, fdir, fname, fext);
 
         //if (_stricmp(fext,".cgf") != 0 && _stricmp(fext,".bld") != 0)
         if (_stricmp(fext, ".cgf") != 0)
@@ -160,7 +160,7 @@ void CThumbnailGenerator::GenerateForDirectory(const QString& path)
 
         _makepath(bmpFile, 0, fdir, fname, ".tmb");
         FileTimeType ft1, ft2;
-        GetThumbFileTime(file.toLatin1().data(), ft1);
+        GetThumbFileTime(file.toUtf8().data(), ft1);
         GetThumbFileTime(bmpFile, ft2);
         // Both cgf and bmp have same time stamp.
         if (ThumbFileTimeIsEqual(ft1, ft2))
@@ -202,11 +202,11 @@ void CThumbnailGenerator::GenerateForFile(const QString& fileName)
     char fext[_MAX_EXT];
     char bmpFile[1024];
 
-    _splitpath(fileName.toLatin1().data(), 0, fdir, fname, fext);
+    _splitpath(fileName.toUtf8().data(), 0, fdir, fname, fext);
 
     _makepath(bmpFile, 0, fdir, fname, ".tmb");
     FileTimeType ft1, ft2;
-    GetThumbFileTime(fileName.toLatin1().data(), ft1);
+    GetThumbFileTime(fileName.toUtf8().data(), ft1);
     GetThumbFileTime(bmpFile, ft2);
     // Both cgf and bmp have same time stamp.
     if (ThumbFileTimeIsEqual(ft1, ft2))

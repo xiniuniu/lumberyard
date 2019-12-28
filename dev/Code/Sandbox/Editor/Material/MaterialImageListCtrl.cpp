@@ -103,10 +103,9 @@ void CMaterialImageListCtrl::OnCreate()
     m_largePreviewCtrl.reset(new MaterialPreviewModelView(this));
     m_largePreviewCtrl->hide();
     // m_renderCtrl is used to draw all the sub-materials
-    m_renderCtrl.reset(new MaterialPreviewModelView(this));
+    m_renderCtrl.reset(new MaterialPreviewModelView(this, false /* disable idle updates since this is only used to create the preview list images */));
     m_renderCtrl->UnSetFlag(CPreviewModelView::PreviewModelViewFlag::SHOW_GRID);
     m_renderCtrl->UnSetFlag(CPreviewModelView::PreviewModelViewFlag::SHOW_GRID_AXIS);
-    m_renderCtrl->hide();
 
     if (gEnv->pSystem)
     {
@@ -117,7 +116,7 @@ void CMaterialImageListCtrl::OnCreate()
     // This prevents an Editor freeze caused by constant resizing of the Material Editor when viewing
     // a high sub-material count material (LY-58389)
     m_resizeTimer = new QTimer(this);
-    connect(m_resizeTimer, SIGNAL(timeout()), this, SLOT(resizeTimeout()));
+    connect(m_resizeTimer, &QTimer::timeout, this, &CMaterialImageListCtrl::ResizeTimeout);
 }
 
 void CMaterialImageListCtrl::resizeEvent(QResizeEvent* event)
@@ -126,7 +125,7 @@ void CMaterialImageListCtrl::resizeEvent(QResizeEvent* event)
     m_resizeTimer->start(RESIZE_TIMEOUT);
 }
 
-void CMaterialImageListCtrl::resizeTimeout()
+void CMaterialImageListCtrl::ResizeTimeout()
 {
     m_resizeTimer->stop();
     updateGeometries();
@@ -241,20 +240,11 @@ void QMaterialImageListModel::InvalidateMaterial(CMaterial* pMaterial)
             // Ensure the full resolution textures are loaded for the material editor
             pMaterial->GetMatInfo()->DisableTextureStreaming();
         }
-        // it looks like calling setHidden to false merely puts a WinIDChange event into the queue instead of
-        // performing any significant handle-based operation immediately.
-        // therefore, after showing the window, we need to actually send the posted events to that control so that it
-        // updates and becomes 'really there' before we attempt to use its winId / render context.
-        m_renderCtrl->setHidden(false);
-        QCoreApplication::sendPostedEvents(m_renderCtrl);
 
         pItem->vVisibleTextures.clear();
         pMaterial->GetAnyTextureFilenames(pItem->vVisibleTextures);
         pItem->image = QImage();
         GenerateImage(pItem);
-
-        m_renderCtrl->setHidden(true);
-        QCoreApplication::sendPostedEvents(m_renderCtrl);
 
         emit dataChanged(idx, idx, QVector<int>() << Qt::DecorationRole);
     }
@@ -282,6 +272,10 @@ void QMaterialImageListModel::GenerateImage(Item* pItem)
     {
         return;
     }
+    if (pItem->image.size() == pItem->size)
+    {
+        return;
+    }
 
     Item* pMtlItem = pItem;
 
@@ -298,7 +292,8 @@ void QMaterialImageListModel::GenerateImage(Item* pItem)
                 return;
             }
 
-            m_renderCtrl->setGeometry(QRect{ pItem->position, pItem->size });
+            // keep m_renderCtrl off screen, but visible
+            m_renderCtrl->setGeometry(QRect(-QPoint(pItem->size.width(), pItem->size.height()), pItem->size));
 
             _smart_ptr<CMaterial> matPreview = ResolveTerrainLayerPreviewMaterial(pItem->pMaterial, m_pMatPreview);
 
@@ -534,6 +529,9 @@ void CMaterialImageListCtrl::updateGeometries()
             pos.ry() += itemSize + 2;
         }
     }
+
+    m_updatingGeometries = false;
+    update();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -547,7 +545,10 @@ void CMaterialImageListCtrl::setModel(QAbstractItemModel* model)
 
     CImageListCtrl::setModel(model);
 
-    connect(model, SIGNAL(dataChanged(const QModelIndex&, const QModelIndex&, const QVector<int>&)), this, SLOT(ModelDataChanged(const QModelIndex&)));
+    auto delegate = qobject_cast<QImageListDelegate*>(itemDelegate());
+    // in case the delegate misses a pixmap we can generate it (done only once not at every painting)
+    connect(delegate, SIGNAL(invalidPixmapGenerated(const QModelIndex&)), materialModel, SLOT(GenerateImage(const QModelIndex&)));
+    connect(model, &QAbstractItemModel::dataChanged, this, &CMaterialImageListCtrl::ModelDataChanged);
 }
 
 void CMaterialImageListCtrl::ModelDataChanged(const QModelIndex& index)
@@ -556,7 +557,6 @@ void CMaterialImageListCtrl::ModelDataChanged(const QModelIndex& index)
     // to trigger a new image computation that we already have
     if (m_updatingGeometries)
     {
-        m_updatingGeometries = false;
         return;
     }
 
@@ -787,16 +787,11 @@ void QMaterialImageListModel::GenerateImages()
     {
         return;
     }
-    m_renderCtrl->setHidden(false);
-    QCoreApplication::sendPostedEvents(m_renderCtrl); // see note in InvalidateMaterial()
 
     for (Item* materialImageListItem : m_items)
     {
         GenerateImage(materialImageListItem);
     }
-
-    m_renderCtrl->setHidden(true);
-    QCoreApplication::sendPostedEvents(m_renderCtrl);
 }
 
 void QMaterialImageListModel::GenerateImage(const QModelIndex& index)
@@ -806,13 +801,7 @@ void QMaterialImageListModel::GenerateImage(const QModelIndex& index)
         return;
     }
 
-    m_renderCtrl->setHidden(false);
-    QCoreApplication::sendPostedEvents(m_renderCtrl); // see note in InvalidateMaterial()
-
     GenerateImage(ItemFromIndex(index));
-
-    m_renderCtrl->setHidden(true);
-    QCoreApplication::sendPostedEvents(m_renderCtrl);
 }
 
 //////////////////////////////////////////////////////////////////////////

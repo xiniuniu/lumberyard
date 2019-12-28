@@ -12,7 +12,7 @@
 
 #pragma once
 
-#include <QFrame.h>
+#include <QFrame>
 
 class QPushButton;
 class QHBoxLayout;
@@ -28,7 +28,7 @@ class StackStatusWidget
 
 public:
 
-    StackStatusWidget(QSharedPointer<IStackStatusModel> stackStatusModel);
+    StackStatusWidget(QSharedPointer<IStackStatusModel> stackStatusModel, QWidget* parent);
 
 private:
 

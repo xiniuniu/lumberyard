@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 #include "StaticPhysicsComponent.h"
 #include <AzCore/RTTI/BehaviorContext.h>
 #include <AzCore/Serialization/SerializeContext.h>
@@ -77,6 +77,9 @@ namespace LmbrCentral
 
     void StaticPhysicsComponent::ConfigurePhysicalEntity()
     {
+        pe_params_flags flagsParams;
+        flagsParams.flagsOR = pef_log_state_changes | pef_monitor_state_changes;
+        m_physicalEntity->SetParams(&flagsParams);
     }
 
 } // namespace LmbrCentral

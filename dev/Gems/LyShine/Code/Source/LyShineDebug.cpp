@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "LyShine_precompiled.h"
 #include "LyShineDebug.h"
 #include "IConsole.h"
 #include <LyShine/IDraw2d.h>
@@ -1278,7 +1278,7 @@ namespace
         : public UiCanvasNotificationBus::Handler
     {
     public:
-        ActionListener(AZ::EntityId canvasId, LyShine::ActionName actionName, std::function<void(void)> fn)
+        ActionListener(AZ::EntityId canvasId, LyShine::ActionName actionName, AZStd::function<void(void)> fn)
             : m_canvasId(canvasId)
             , m_actionName(actionName)
             , m_fn(fn)
@@ -1309,7 +1309,7 @@ namespace
     private:
         AZ::EntityId m_canvasId;
         LyShine::ActionName m_actionName;
-        std::function<void(void)> m_fn;
+        AZStd::function<void(void)> m_fn;
     };
 }
 

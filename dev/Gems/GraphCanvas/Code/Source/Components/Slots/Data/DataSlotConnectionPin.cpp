@@ -11,14 +11,14 @@
 */
 #include "precompiled.h"
 
-#include <qpainter.h>
+#include <QPainter>
 
 #include <Components/Slots/Data/DataSlotConnectionPin.h>
 
-#include <Components/ColorPaletteManager/ColorPaletteManagerBus.h>
 #include <GraphCanvas/Components/Slots/SlotBus.h>
+#include <GraphCanvas/Components/StyleBus.h>
 #include <GraphCanvas/Components/Slots/Data/DataSlotBus.h>
-#include <Styling/definitions.h>
+#include <GraphCanvas/Styling/definitions.h>
 
 namespace GraphCanvas
 {
@@ -36,20 +36,26 @@ namespace GraphCanvas
     {    
     }
     
-    void DataSlotConnectionPin::RefreshStyle()
+    void DataSlotConnectionPin::OnRefreshStyle()
     {
         m_style.SetStyle(m_slotId, Styling::Elements::DataConnectionPin);
 
-        if (m_colorPalette == nullptr)
+        size_t typeCount = 0;
+        DataSlotRequestBus::EventResult(typeCount, GetEntityId(), &DataSlotRequests::GetContainedTypesCount);
+
+        m_containerColorPalettes.clear();
+
+        for (size_t i = 0; i < typeCount; ++i)
         {
-            AZ::Uuid dataType = AZ::Uuid();
-            DataSlotRequestBus::EventResult(dataType, GetEntityId(), &DataSlotRequests::GetDataTypeId);
-
-            AZ::EntityId sceneId;
-            SceneMemberRequestBus::EventResult(sceneId, GetEntityId(), &SceneMemberRequests::GetScene);
-
-            ColorPaletteManagerRequestBus::EventResult(m_colorPalette, sceneId, &ColorPaletteManagerRequests::FindDataColorPalette, dataType);
+            const Styling::StyleHelper* colorPalette = nullptr;
+            DataSlotRequestBus::EventResult(colorPalette, GetEntityId(), &DataSlotRequests::GetContainedTypeColorPalette, i);
+            if (colorPalette)
+            {
+                m_containerColorPalettes.emplace_back(colorPalette);
+            }
         }
+            
+        DataSlotRequestBus::EventResult(m_colorPalette, GetEntityId(), &DataSlotRequests::GetDataColorPalette);
 
         update();
     }
@@ -76,7 +82,7 @@ namespace GraphCanvas
         // If our variable slots are not connected, we just want to draw the empty
         // circle.
         if (dataType == DataSlotType::Value
-            || !variableId.IsValid())
+            || (dataType == DataSlotType::Reference && !variableId.IsValid()))
         {
             // Add fill color for slots if it is connected
             if (isConnected)
@@ -96,6 +102,65 @@ namespace GraphCanvas
             }
 
             painter->drawEllipse(drawRect.center(), radius, radius);
+        }
+        else if (dataType == DataSlotType::Container)
+        {
+            QRectF rect(drawRect.center().x() - radius, drawRect.center().y() - radius, radius * 2, radius * 2);
+
+            QLinearGradient penGradient;
+            QLinearGradient fillGradient;
+
+            if (m_containerColorPalettes.size() > 0)
+            {
+                penGradient = QLinearGradient(rect.topLeft(), rect.bottomRight());
+                fillGradient = QLinearGradient(rect.topLeft(), rect.bottomRight());
+
+                penGradient.setColorAt(0, m_containerColorPalettes[0]->GetColor(Styling::Attribute::LineColor));
+                fillGradient.setColorAt(0, m_containerColorPalettes[0]->GetColor(Styling::Attribute::BackgroundColor));
+
+                double transition = 0.1 * (1.0 / m_containerColorPalettes.size());
+
+                for (size_t i = 1; i < m_containerColorPalettes.size(); ++i)
+                {
+                    double transitionStart = AZStd::max(0.0, (double)i / m_containerColorPalettes.size() - (transition * 0.5));
+                    double transitionEnd   = AZStd::min(1.0, (double)i / m_containerColorPalettes.size() + (transition * 0.5));
+
+                    penGradient.setColorAt(transitionStart, m_containerColorPalettes[i - 1]->GetColor(Styling::Attribute::LineColor));
+                    penGradient.setColorAt(transitionEnd, m_containerColorPalettes[i]->GetColor(Styling::Attribute::LineColor));
+
+                    fillGradient.setColorAt(transitionStart, m_containerColorPalettes[i - 1]->GetColor(Styling::Attribute::BackgroundColor));
+                    fillGradient.setColorAt(transitionEnd, m_containerColorPalettes[i]->GetColor(Styling::Attribute::BackgroundColor));
+                }
+
+                penGradient.setColorAt(1, m_containerColorPalettes[m_containerColorPalettes.size() - 1]->GetColor(Styling::Attribute::LineColor));
+                fillGradient.setColorAt(1, m_containerColorPalettes[m_containerColorPalettes.size() - 1]->GetColor(Styling::Attribute::BackgroundColor));
+
+                pen.setBrush(penGradient);
+                painter->setPen(pen);
+            }
+
+            // Add fill color for slots if it is connected
+            if (isConnected)
+            {
+                QBrush brush = painter->brush();
+
+                if (m_containerColorPalettes.size() > 0)
+                {
+                    brush = fillGradient;
+                }
+                if (m_colorPalette)
+                {
+                    brush.setColor(m_colorPalette->GetColor(Styling::Attribute::BackgroundColor));
+                }
+                else
+                {
+                    brush.setColor(pen.color());
+                }
+
+                painter->setBrush(brush);
+            }
+
+            painter->drawRect(rect);
         }
         else if (dataType != DataSlotType::Unknown)
         {
@@ -133,4 +198,5 @@ namespace GraphCanvas
             painter->restore();
         }
     }
+
 }

@@ -20,6 +20,7 @@
 #include <SceneAPI/SceneCore/DataTypes/Rules/IMeshAdvancedRule.h>
 #include <RC/ResourceCompilerScene/Common/CommonExportContexts.h>
 #include <RC/ResourceCompilerScene/Common/ContainerSettingsExporter.h>
+#include <SceneAPI/SceneCore/Events/AssetImportRequest.h>
 
 namespace AZ
 {
@@ -38,7 +39,7 @@ namespace AZ
             SerializeContext* serializeContext = azrtti_cast<SerializeContext*>(context);
             if (serializeContext)
             {
-                serializeContext->Class<ContainerSettingsExporter, SceneAPI::SceneCore::ExportingComponent>()->Version(1);
+                serializeContext->Class<ContainerSettingsExporter, SceneAPI::SceneCore::RCExportingComponent>()->Version(1);
             }
         }
 
@@ -54,6 +55,7 @@ namespace AZ
             {
                 context.m_container.GetExportInfo()->bWantF32Vertices = advancedRule->Use32bitVertices();
                 context.m_container.GetExportInfo()->bMergeAllNodes = advancedRule->MergeMeshes();
+                context.m_container.GetExportInfo()->bUseCustomNormals = advancedRule->UseCustomNormals();
                 return SceneEvents::ProcessingResult::Success;
             }
             else

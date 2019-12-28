@@ -9,22 +9,21 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 
 #include <AzCore/Component/TickBus.h>
 #include <AzCore/Component/TransformBus.h>
-#include <AzCore/Serialization/EditContext.h>
 #include <AzCore/Serialization/SerializeContext.h>
-#include <AzCore/Component/ComponentApplicationBus.h>
-#include <AzCore/Component/Entity.h>
 #include <AzCore/RTTI/BehaviorContext.h>
-#include <AzCore/Script/ScriptContextAttributes.h>
 #include <AzCore/std/sort.h>
 
-#include <AzFramework/Entity/EntityContextBus.h>
 #include <AzFramework/Entity/GameEntityContextBus.h>
 
 #include "SpawnerComponent.h"
+
+#ifdef LMBR_CENTRAL_EDITOR
+#include "EditorSpawnerComponent.h"
+#endif
 
 namespace LmbrCentral
 {
@@ -33,7 +32,7 @@ namespace LmbrCentral
     {
     public:
         AZ_EBUS_BEHAVIOR_BINDER(BehaviorSpawnerComponentNotificationBusHandler, "{AC202871-2522-48A6-9B62-5FDAABB302CD}", AZ::SystemAllocator,
-            OnSpawnBegin, OnSpawnEnd, OnEntitySpawned, OnSpawnedSliceDestroyed);
+            OnSpawnBegin, OnSpawnEnd, OnEntitySpawned, OnSpawnedSliceDestroyed, OnEntitiesSpawned);
 
         void OnSpawnBegin(const AzFramework::SliceInstantiationTicket& ticket) override
         {
@@ -54,7 +53,66 @@ namespace LmbrCentral
         {
             Call(FN_OnSpawnedSliceDestroyed, ticket);
         }
+
+        //! Single event notification for an entire slice spawn, providing a list of all resulting entity Ids.
+        void OnEntitiesSpawned(const AzFramework::SliceInstantiationTicket& ticket, const AZStd::vector<AZ::EntityId>& spawnedEntities) override
+        {
+            Call(FN_OnEntitiesSpawned, ticket, spawnedEntities);
+        }
+
     };
+
+    // Convert any instances of the old SampleComponent data into the appropriate
+    // modern editor-component or game-component.
+    bool ConvertLegacySpawnerComponent(AZ::SerializeContext& serializeContext, AZ::SerializeContext::DataElementNode& classNode)
+    {
+        // To determine whether we want an editor or runtime component, we check
+        // if the old component was contained within GenericComponentWrapper::m_template.
+        bool isEditorComponent = (classNode.GetName() == AZ::Crc32("m_template"));
+
+        // Get Component::m_id from the base class.
+        AZ::u64 componentId = 0;
+        if (auto baseClassNode = classNode.FindSubElement(AZ::Crc32("BaseClass1")))
+        {
+            baseClassNode->GetChildData(AZ::Crc32("Id"), componentId);
+        }
+
+        // Get data values.
+        SpawnerConfig config;
+
+        classNode.GetChildData(AZ::Crc32("Slice"), config.m_sliceAsset);
+        classNode.GetChildData(AZ::Crc32("SpawnOnActivate"), config.m_spawnOnActivate);
+        classNode.GetChildData(AZ::Crc32("DestroyOnDeactivate"), config.m_destroyOnDeactivate);
+
+        // Convert this node into the appropriate component-type.
+        // Note that converting the node will clear all child data nodes.
+#ifdef LMBR_CENTRAL_EDITOR
+        if (isEditorComponent)
+        {
+            classNode.Convert(serializeContext, azrtti_typeid<EditorSpawnerComponent>());
+
+            // Create a temporary editor-component and write its contents to this node
+            EditorSpawnerComponent component;
+            component.SetId(componentId);
+            component.SetConfiguration(config);
+
+            classNode.SetData(serializeContext, component);
+        }
+        else
+#endif // LMBR_CENTRAL_EDITOR
+        {
+            classNode.Convert(serializeContext, azrtti_typeid<SpawnerComponent>());
+
+            // Create a temporary game-component and write its contents to this classNode
+            SpawnerComponent component;
+            component.SetId(componentId);
+            component.SetConfiguration(config);
+
+            classNode.SetData(serializeContext, component);
+        }
+
+        return true;
+    }
 
     //=========================================================================
     void SpawnerComponent::Reflect(AZ::ReflectContext* context)
@@ -62,30 +120,16 @@ namespace LmbrCentral
         AZ::SerializeContext* serializeContext = azrtti_cast<AZ::SerializeContext*>(context);
         if (serializeContext)
         {
+            serializeContext->ClassDeprecate("SpawnerComponent", DeprecatedSpawnerComponentTypeId, ConvertLegacySpawnerComponent);
+
             serializeContext->Class<SpawnerComponent, AZ::Component>()
                 ->Version(1)
                 ->Field("Slice", &SpawnerComponent::m_sliceAsset)
                 ->Field("SpawnOnActivate", &SpawnerComponent::m_spawnOnActivate)
                 ->Field("DestroyOnDeactivate", &SpawnerComponent::m_destroyOnDeactivate)
                 ;
-            
-            AZ::EditContext* editContext = serializeContext->GetEditContext();
-            if (editContext)
-            {
-                editContext->Class<SpawnerComponent>("Spawner", "The Spawner component allows an entity to spawn a design-time or run-time dynamic slice (*.dynamicslice) at the entity's location with an optional offset")
-                    ->ClassElement(AZ::Edit::ClassElements::EditorData, "")
-                        ->Attribute(AZ::Edit::Attributes::Category, "Gameplay")
-                        ->Attribute(AZ::Edit::Attributes::Icon, "Editor/Icons/Components/Spawner.png")
-                        ->Attribute(AZ::Edit::Attributes::ViewportIcon, "Editor/Icons/Components/Viewport/Spawner.png")
-                        ->Attribute(AZ::Edit::Attributes::AppearsInAddComponentMenu, AZ_CRC("Game", 0x232b318c))
-                        ->Attribute(AZ::Edit::Attributes::AutoExpand, true)
-                        ->Attribute(AZ::Edit::Attributes::HelpPageURL, "https://docs.aws.amazon.com/lumberyard/latest/userguide/component-spawner.html")
-                    ->DataElement(0, &SpawnerComponent::m_sliceAsset, "Dynamic slice", "The slice to spawn")
-                    ->DataElement(0, &SpawnerComponent::m_spawnOnActivate, "Spawn on activate", "Should the component spawn the selected slice upon activation?")
-                    ->DataElement(0, &SpawnerComponent::m_destroyOnDeactivate, "Destroy on deactivate", "Upon deactivation, should the component destroy any slices it spawned?")
-                    ;
-            }
         }
+ 
         AZ::BehaviorContext* behaviorContext = azrtti_cast<AZ::BehaviorContext*>(context);
         if (behaviorContext)
         {
@@ -96,9 +140,12 @@ namespace LmbrCentral
                 ->Event("DestroySpawnedSlice", &SpawnerComponentRequestBus::Events::DestroySpawnedSlice)
                 ->Event("DestroyAllSpawnedSlices", &SpawnerComponentRequestBus::Events::DestroyAllSpawnedSlices)
                 ->Event("GetCurrentlySpawnedSlices", &SpawnerComponentRequestBus::Events::GetCurrentlySpawnedSlices)
+                    ->Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::All) // Excluded until array support is available.
                 ->Event("HasAnyCurrentlySpawnedSlices", &SpawnerComponentRequestBus::Events::HasAnyCurrentlySpawnedSlices)
                 ->Event("GetCurrentEntitiesFromSpawnedSlice", &SpawnerComponentRequestBus::Events::GetCurrentEntitiesFromSpawnedSlice)
+                    ->Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::All) // Excluded until array support is available.
                 ->Event("GetAllCurrentlySpawnedEntities", &SpawnerComponentRequestBus::Events::GetAllCurrentlySpawnedEntities)
+                    ->Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::All) // Excluded until array support is available.
                 ;
 
             behaviorContext->EBus<SpawnerComponentNotificationBus>("SpawnerComponentNotificationBus")
@@ -121,6 +168,10 @@ namespace LmbrCentral
         provided.push_back(AZ_CRC("SpawnerService", 0xd2f1d7a3));
     }
 
+    //=========================================================================
+    void SpawnerComponent::GetRequiredServices(AZ::ComponentDescriptor::DependencyArrayType&)
+    {
+    }
 
     //=========================================================================
     void SpawnerComponent::GetDependentServices(AZ::ComponentDescriptor::DependencyArrayType& dependent)
@@ -132,7 +183,7 @@ namespace LmbrCentral
     SpawnerComponent::SpawnerComponent()
     {
         // Slice asset should load purely on-demand.
-        m_sliceAsset.SetFlags(static_cast<AZ::u8>(AZ::Data::AssetFlags::OBJECTSTREAM_NO_LOAD));
+        m_sliceAsset.SetAutoLoadBehavior(AZ::Data::AssetLoadBehavior::NoLoad);
     }
 
     //=========================================================================
@@ -142,7 +193,7 @@ namespace LmbrCentral
 
         if (m_spawnOnActivate)
         {
-            SpawnSliceInternal(m_sliceAsset, AZ::Transform::Identity());
+            SpawnSliceInternalRelative(m_sliceAsset, AZ::Transform::Identity());
         }
     }
 
@@ -208,57 +259,44 @@ namespace LmbrCentral
     //=========================================================================
     AzFramework::SliceInstantiationTicket SpawnerComponent::Spawn()
     {
-        return SpawnSliceInternal(m_sliceAsset, AZ::Transform::Identity());
+        return SpawnSliceInternalRelative(m_sliceAsset, AZ::Transform::Identity());
     }
 
     //=========================================================================
     AzFramework::SliceInstantiationTicket SpawnerComponent::SpawnRelative(const AZ::Transform& relative)
     {
-        return SpawnSliceInternal(m_sliceAsset, relative);
+        return SpawnSliceInternalRelative(m_sliceAsset, relative);
     }
     
     //=========================================================================
     AzFramework::SliceInstantiationTicket SpawnerComponent::SpawnAbsolute(const AZ::Transform& world)
     {
-        AZ::Transform entityWorldTransform = AZ::Transform::CreateIdentity();
-        EBUS_EVENT_ID_RESULT(entityWorldTransform, GetEntityId(), AZ::TransformBus, GetWorldTM);
-
-        const AZ::Transform relative = entityWorldTransform.GetInverseFast() * world;
-        return SpawnSliceInternal(m_sliceAsset, relative);
+        return SpawnSliceInternalAbsolute(m_sliceAsset, world);
     }
 
     //=========================================================================
     AzFramework::SliceInstantiationTicket SpawnerComponent::SpawnSlice(const AZ::Data::Asset<AZ::Data::AssetData>& slice)
     {
-        return SpawnSliceInternal(slice, AZ::Transform::Identity());
+        return SpawnSliceInternalRelative(slice, AZ::Transform::Identity());
     }
 
     //=========================================================================
     AzFramework::SliceInstantiationTicket SpawnerComponent::SpawnSliceRelative(const AZ::Data::Asset<AZ::Data::AssetData>& slice, const AZ::Transform& relative)
     {
-        return SpawnSliceInternal(slice, relative);
+        return SpawnSliceInternalRelative(slice, relative);
     }
     
     //=========================================================================
     AzFramework::SliceInstantiationTicket SpawnerComponent::SpawnSliceAbsolute(const AZ::Data::Asset<AZ::Data::AssetData>& slice, const AZ::Transform& world)
     {
-        AZ::Transform entityWorldTransform = AZ::Transform::CreateIdentity();
-        EBUS_EVENT_ID_RESULT(entityWorldTransform, GetEntityId(), AZ::TransformBus, GetWorldTM);
-
-        const AZ::Transform relative = entityWorldTransform.GetInverseFast() * world;
-        return SpawnSliceInternal(slice, relative);
+        return SpawnSliceInternalAbsolute(slice, world);
     }
 
     //=========================================================================
-    AzFramework::SliceInstantiationTicket SpawnerComponent::SpawnSliceInternal(const AZ::Data::Asset<AZ::Data::AssetData>& slice, const AZ::Transform& relative)
+    AzFramework::SliceInstantiationTicket SpawnerComponent::SpawnSliceInternalAbsolute(const AZ::Data::Asset<AZ::Data::AssetData>& slice, const AZ::Transform& world)
     {
-        AZ::Transform transform = AZ::Transform::Identity();
-        EBUS_EVENT_ID_RESULT(transform, GetEntityId(), AZ::TransformBus, GetWorldTM);
-
-        transform *= relative;
-
         AzFramework::SliceInstantiationTicket ticket;
-        EBUS_EVENT_RESULT(ticket, AzFramework::GameEntityContextRequestBus, InstantiateDynamicSlice, slice, transform, nullptr);
+        EBUS_EVENT_RESULT(ticket, AzFramework::GameEntityContextRequestBus, InstantiateDynamicSlice, slice, world, nullptr);
 
         if (ticket)
         {
@@ -267,8 +305,18 @@ namespace LmbrCentral
 
             AzFramework::SliceInstantiationResultBus::MultiHandler::BusConnect(ticket);
         }
-
         return ticket;
+    }
+
+    //=========================================================================
+    AzFramework::SliceInstantiationTicket SpawnerComponent::SpawnSliceInternalRelative(const AZ::Data::Asset<AZ::Data::AssetData>& slice, const AZ::Transform& relative)
+    {
+        AZ::Transform transform = AZ::Transform::Identity();
+        EBUS_EVENT_ID_RESULT(transform, GetEntityId(), AZ::TransformBus, GetWorldTM);
+
+        transform *= relative;
+
+        return SpawnSliceInternalAbsolute(slice, transform);
     }
 
     //=========================================================================
@@ -378,7 +426,7 @@ namespace LmbrCentral
     //=========================================================================
     void SpawnerComponent::OnSlicePreInstantiate(const AZ::Data::AssetId& /*sliceAssetId*/, const AZ::SliceComponent::SliceInstanceAddress& sliceAddress)
     {
-        const AzFramework::SliceInstantiationTicket& ticket = (*AzFramework::SliceInstantiationResultBus::GetCurrentBusId());
+        const AzFramework::SliceInstantiationTicket ticket = (*AzFramework::SliceInstantiationResultBus::GetCurrentBusId());
 
         EBUS_EVENT_ID(GetEntityId(), SpawnerComponentNotificationBus, OnSpawnBegin, ticket);
     }
@@ -386,12 +434,12 @@ namespace LmbrCentral
     //=========================================================================
     void SpawnerComponent::OnSliceInstantiated(const AZ::Data::AssetId& sliceAssetId, const AZ::SliceComponent::SliceInstanceAddress& sliceAddress)
     {
-        const AzFramework::SliceInstantiationTicket& ticket = (*AzFramework::SliceInstantiationResultBus::GetCurrentBusId());
+        const AzFramework::SliceInstantiationTicket ticket = (*AzFramework::SliceInstantiationResultBus::GetCurrentBusId());
 
         // Stop listening for this ticket (since it's done). We can have have multiple tickets in flight.
         AzFramework::SliceInstantiationResultBus::MultiHandler::BusDisconnect(ticket);
 
-        const AZ::SliceComponent::EntityList& entities = sliceAddress.second->GetInstantiated()->m_entities;
+        const AZ::SliceComponent::EntityList& entities = sliceAddress.GetInstance()->GetInstantiated()->m_entities;
 
         AZStd::vector<AZ::EntityId> entityIds;
         entityIds.reserve(entities.size());
@@ -424,23 +472,26 @@ namespace LmbrCentral
     }
 
     //=========================================================================
-    void SpawnerComponent::OnSliceInstantiationFailed(const AZ::Data::AssetId& sliceAssetId)
+    void SpawnerComponent::OnSliceInstantiationFailedOrCanceled(const AZ::Data::AssetId& sliceAssetId, bool canceled)
     {
-        const AzFramework::SliceInstantiationTicket& ticket = *AzFramework::SliceInstantiationResultBus::GetCurrentBusId();
+        const AzFramework::SliceInstantiationTicket ticket = *AzFramework::SliceInstantiationResultBus::GetCurrentBusId();
 
         AzFramework::SliceInstantiationResultBus::MultiHandler::BusDisconnect(ticket);
 
         // clean it up
         DestroySpawnedSlice(ticket);
 
-        // error msg
-        if (sliceAssetId == m_sliceAsset.GetId())
+        if (!canceled)
         {
-            AZ_Error("SpawnerComponent", false, "Slice [id:'%s' hint:'%s'] failed to instantiate", sliceAssetId.ToString<AZStd::string>().c_str(), m_sliceAsset.GetHint().c_str());
-        }
-        else
-        {
-            AZ_Error("SpawnerComponent", false, "Slice [id:'%s'] failed to instantiate", sliceAssetId.ToString<AZStd::string>().c_str());
+            // error msg
+            if (sliceAssetId == m_sliceAsset.GetId())
+            {
+                AZ_Error("SpawnerComponent", false, "Slice %s failed to instantiate", m_sliceAsset.ToString<AZStd::string>().c_str());
+            }
+            else
+            {
+                AZ_Error("SpawnerComponent", false, "Slice [id:'%s'] failed to instantiate", sliceAssetId.ToString<AZStd::string>().c_str());
+            }
         }
     }
 

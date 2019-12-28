@@ -16,7 +16,6 @@
 // include MCore
 #include "../StandardPluginsConfig.h"
 #include <MCore/Source/StandardHeaders.h>
-#include <MCore/Source/UnicodeString.h>
 #include <EMotionFX/Source/PlayBackInfo.h>
 #include <QWidget>
 #include <QLabel>
@@ -35,7 +34,7 @@ namespace EMStudio
         : public QWidget
     {
         Q_OBJECT
-                 MCORE_MEMORYOBJECTCATEGORY(MotionPropertiesWindow, MCore::MCORE_DEFAULT_ALIGNMENT, MEMCATEGORY_STANDARDPLUGINS);
+        MCORE_MEMORYOBJECTCATEGORY(MotionPropertiesWindow, MCore::MCORE_DEFAULT_ALIGNMENT, MEMCATEGORY_STANDARDPLUGINS);
 
     public:
         enum
@@ -65,7 +64,8 @@ namespace EMStudio
 
         QPushButton*                    mButtonLoopForever;
         QPushButton*                    mButtonMirror;
-        
+        QPushButton*                    mButtonInPlace;
+
         QPushButton*                    mButtonPlayForward;
         QPushButton*                    mButtonPlayBackward;
 

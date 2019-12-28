@@ -54,7 +54,7 @@ namespace AZ
             SerializeContext* serializeContext = azrtti_cast<SerializeContext*>(context);
             if (serializeContext)
             {
-                serializeContext->Class<AnimationExporter, SceneAPI::SceneCore::ExportingComponent>()->Version(1);
+                serializeContext->Class<AnimationExporter, SceneAPI::SceneCore::RCExportingComponent>()->Version(1);
             }
         }
 
@@ -113,7 +113,7 @@ namespace AZ
                 controller->m_nControllerId = CCrc32::ComputeLowercase(it->first.GetName());
 
                 // If we spot the root bone, store its controller Id to be passed to the compression step.
-                if (0 == stricmp(it->first.GetPath(), context.m_rootBoneName.c_str()))
+                if (0 == azstricmp(it->first.GetPath(), context.m_rootBoneName.c_str()))
                 {
                     context.m_controllerSkinningInfo.m_rootBoneId = controller->m_nControllerId;
                 }

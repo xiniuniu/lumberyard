@@ -22,7 +22,7 @@
 
 #include <QAbstractTableModel>
 #include <QtWidgets/QMainWindow>
-#include <QtWidgets/qdialog.h>
+#include <QtWidgets/QDialog>
 #include <qstyleditemdelegate.h>
 #include <qitemselectionmodel.h>
 
@@ -338,25 +338,6 @@ namespace Driller
         void SetupChunkTableView();
 
         void DrawFrameGraph();        
-
-        // Templated functions to reuse a lot of the graph drawing logic        
-        template<typename T>
-        void PlotChartData(ReplicaBandwidthChartData<T>* chartData)
-        {
-            AZ_PROFILE_TIMER("Woodpecker",__FUNCTION__);            
-            m_gui->sentUsage->StartBatchDataAdd();
-            m_gui->receiveUsage->StartBatchDataAdd();
-
-            switch (m_displayTimeType)
-            {
-                case DTT_FRAMES:
-                    PlotChartDataForFrames<T>(chartData);
-                    break;
-                default:
-                    AZ_Assert(false,"ERROR: Unknown display time type");
-                    break;
-            }            
-        }
 
         template<typename T>
         void PlotChartDataForFrames(ReplicaBandwidthChartData<T>* chartData)

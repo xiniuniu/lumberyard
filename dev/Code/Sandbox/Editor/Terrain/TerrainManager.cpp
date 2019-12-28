@@ -217,6 +217,12 @@ CLayer* CTerrainManager::FindLayerByLayerId(const uint32 dwLayerId) const
 }
 
 //////////////////////////////////////////////////////////////////////////
+void CTerrainManager::AddLayer(CLayer* layer)
+{
+    m_layers.push_back(layer);
+};
+
+//////////////////////////////////////////////////////////////////////////
 void CTerrainManager::RemoveLayer(CLayer* layer)
 {
     assert(m_layers.size() > 1 && "Removing last layer of terrain");
@@ -275,6 +281,18 @@ void CTerrainManager::SwapLayers(int layer1, int layer2)
 }
 
 //////////////////////////////////////////////////////////////////////////
+void CTerrainManager::MoveLayer(int oldIndex, int newIndex)
+{
+    int dir = ((newIndex - oldIndex) < 0) ? -1 : 1;
+
+    while (oldIndex != newIndex)
+    {
+        SwapLayers(oldIndex, oldIndex + dir);
+        oldIndex += dir;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 void CTerrainManager::ClearLayers()
 {
     ////////////////////////////////////////////////////////////////////////
@@ -323,7 +341,7 @@ void CTerrainManager::SerializeLayerSettings(CXmlArchive& xmlAr)
             // Fill the layer with the data
             GetLayer(i)->Serialize(ar);
 
-            CryLog("  loaded editor layer %d  name='%s' LayerID=%d", i, GetLayer(i)->GetLayerName().toLatin1().data(), GetLayer(i)->GetCurrentLayerId());
+            CryLog("  loaded editor layer %d  name='%s' LayerID=%d", i, GetLayer(i)->GetLayerName().toUtf8().data(), GetLayer(i)->GetCurrentLayerId());
         }
 
         // If surface type ids are unassigned, assign them.
@@ -608,7 +626,7 @@ CRGBLayer* CTerrainManager::GetRGBLayer()
 //////////////////////////////////////////////////////////////////////////
 void CTerrainManager::Save()
 {
-    CTempFileHelper helper((GetIEditor()->GetLevelDataFolder() + kHeightmapFile).toLatin1().data());
+    CTempFileHelper helper((GetIEditor()->GetLevelDataFolder() + kHeightmapFile).toUtf8().data());
 
     CXmlArchive xmlAr;
     SerializeTerrain(xmlAr);
@@ -650,13 +668,13 @@ void CTerrainManager::SaveTexture()
         return;
     }
 
-    CTempFileHelper helper((GetIEditor()->GetLevelDataFolder() + kTerrainTextureFile).toLatin1().data());
+    CTempFileHelper helper((GetIEditor()->GetLevelDataFolder() + kTerrainTextureFile).toUtf8().data());
 
     XmlNodeRef root;
     GetRGBLayer()->Serialize(root, false);
     if (root)
     {
-        root->saveToFile(helper.GetTempFilePath().toLatin1().data());
+        root->saveToFile(helper.GetTempFilePath().toUtf8().data());
     }
 
     helper.UpdateFile(false);
@@ -667,7 +685,7 @@ void CTerrainManager::SaveTexture()
 bool CTerrainManager::LoadTexture()
 {
     QString filename = GetIEditor()->GetLevelDataFolder() + kTerrainTextureFile;
-    XmlNodeRef root = XmlHelpers::LoadXmlFromFile(filename.toLatin1().data());
+    XmlNodeRef root = XmlHelpers::LoadXmlFromFile(filename.toUtf8().data());
     if (root)
     {
         GetRGBLayer()->Serialize(root, true);

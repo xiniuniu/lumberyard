@@ -126,6 +126,9 @@ public:
     //! Get public parameters of material in variable block.
     CVarBlock* GetPublicVars(SInputShaderResources& pShaderResources);
 
+    //! Set the shader public param m_script variable into our own m_script, script contains min/max for a given shader param value
+    void SetShaderParamPublicScript();
+
     //! Sets variable block of public shader parameters.
     //! VarBlock must be in same format as returned by GetPublicVars().
     void SetPublicVars(CVarBlock* pPublicVars, CMaterial* pMtl);
@@ -181,6 +184,8 @@ public:
     void SetSubMaterialCount(int nSubMtlsCount);
     //! Get sub material child by index.
     CMaterial* GetSubMaterial(int index) const;
+    //! Find sub material index by name
+    int FindMaterialIndex(const QString& name);
     // Set a material to the sub materials slot.
     // Use NULL material pointer to clear slot.
     void SetSubMaterial(int nSlot, CMaterial* mtl);
@@ -200,7 +205,7 @@ public:
     bool CanModify(bool bSkipReadOnly = true);
 
     // Save material to file.
-    virtual bool Save(bool bSkipReadOnly = true);
+    virtual bool Save(bool bSkipReadOnly = true, const QString& fullPath = "");
 
     // Dummy material is just a placeholder item for materials that have not been found on disk.
     void SetDummy(bool bDummy) { m_bDummyMaterial = bDummy; }
@@ -234,6 +239,10 @@ public:
     bool LayerActivationAllowed() const { return m_allowLayerActivation; }
     void SetLayerActivation(bool allowed) { m_allowLayerActivation = allowed; }
 
+    uint32 GetDccMaterialHash() const { return m_dccMaterialHash; }
+    void SetDccMaterialHash(AZ::u32 hash) { m_dccMaterialHash = hash; }
+    void SetShaderItem(const SShaderItem& shaderItem);
+
 private:
     void UpdateMatInfo();
     void CheckSpecialConditions();
@@ -255,6 +264,10 @@ private:
 
     //! Material flags.
     int m_mtlFlags;
+
+    // Hash for DCC material attributes, used to check if .dccmtl has changed
+    // If so, the source .mtl file will need to be rebuilt
+    uint32 m_dccMaterialHash;
 
     // Parent material, Only valid for Pure Childs.
     CMaterial* m_pParent;

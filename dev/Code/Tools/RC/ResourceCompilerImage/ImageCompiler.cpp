@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "StdAfx.h"
+#include "stdafx.h"
 #include <assert.h>                         // assert()
 
 #include "IRCLog.h"                         // IRCLog
@@ -241,24 +241,24 @@ ImageObject* CImageCompiler::LoadImageFromFile(const char* lpszPathName, const c
 {
     res_specialInstructions.clear();
 
-    if (!_stricmp(lpszExtension, "tif") || !_stricmp(lpszExtension, "tiff"))
+    if (!azstricmp(lpszExtension, "tif") || !azstricmp(lpszExtension, "tiff"))
     {
         return ImageTIFF::LoadByUsingTIFFLoader(lpszPathName, GetSettingsFile(lpszPathName).c_str(), &m_Props, res_specialInstructions);
     }
 
-    if (!_stricmp(lpszExtension, "hdr"))
+    if (!azstricmp(lpszExtension, "hdr"))
     {
         return ImageHDR::LoadByUsingHDRLoader(lpszPathName, &m_Props, res_specialInstructions);
     }
 
-    if (!stricmp(lpszExtension, "dds"))
+    if (!azstricmp(lpszExtension, "dds"))
     {
         return ImageDDS::LoadByUsingDDSLoader(lpszPathName, &m_Props, res_specialInstructions);
     }
 
     if (ImageQImage::IsExtensionSupported(lpszExtension))
     {
-        return ImageQImage::LoadByUsingQImageLoader(lpszPathName, GetSettingsFile(lpszPathName).c_str(), &m_Props, res_specialInstructions);
+        return ImageQImage::LoadByUsingQImageLoader(lpszPathName, lpszExtension, GetSettingsFile(lpszPathName).c_str(), &m_Props, res_specialInstructions);
     }
 
     RCLogError("%s: Unsupported extension:'%s'", __FUNCTION__, lpszExtension);
@@ -268,17 +268,17 @@ ImageObject* CImageCompiler::LoadImageFromFile(const char* lpszPathName, const c
 
 bool CImageCompiler::SaveImageToFile(const char* lpszPathName, const char* lpszExtension, const ImageObject* pImageObject)
 {
-    if (!_stricmp(lpszExtension, "tif"))
+    if (!azstricmp(lpszExtension, "tif"))
     {
         return ImageTIFF::SaveByUsingTIFFSaver(lpszPathName, GetSettingsFile(lpszPathName).c_str(), &m_Props, pImageObject);
     }
 
-    if (!_stricmp(lpszExtension, "hdr"))
+    if (!azstricmp(lpszExtension, "hdr"))
     {
         return ImageHDR::SaveByUsingHDRSaver(lpszPathName, &m_Props, pImageObject);
     }
 
-    if (!stricmp(lpszExtension, "dds"))
+    if (!azstricmp(lpszExtension, "dds"))
     {
         return ImageDDS::SaveByUsingDDSSaver(lpszPathName, &m_Props, pImageObject);
     }
@@ -686,7 +686,7 @@ bool CImageCompiler::ProcessImplementation()
         // contains generated data tables which don't use mipmaps.
         // Anyway, our vision is that every image file should have settings.
         // In rare situations when settings are missing a manual user action
-        // is recommended anyway ("rc <filename.tif> /userdialog", for example).
+        // is recommended anyway ("rc <filename.tif> -userdialog", for example).
         if (settings.empty())
         {
             m_Props.SetAutoOptimizeFile(false);
@@ -797,20 +797,12 @@ bool CImageCompiler::ProcessImplementation()
 
 bool CImageCompiler::ProcessWithAzFramework()
 {
-    AZ::IO::FileIOBase* prevIO = AZ::IO::FileIOBase::GetInstance();
-    AZ::IO::FileIOBase::SetInstance(nullptr);
-    AZ::IO::FileIOBase* fileIO = m_CC.pRC->GetSystemEnvironment()->pFileIO;
-    AZ::IO::FileIOBase::SetInstance(fileIO);
-
     RCImageCompilerApplication app;
     app.Start(AZ::ComponentApplication::Descriptor());
 
     bool success = ProcessImplementation();
 
     app.Stop();
-
-    AZ::IO::FileIOBase::SetInstance(nullptr);
-    AZ::IO::FileIOBase::SetInstance(prevIO);
 
     return success;
 }
@@ -1082,7 +1074,7 @@ bool CImageCompiler::AnalyzeWithProperties(bool autopreset, const char* szExtend
         fprintf(stderr, "%g,%g,%g,%g,", cMin.x, cMin.y, cMin.z, cMin.w);
         fprintf(stderr, "%g,%g,%g,%g,", cMax.x, cMax.y, cMax.z, cMax.w);
         fprintf(stderr, "%g,", -log2(cMax.x - cMin.x) + -log2(cMax.y - cMin.y) + -log2(cMax.z - cMin.z) + -log2(cMax.w - cMin.w));
-        fprintf(stderr, "%s\n", sOutputFileName);
+        fprintf(stderr, "%s\n", sOutputFileName.c_str());
     }
 
     return true;
@@ -2015,7 +2007,7 @@ string CImageCompiler::GetInfoStringUI(const bool inbOrig) const
             .arg(dwMem / 1024.0f, 0, 'f', 1).arg(dwFinalReduce).arg(dwFinalImageFlags, 8, 16, QChar('0'));
     }
 
-    return str.toLatin1().data();
+    return str.toUtf8().data();
 }
 
 
@@ -2052,7 +2044,7 @@ string CImageCompiler::GetDestInfoString()
         "\t%8")     // AttachedMemInKB
         .arg(dwW).arg(dwH).arg(szAlpha).arg(dwNumMips).arg(dwMem / 1024.0f, 0, 'f', 1).arg(szName).arg(dwReduce).arg(dwAttachedMem / 1024.0f, 0, 'f', 1);
 
-    return str.toLatin1().data();
+    return str.toUtf8().data();
 }
 
 

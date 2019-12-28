@@ -11,11 +11,11 @@
 */
 
 #include <AzCore/std/smart_ptr/make_shared.h>
-#include "FbxNodeWrapper.h"
-#include "FbxMaterialWrapper.h"
-#include "FbxTypeConverter.h"
-#include "FbxAnimLayerWrapper.h"
-#include "FbxAnimCurveWrapper.h"
+#include <SceneAPI/FbxSDKWrapper/FbxNodeWrapper.h>
+#include <SceneAPI/FbxSDKWrapper/FbxMaterialWrapper.h>
+#include <SceneAPI/FbxSDKWrapper/FbxTypeConverter.h>
+#include <SceneAPI/FbxSDKWrapper/FbxAnimLayerWrapper.h>
+#include <SceneAPI/FbxSDKWrapper/FbxAnimCurveWrapper.h>
 
 namespace AZ
 {
@@ -67,6 +67,11 @@ namespace AZ
         bool FbxNodeWrapper::IsBone() const
         {
             return (m_fbxNode->GetSkeleton() != nullptr);
+        }
+
+        bool FbxNodeWrapper::IsMesh() const
+        {
+            return (m_fbxNode->GetMesh() != nullptr);
         }
 
         const char* FbxNodeWrapper::GetName() const
@@ -216,5 +221,5 @@ namespace AZ
             AZ_Assert(index < GetMaterialCount(), "Invalid material index %d", index);
             return nullptr;
         }
-    }
-}
+    } // namespace FbxSDKWrapper
+} // namespace AZ

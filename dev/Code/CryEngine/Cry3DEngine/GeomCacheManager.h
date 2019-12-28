@@ -24,6 +24,8 @@
 #include "GeomCacheMeshManager.h"
 #include <AzFramework/Asset/AssetCatalogBus.h>
 
+#include <AzCore/Jobs/LegacyJobExecutor.h>
+
 class CGeomCache;
 class CGeomCacheRenderNode;
 
@@ -38,6 +40,7 @@ struct SGeomCacheBufferHandle
         m_endFrame = 0;
         m_bufferSize = 0;
         m_pBuffer = NULL;
+        m_pStream = NULL;
         m_numJobReferences = 0;
     }
 
@@ -141,7 +144,7 @@ struct SGeomCacheStreamInfo
 
     bool m_bLooping;
 
-    JobManager::SJobState m_fillRenderNodeJobState;
+    AZ::LegacyJobExecutor m_fillRenderNodeJobExecutor;
 
     struct SFrameData
     {

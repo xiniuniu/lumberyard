@@ -38,8 +38,8 @@ public:
     virtual bool HasChanged();
     virtual void Render(const struct SRendParams& EntDrawParams, const SRenderingPassInfo& passInfo);
     virtual CLodValue ComputeLod(int wantedLod, const SRenderingPassInfo& passInfo) override;
-    void Render(const CLodValue& lodValue, const SRenderingPassInfo& passInfo, const SSectorTextureSet* pTerrainTexInfo, JobManager::SJobState* pJobState, const SRendItemSorter& rendItemSorter);
-    void Render_JobEntry(CRenderObject* pObjMain, const CLodValue lodValue, SRenderingPassInfo passInfo, SRendItemSorter rendItemSorter);
+    void Render(const CLodValue& lodValue, const SRenderingPassInfo& passInfo, const SSectorTextureSet* pTerrainTexInfo, AZ::LegacyJobExecutor* pJobExecutor, const SRendItemSorter& rendItemSorter);
+    void Render_JobEntry(CRenderObject* pObjMain, const CLodValue lodValue, const SRenderingPassInfo& passInfo, SRendItemSorter rendItemSorter);
 
     virtual struct IStatObj* GetEntityStatObj(unsigned int nPartId = 0, unsigned int nSubPartId = 0, Matrix34A* pMatrix = NULL, bool bReturnOnlyVisible = false);
 
@@ -80,6 +80,7 @@ public:
 
     void SetMatrix(const Matrix34& mat);
     const Matrix34& GetMatrix() const {return m_Matrix; }
+    float GetScale() const { return m_fMatrixScale; }
     virtual void SetDrawLast(bool enable) { m_bDrawLast = enable; }
     bool GetDrawLast() const { return m_bDrawLast; }
 

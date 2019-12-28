@@ -48,7 +48,7 @@ namespace AzToolsFramework
 
         AZ_CLASS_ALLOCATOR(VectorElement, AZ::SystemAllocator, 0);
 
-        VectorElement(QWidget* pParent = nullptr);
+        explicit VectorElement(QWidget* pParent = nullptr);
         ~VectorElement() override {}
 
         /**
@@ -85,6 +85,7 @@ namespace AzToolsFramework
 
     Q_SIGNALS:
         void valueChanged(double);
+        void editingFinished();
 
     public Q_SLOTS:
         void onValueChanged(double newValue);
@@ -190,6 +191,12 @@ namespace AzToolsFramework
         */
         void setDecimals(int value);
 
+        /**
+        * Sets the number of display decimals to truncate the spinboxes being managed by this control to
+        * @param DisplayDecimals value
+        */
+        void setDisplayDecimals(int value);
+
         void OnValueChangedInElement(double newValue, int elementIndex);
 
         /**
@@ -201,6 +208,7 @@ namespace AzToolsFramework
 Q_SIGNALS:
         void valueChanged(double);
         void valueAtIndexChanged(int elementIndex, double newValue);
+        void editingFinished();
 
     public Q_SLOTS:
         QWidget* GetFirstInTabOrder();
@@ -336,7 +344,7 @@ Q_SIGNALS:
             {
                 if (elements[idx]->WasValueEditedByUser())
                 {
-                    actualValue.SetElement(idx, elements[idx]->GetValue());
+                    actualValue.SetElement(idx, static_cast<float>(elements[idx]->GetValue()));
                 }
             }
             instance = actualValue;

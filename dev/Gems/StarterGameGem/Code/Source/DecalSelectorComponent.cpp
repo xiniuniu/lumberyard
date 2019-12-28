@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "StarterGameGem_precompiled.h"
 #include "DecalSelectorComponent.h"
 
 #include <AzCore/Script/ScriptContext.h>
@@ -78,7 +78,7 @@ namespace StarterGameGem
         AZ::SerializeContext* serializeContext = azrtti_cast<AZ::SerializeContext*>(reflection);
         if (serializeContext)
         {
-            serializeContext->Class<DecalSelectorComponent>()
+            serializeContext->Class<DecalSelectorComponent, AZ::Component>()
                 ->Version(1)
                 ->Field("DecalPools", &DecalSelectorComponent::m_decalPools)
                 ->Field("FallBackToDefault", &DecalSelectorComponent::m_useDefaultMat)

@@ -12,7 +12,7 @@
 
 #pragma once
 
-#include <SceneAPI/SceneCore/Components/ExportingComponent.h>
+#include <SceneAPI/SceneCore/Components/RCExportingComponent.h>
 
 namespace AZ
 {
@@ -21,10 +21,10 @@ namespace AZ
         struct AnimationExportContext;
 
         class AnimationExporter
-            : public SceneAPI::SceneCore::ExportingComponent
+            : public SceneAPI::SceneCore::RCExportingComponent
         {
         public:
-            AZ_COMPONENT(AnimationExporter, "{78AAD156-2D43-4DC0-B083-CFD67559EBC1}", SceneAPI::SceneCore::ExportingComponent);
+            AZ_COMPONENT(AnimationExporter, "{78AAD156-2D43-4DC0-B083-CFD67559EBC1}", SceneAPI::SceneCore::RCExportingComponent);
 
             AnimationExporter();
             ~AnimationExporter() override = default;
@@ -32,12 +32,6 @@ namespace AZ
             static void Reflect(ReflectContext* context);
 
             SceneAPI::Events::ProcessingResult CreateControllerData(AnimationExportContext& context);            
-        protected:
-#if defined(AZ_COMPILER_MSVC) && AZ_COMPILER_MSVC <= 1800
-            // Workaround for VS2013 - Delete the copy constructor and make it private
-            // https://connect.microsoft.com/VisualStudio/feedback/details/800328/std-is-copy-constructible-is-broken
-            AnimationExporter(const AnimationExporter&) = delete;
-#endif
         };
     } // namespace RC
 } // namespace AZ

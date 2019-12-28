@@ -12,7 +12,7 @@
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
 #include "pch.h"
-#include "Platform.h"
+#include "platform.h"
 #include <smartptr.h>
 #include "Include/IBackgroundTaskManager.h"
 #include "CafCompressionHelper.h"
@@ -177,7 +177,7 @@ namespace CharacterTool
 
 
             auto filename = Path::GamePathToFullPath(m_createdFile.c_str());
-            m_outputFileSize = gEnv->pCryPak->GetFileSizeOnDisk(filename.toLatin1().data());
+            m_outputFileSize = gEnv->pCryPak->GetFileSizeOnDisk(filename.toUtf8().data());
 
             m_compressedCafSize = gEnv->pCryPak->FGetSize(m_animationPath.c_str(), true);
 
@@ -442,7 +442,7 @@ namespace CharacterTool
             animation.type = animation.UNKNOWN;
 
             const char* extension = PathUtil::GetExt(animation.path.c_str());
-            if (stricmp(extension, "bspace") == 0 || stricmp(extension, "comb") == 0)
+            if (azstricmp(extension, "bspace") == 0 || azstricmp(extension, "comb") == 0)
             {
                 animation.compressedAnimationName = animation.name;
                 animation.uncompressedAnimationName = animation.name;
@@ -452,7 +452,7 @@ namespace CharacterTool
                 AnimationStateChanged();
                 continue;
             }
-            else if (stricmp(extension, "anm") == 0 || stricmp(extension, "cga") == 0)
+            else if (azstricmp(extension, "anm") == 0 || azstricmp(extension, "cga") == 0)
             {
                 animation.compressedAnimationName = animation.name;
                 animation.uncompressedAnimationName = animation.name;
@@ -467,9 +467,9 @@ namespace CharacterTool
                 AnimationStateChanged();
                 continue;
             }
-            else if (stricmp(extension, "caf") == 0)
+            else if (azstricmp(extension, "caf") == 0)
             {
-                string iCafPath = Path::GamePathToFullPath(animation.path.c_str()).toLatin1().data();
+                string iCafPath = Path::GamePathToFullPath(animation.path.c_str()).toUtf8().data();
                 animation.hasSourceFile = gEnv->pCryPak->IsFileExist(iCafPath.c_str(), ICryPak::eFileLocation_OnDisk);
 
                 if (IsAimAnimation(m_uncompressedCharacter, animation.name.c_str()))
@@ -1056,7 +1056,7 @@ namespace CharacterTool
 
     void CompressionMachine::RemoveSource(string assetPath)
     {
-        assetPath = Path::GamePathToFullPath(assetPath.c_str()).toLatin1().data();
+        assetPath = Path::GamePathToFullPath(assetPath.c_str()).toUtf8().data();
         QFile::remove(assetPath.c_str());
     }
 

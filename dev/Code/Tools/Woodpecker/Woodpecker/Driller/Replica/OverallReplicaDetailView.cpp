@@ -9,9 +9,9 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "stdafx.h"
 
-#include <AzCore/Serialization/serializecontext.h>
+#include <AzCore/Serialization/SerializeContext.h>
 
 #include <AzToolsFramework/UI/UICore/QTreeViewStateSaver.hxx>
 #include <AzToolsFramework/UI/UICore/QWidgetSavedState.h>
@@ -51,7 +51,7 @@ namespace Driller
 
             if (serialize)
             {
-                serialize->Class<TreeModelSavedState, AZ::UserSettings>()
+                serialize->Class<TreeModelSavedState>()
                     ->Field("m_treeColumnStorage", &TreeModelSavedState::m_treeColumnStorage)
                     ->Version(1);
             }
@@ -62,7 +62,7 @@ namespace Driller
     // OverallReplicaTreeViewModel
     ////////////////////////////////
 
-    OverallReplicaTreeViewModel::OverallReplicaTreeViewModel(OverallReplicaDetailView* overallDetailView)
+    OverallReplicaTreeViewModel::OverallReplicaTreeViewModel(AbstractOverallReplicaDetailView* overallDetailView)
         : BaseOverallTreeViewModel<AZ::u64>(overallDetailView)
     {
     }
@@ -196,7 +196,7 @@ namespace Driller
     // OverallReplicaChunkTypeTreeViewModel
     /////////////////////////////////////////
 
-    OverallReplicaChunkTypeTreeViewModel::OverallReplicaChunkTypeTreeViewModel(OverallReplicaDetailView* overallDetailView)
+    OverallReplicaChunkTypeTreeViewModel::OverallReplicaChunkTypeTreeViewModel(AbstractOverallReplicaDetailView* overallDetailView)
         : BaseOverallTreeViewModel<AZStd::string>(overallDetailView)
     {
     }
@@ -303,7 +303,7 @@ namespace Driller
     const char* OverallReplicaDetailView::REPLICA_CHUNK_TREE_STATE_FORMAT   = "OVERALL_REPLICA_CHUNK_DETAIL_VIEW_TREE_STATE";
 
     OverallReplicaDetailView::OverallReplicaDetailView(ReplicaDataView* dataView, const ReplicaDataAggregator& dataAggregator)
-        : QDialog()
+        : AbstractOverallReplicaDetailView()
         , m_lifespanTelemetry("OverallReplicaDetailView")
         , m_replicaDataView(dataView)
         , m_windowStateCRC(AZ::Crc32(WINDOW_STATE_FORMAT))

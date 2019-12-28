@@ -204,7 +204,7 @@ namespace
     }
 
     QPainterPath CreatePathFromCurve(const SCurveEditorCurve& curve,
-        ECurveEditorCurveType curveType, std::function<Vec2(Vec2)> transformFunc)
+        ECurveEditorCurveType curveType, AZStd::function<Vec2(Vec2)> transformFunc)
     {
         QPainterPath path;
 
@@ -216,8 +216,6 @@ namespace
 
         if (curve.m_customInterpolator && curve.m_keys.size() > 1)
         {
-            assert(curve.m_customInterpolator->GetKeyCount() > 1);
-
             const float range_start = curve.m_customInterpolator->GetKeyTime(0);
             const float range_end = curve.m_customInterpolator->GetKeyTime(curve.m_customInterpolator->GetKeyCount() - 1);
             const float range_delta = range_end - range_start;
@@ -296,7 +294,7 @@ namespace
     }
 
     // Renders path outside of the current range of the curve
-    QPainterPath CreateExtrapolatedPathFromCurve(const SCurveEditorCurve& curve, std::function<Vec2(Vec2)> transformFunc, float windowWidth)
+    QPainterPath CreateExtrapolatedPathFromCurve(const SCurveEditorCurve& curve, AZStd::function<Vec2(Vec2)> transformFunc, float windowWidth)
     {
         QPainterPath path;
 
@@ -338,7 +336,7 @@ namespace
     }
 
     // Renders line between discontinuous path when step mode is used for a control point
-    QPainterPath CreateDiscontinuinityPathFromCurve(const SCurveEditorCurve& curve, ECurveEditorCurveType curveType, std::function<Vec2(Vec2)> transformFunc)
+    QPainterPath CreateDiscontinuinityPathFromCurve(const SCurveEditorCurve& curve, ECurveEditorCurveType curveType, AZStd::function<Vec2(Vec2)> transformFunc)
     {
         QPainterPath path;
 
@@ -401,7 +399,7 @@ namespace
         painter.drawRect(QRectF(point - kPointRectExtent, point + kPointRectExtent));
     }
 
-    void ForEachKey(SCurveEditorContent& content, std::function<void (SCurveEditorCurve& curve, SCurveEditorKey& key)> fun)
+    void ForEachKey(SCurveEditorContent& content, AZStd::function<void (SCurveEditorCurve& curve, SCurveEditorKey& key)> fun)
     {
         for (auto iter = content.m_curves.begin(); iter != content.m_curves.end(); ++iter)
         {

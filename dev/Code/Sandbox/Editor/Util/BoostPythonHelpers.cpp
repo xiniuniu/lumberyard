@@ -43,10 +43,11 @@
 
 #include <QThread>
 #include <QDebug>
-#include <Qsettings>
+#include <QSettings>
 #include <QApplication>
 #include <QDir>
 #include <QFile>
+#include <QProcessEnvironment>
 
 #include <AzQtComponents/Utilities/QtPluginPaths.h>
 
@@ -393,7 +394,7 @@ PyGameSubMaterial::PyGameSubMaterial(void* pMat, int id)
     SInputShaderResources&      sr = pMaterial->GetShaderResources();
     for (auto &iter : sr.m_TexturesResourcesMap )
     {
-        SEfResTexture*  	pTextureRes = &(iter.second);
+        SEfResTexture* pTextureRes = &(iter.second);
         if (!pTextureRes->m_Name.empty())
         {
             ResourceSlotIndex  nSlot = iter.first;
@@ -482,7 +483,7 @@ void PyGameSubMaterial::UpdateSubMaterial()
     for (auto &iter : m_matTextures )
     {
         uint16          nSlot = iter.first;
-        shdResources.m_TexturesResourcesMap[nSlot].m_Name = iter.second->GetName().toLatin1().data();
+        shdResources.m_TexturesResourcesMap[nSlot].m_Name = iter.second->GetName().toUtf8().data();
     }
 
     // Check for updates to all material public variables.
@@ -497,7 +498,7 @@ void PyGameSubMaterial::UpdateSubMaterial()
 
             for (int j = 0; j < shdResources.m_ShaderParams.size(); j++)
             {
-                if (QString::compare(pVar->GetName(), shdResources.m_ShaderParams[j].m_Name) == 0)
+                if (QString::compare(pVar->GetName(), shdResources.m_ShaderParams[j].m_Name.c_str()) == 0)
                 {
                     pParam = &shdResources.m_ShaderParams[j];
 
@@ -651,7 +652,7 @@ void PyGameTexture::UpdateTexture()
 
     if (QString::compare(m_texName, pTexture->m_Name.c_str()) != 0)
     {
-        pTexture->m_Name = m_texName.toLatin1().data();
+        pTexture->m_Name = m_texName.toUtf8().data();
     }
 }
 
@@ -1274,37 +1275,37 @@ void PyGameEntity::UpdateEntity()
     {
         if (iter->second->type == SPyWrappedProperty::eType_Bool)
         {
-            if (iter->second->property.boolValue != pEntity->GetEntityPropertyBool(iter->first.toLatin1().data()))
+            if (iter->second->property.boolValue != pEntity->GetEntityPropertyBool(iter->first.toUtf8().data()))
             {
-                pEntity->SetEntityPropertyBool(iter->first.toLatin1().data(), iter->second->property.boolValue);
+                pEntity->SetEntityPropertyBool(iter->first.toUtf8().data(), iter->second->property.boolValue);
             }
         }
         else if (iter->second->type == SPyWrappedProperty::eType_Int)
         {
             if (iter->first.compare("Mass") == 0)
             {
-                pEntity->SetEntityPropertyFloat(iter->first.toLatin1().data(), (float)iter->second->property.intValue);
+                pEntity->SetEntityPropertyFloat(iter->first.toUtf8().data(), (float)iter->second->property.intValue);
             }
             else
             {
-                if (iter->second->property.intValue != pEntity->GetEntityPropertyInteger(iter->first.toLatin1().data()))
+                if (iter->second->property.intValue != pEntity->GetEntityPropertyInteger(iter->first.toUtf8().data()))
                 {
-                    pEntity->SetEntityPropertyInteger(iter->first.toLatin1().data(), iter->second->property.intValue);
+                    pEntity->SetEntityPropertyInteger(iter->first.toUtf8().data(), iter->second->property.intValue);
                 }
             }
         }
         else if (iter->second->type == SPyWrappedProperty::eType_Float)
         {
-            if (iter->second->property.floatValue != pEntity->GetEntityPropertyFloat(iter->first.toLatin1().data()))
+            if (iter->second->property.floatValue != pEntity->GetEntityPropertyFloat(iter->first.toUtf8().data()))
             {
-                pEntity->SetEntityPropertyFloat(iter->first.toLatin1().data(), iter->second->property.floatValue);
+                pEntity->SetEntityPropertyFloat(iter->first.toUtf8().data(), iter->second->property.floatValue);
             }
         }
         else if (iter->second->type == SPyWrappedProperty::eType_String)
         {
-            if (iter->second->stringValue != pEntity->GetEntityPropertyString(iter->first.toLatin1().data()))
+            if (iter->second->stringValue != pEntity->GetEntityPropertyString(iter->first.toUtf8().data()))
             {
-                pEntity->SetEntityPropertyString(iter->first.toLatin1().data(), iter->second->stringValue);
+                pEntity->SetEntityPropertyString(iter->first.toUtf8().data(), iter->second->stringValue);
             }
         }
     }
@@ -1493,6 +1494,27 @@ namespace {
 namespace PyScript
 {
     CListenerSet<IPyScriptListener*> s_listeners(2);
+
+    class DefaultScriptListener : public IPyScriptListener
+    {
+        void OnStdOut(const char* message) override
+        {
+            if (message)
+            {
+                AZ_TracePrintf("Python", "%s", message);
+            }
+        }
+
+        void OnStdErr(const char* error) override
+        {
+            if (error)
+            {
+                AZ_Error("Python", false, "%s", error);
+            }
+        }
+    };
+
+    DefaultScriptListener s_defaultListener;
 
     template <typename T>
     T GetPyValue(const char* varName)
@@ -2427,7 +2449,7 @@ namespace PyScript
         {
             modules[i].initFunc();  // RegisterFunctionsForModule() called here
             string importStatement;
-            importStatement.Format("import %s", modules[i].name.c_str());
+            importStatement.Format("import %s", modules[i].name);
             PyRun_SimpleString(importStatement.c_str());
         }
     }
@@ -2612,7 +2634,7 @@ namespace PyScript
             QString command = "> ";
             command += buffer;
             command += "\r\n";
-            pScriptTermDialog->AppendText(command.toLatin1().data());
+            pScriptTermDialog->AppendText(command.toUtf8().data());
         }
 
         AcquirePythonLock();
@@ -2811,7 +2833,8 @@ namespace PyScript
         // Behavior for non-windows builds is still TBD, but using PYTHONHOME
         // from the envionment may work as a fallback.
 
-        QString pythonHome = getenv("LY_PYTHONHOME");
+        auto env = QProcessEnvironment::systemEnvironment();
+        QString pythonHome = env.value("LY_PYTHONHOME");
         if (pythonHome.isEmpty())
         {
 #ifdef WIN32
@@ -2819,15 +2842,15 @@ namespace PyScript
             pythonHome.replace('/', '\\');
             pythonHome.replace("@root@", rootEngineDir);
 #else
-            pythonHome = getenv("PYTHONHOME");
+            pythonHome = env.value("PYTHONHOME");
 #endif
         }
 
-        CLogFile::WriteLine(QString("Using LY_PYTHONHOME=" + pythonHome).toLatin1().data());
+        CLogFile::WriteLine(QString("Using LY_PYTHONHOME=" + pythonHome).toUtf8().data());
 
         if (!pythonHome.isEmpty())
         {
-            Py_SetPythonHome(qstrdup(pythonHome.toLatin1().data()));
+            Py_SetPythonHome(qstrdup(pythonHome.toUtf8().data()));
         }
 
         // Initialize python
@@ -2844,6 +2867,8 @@ namespace PyScript
         InitCppModules();
         InitializePyConverters();
 
+        PyScript::RegisterListener(&s_defaultListener);
+
         PyScript::SetStdOutCallback(&PrintMessage);
         PyScript::SetStdErrCallback(&PrintError);
 
@@ -2858,6 +2883,8 @@ namespace PyScript
 
         PyScript::RemoveStdOutCallback();
         PyScript::RemoveStdErrCallback();
+
+        PyScript::RemoveListener(&s_defaultListener);
 
         Py_Finalize();
     }
@@ -2894,6 +2921,7 @@ namespace PyScript
     {
         s_listeners.Remove(pListener);
     }
+
 }
 
 // A place to declare python modules.
@@ -2909,4 +2937,6 @@ DECLARE_PYTHON_MODULE(lodtools);
 DECLARE_PYTHON_MODULE(prefab);
 DECLARE_PYTHON_MODULE(vegetation);
 DECLARE_PYTHON_MODULE(shape);
+DECLARE_PYTHON_MODULE(checkout_dialog);
+DECLARE_PYTHON_MODULE(settings);
 

@@ -15,7 +15,7 @@
 #define CRYINCLUDE_CRYCOMMON_IENTITYCLASS_H
 #pragma once
 
-#include "BoostHelpers.h"
+#include "SmartPointersHelpers.h"
 #include "IComponent.h"
 
 struct IEntity;
@@ -249,7 +249,7 @@ namespace Serialization
 
 struct IEntityAttribute;
 
-DECLARE_BOOST_POINTERS(IEntityAttribute)
+DECLARE_SMART_POINTERS(IEntityAttribute)
 
 //////////////////////////////////////////////////////////////////////////
 // Description:

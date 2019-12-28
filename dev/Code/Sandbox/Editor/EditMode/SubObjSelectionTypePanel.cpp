@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "stdafx.h"
+#include "StdAfx.h"
 
 #include <QIcon>
 #include <QListWidgetItem>
@@ -26,7 +26,6 @@
 
 const int SELECTION_TYPE_ITEM_HEIGHT = 18;
 
-#define IDC_TASKPANEL 1
 // CSubObjSelectionTypePanel dialog
 
 static QString SubObjElementTypeToString(ESubObjElementType type)

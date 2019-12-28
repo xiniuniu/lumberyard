@@ -12,8 +12,7 @@
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
 // Description : Assert dialog box
-#ifndef CRYINCLUDE_CRYCOMMON_CRYASSERT_H
-#define CRYINCLUDE_CRYCOMMON_CRYASSERT_H
+
 #pragma once
 
 #include <AzCore/base.h>
@@ -26,7 +25,11 @@
 // even in Profile mode - thus if you want to manage what happens, USE_CRY_ASSERT also needs to be enabled in those cases.
 // if USE_CRY_ASSERT is not enabled, but AZ_ENABLE_TRACING is enabled, then the default behavior for assets will occur instead
 // which is to throw the DEBUG BREAK exception / signal, which tends to end with application shutdown.
-#if defined(AZ_ENABLE_TRACING)
+#if defined(AZ_ENABLE_TRACE_ASSERTS)
+#define USE_AZ_ASSERT
+#endif
+
+#if !defined (USE_AZ_ASSERT) && defined(AZ_ENABLE_TRACING)
 #undef USE_CRY_ASSERT
 #define USE_CRY_ASSERT
 #endif
@@ -37,11 +40,17 @@
 // instead (showing no message box, only a warning).
 #define CRY_ASSERT_DIALOG_ONLY_IN_DEBUG
 
-#if defined(FORCE_STANDARD_ASSERT)
+#if defined(FORCE_STANDARD_ASSERT) || defined(USE_AZ_ASSERT)
 #undef USE_CRY_ASSERT
 #undef CRY_ASSERT_DIALOG_ONLY_IN_DEBUG
 #endif
 
+// Using AZ_Assert for all assert kinds (assert =, CRY_ASSERT, AZ_Assert). This is for Provo and Xenia
+// see Trace::Assert for implementation
+#if defined(USE_AZ_ASSERT)
+#undef assert
+#define assert(condition) AZ_Assert(condition, "")
+#endif //defined(USE_AZ_ASSERT)
 
 //-----------------------------------------------------------------------------------------------------
 // Use like this:
@@ -50,8 +59,22 @@
 // CRY_ASSERT_TRACE(expression,("This should never happen because parameter n%d named %s is %f",iParameter,szParam,fValue));
 //-----------------------------------------------------------------------------------------------------
 
-#if defined(USE_CRY_ASSERT) && (defined(WIN32) || defined(DURANGO) || defined(APPLE) || defined(LINUX))
+#if defined(AZ_RESTRICTED_PLATFORM)
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/CryAssert_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/CryAssert_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/CryAssert_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+    #undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#elif defined(WIN32) || defined(APPLE) || defined(LINUX)
+    #define CRYASSERT_H_TRAIT_USE_CRY_ASSERT_MESSAGE 1
+#endif
 
+#if defined(USE_CRY_ASSERT) && CRYASSERT_H_TRAIT_USE_CRY_ASSERT_MESSAGE
 void CryAssertTrace(const char*, ...);
 bool CryAssert(const char*, const char*, unsigned int, bool*);
 void CryDebugBreak();
@@ -76,31 +99,13 @@ void CryDebugBreak();
 
     #undef assert
     #define assert CRY_ASSERT
-
-#else
-
-        #include <assert.h>
-        #define CRY_ASSERT(condition) assert(condition)
-        #define CRY_ASSERT_MESSAGE(condition, message) assert(condition)
-        #define CRY_ASSERT_TRACE(condition, parenthese_message) assert(condition)
+#elif !defined(CRY_ASSERT)
+#ifndef USE_AZ_ASSERT
+    #include <assert.h>
+#endif //USE_AZ_ASSERT
+    #define CRY_ASSERT(condition) assert(condition)
+    #define CRY_ASSERT_MESSAGE(condition, message) assert(condition)
+    #define CRY_ASSERT_TRACE(condition, parenthese_message) assert(condition)
 #endif
 
-// This forces boost to use CRY_ASSERT, regardless of what it is defined as
-// See also: boost/assert.hpp
-#define BOOST_ENABLE_ASSERT_HANDLER
-namespace boost
-{
-    inline void assertion_failed_msg(const char* expr, const char* msg, const char* function, const char* file, long line)
-    {
-        CRY_ASSERT_TRACE(false, ("An assertion failed in boost: expr=%s, msg=%s, function=%s, file=%s, line=%d", expr, msg, function, file, (int)line));
-    }
-    inline void assertion_failed(const char* expr, const char* function, const char* file, long line)
-    {
-        assertion_failed_msg(expr, "BOOST_ASSERT", function, file, line);
-    }
-}
-
 //-----------------------------------------------------------------------------------------------------
-
-
-#endif // CRYINCLUDE_CRYCOMMON_CRYASSERT_H

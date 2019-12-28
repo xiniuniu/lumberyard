@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "stdafx.h"
 
 #include "StreamerDataAggregator.hxx"
 #include <Woodpecker/Driller/IO/StreamerDataAggregator.moc>
@@ -36,9 +36,9 @@ namespace Driller
             AZ::SerializeContext* serialize = azrtti_cast<AZ::SerializeContext*>(context);
             if (serialize)
             {
-                serialize->Class<StreamerDataAggregatorSavedState, AZ::UserSettings>()
+                serialize->Class<StreamerDataAggregatorSavedState>()
                     ->Version(1)
-                    ->SerializerForEmptyClass();
+                    ;
             }
         }
     };
@@ -64,7 +64,7 @@ namespace Driller
             AZ::SerializeContext* serialize = azrtti_cast<AZ::SerializeContext*>(context);
             if (serialize)
             {
-                serialize->Class<StreamerDataAggregatorWorkspace, AZ::UserSettings>()
+                serialize->Class<StreamerDataAggregatorWorkspace>()
                     ->Field("m_activeViewCount", &StreamerDataAggregatorWorkspace::m_activeViewCount)
                     ->Field("m_activeViewTypes", &StreamerDataAggregatorWorkspace::m_activeViewTypes)
                     ->Version(1);
@@ -303,7 +303,7 @@ namespace Driller
 
             serialize->Class<StreamerDataAggregator>()
                 ->Version(1)
-                ->SerializerForEmptyClass();
+                ;
         }
     }
 
@@ -434,7 +434,7 @@ namespace Driller
 
                             if (depEvt->m_stream->m_isCompressed)
                             {
-                                if (depEvt->m_type == TRANSFER_EVENT_COMPRESSOR_READ || depEvt->m_type == TRANSFER_EVENT_COMPRESSOR_WRITE)
+                                if (static_cast<TransferEventType>(depEvt->m_type) == TRANSFER_EVENT_COMPRESSOR_READ || static_cast<TransferEventType>(depEvt->m_type) == TRANSFER_EVENT_COMPRESSOR_WRITE)
                                 {
                                     m_frameInfo.back().m_transferInfo.back().m_byteCount = depEvt->m_bytesTransferred;
                                     m_frameInfo.back().m_computedThroughput += depEvt->m_bytesTransferred;

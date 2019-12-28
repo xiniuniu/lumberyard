@@ -153,6 +153,13 @@ void DHWatchesWidget::BreakpointHit(const LUAEditor::Breakpoint& bp)
     {
         CaptureVariables();
     }
+    else // m_OperatingMode == WATCHES_MODE_LOCALS
+    {
+        if (isVisible())
+        {
+            EBUS_EVENT(LUAEditor::LUAEditorDebuggerMessages::Bus, EnumLocals);
+        }
+    }
 }
 
 void DHWatchesWidget::WatchesUpdate(const AZ::ScriptContextDebug::DebugValue& topmostDebugReference)
@@ -828,7 +835,7 @@ const char* WatchesDataModel::SafetyType(char c) const
         return "<invalid>";
     }
 
-    return WatchesPanel::typeStringLUT[c];
+    return WatchesPanel::typeStringLUT[static_cast<int>(c)];
 }
 
 const bool WatchesDataModel::IsRealIndex(const QModelIndex& index) const

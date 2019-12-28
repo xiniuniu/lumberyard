@@ -11,12 +11,11 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "AIPointPanel.h"
 
-#include "Objects/AIPoint.h"
+#include "Objects/AiPoint.h"
 #include "IAgent.h"
-#include "./aipointpanel.h"
 
 #include "GameEngine.h"
 #include "AI/NavDataGeneration/Navigation.h"

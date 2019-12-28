@@ -18,6 +18,7 @@
 // InfoBar.h : header file
 //
 
+#include <AzToolsFramework/ComponentMode/EditorComponentModeBus.h>
 #include <IAudioSystem.h>
 #include <HMDBus.h>
 
@@ -32,6 +33,7 @@ class CInfoBar
     : public QWidget
     , public IEditorNotifyListener
     , public AZ::VR::VREventBus::Handler
+    , private AzToolsFramework::ComponentModeFramework::EditorComponentModeNotificationBus::Handler
 {
     Q_OBJECT
 
@@ -84,6 +86,9 @@ protected:
     void OnBnClickedSetVector();
     void OnUpdateMoveSpeed();
     void OnBnClickedTerrainCollision();
+    void OnBnClickedPhysics();
+    void OnBnClickedSingleStepPhys();
+    void OnBnClickedDoStepPhys();
     void OnBnClickedMuteAudio();
     void OnBnClickedEnableVR();
     void OnInitDialog();
@@ -97,6 +102,10 @@ protected:
     void OnHMDInitialized() override;
     void OnHMDShutdown() override;
     //////////////////////////////////////////////////////////////////////////
+
+    // EditorComponentModeNotificationBus
+    void EnteredComponentMode(const AZStd::vector<AZ::Uuid>& componentModeTypes) override;
+    void LeftComponentMode(const AZStd::vector<AZ::Uuid>& componentModeTypes) override;
 
     bool m_enabledVector;
 
@@ -128,8 +137,5 @@ protected:
 
     bool m_idleUpdateEnabled = true;
 };
-
-//{{AFX_INSERT_LOCATION}}
-// Microsoft Visual C++ will insert additional declarations immediately before the previous line.
 
 #endif // CRYINCLUDE_EDITOR_INFOBAR_H

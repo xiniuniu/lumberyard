@@ -10,13 +10,15 @@
 *
 */
 
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 #include "MaterialAssetTypeInfo.h"
 
 #include <LmbrCentral/Rendering/MaterialAsset.h>
 
 namespace LmbrCentral
 {
+    // MaterialAssetTypeInfo
+
     MaterialAssetTypeInfo::~MaterialAssetTypeInfo()
     {
         Unregister();
@@ -49,11 +51,48 @@ namespace LmbrCentral
 
     const char* MaterialAssetTypeInfo::GetBrowserIcon() const
     {
-        return "Editor/Icons/Components/Decal.png";
+        return "Editor/Icons/Components/Decal.svg";
     }
 
     AZ::Uuid MaterialAssetTypeInfo::GetComponentTypeId() const
     {
         return AZ::Uuid("{BA3890BD-D2E7-4DB6-95CD-7E7D5525567A}");
+    }
+
+    // DccMaterialAssetTypeInfo
+
+    DccMaterialAssetTypeInfo::~DccMaterialAssetTypeInfo()
+    {
+        Unregister();
+    }
+
+    void DccMaterialAssetTypeInfo::Register()
+    {
+        AZ::AssetTypeInfoBus::Handler::BusConnect(AZ::AzTypeInfo<DccMaterialAsset>::Uuid());
+    }
+
+    void DccMaterialAssetTypeInfo::Unregister()
+    {
+        AZ::AssetTypeInfoBus::Handler::BusDisconnect(AZ::AzTypeInfo<DccMaterialAsset>::Uuid());
+    }
+
+    AZ::Data::AssetType DccMaterialAssetTypeInfo::GetAssetType() const
+    {
+        return AZ::AzTypeInfo<DccMaterialAsset>::Uuid();
+    }
+
+    const char* DccMaterialAssetTypeInfo::GetAssetTypeDisplayName() const
+    {
+        return "DccMaterial";
+    }
+
+    const char* DccMaterialAssetTypeInfo::GetGroup() const
+    {
+        return "DccMaterial";
+    }
+
+    const char* DccMaterialAssetTypeInfo::GetBrowserIcon() const
+    {
+        return "Editor/Icons/Components/Decal.svg";
     }
 } // namespace LmbrCentral

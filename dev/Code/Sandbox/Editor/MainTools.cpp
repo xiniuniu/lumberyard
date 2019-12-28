@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "MainTools.h"
 #include "ObjectCreateTool.h"
 
@@ -64,7 +64,7 @@ CMainTools::CMainTools(QWidget* parent)
         bi.toolClassName = toolClassName;
         bi.name = category;
         bi.toolUserDataKey = "category";
-        bi.toolUserData = category.toLatin1().data();
+        bi.toolUserData = category.toUtf8().data();
         bi.toolTip = GetToolTip(category);
 
         AddButton(bi);

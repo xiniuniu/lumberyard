@@ -11,11 +11,11 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "TrackViewKeyPropertiesDlg.h"
 #include "TrackViewTrack.h"
-#include "TrackViewUndo.h"
-#include "Maestro/Types/AnimParamType.h"
+#include <Maestro/Types/AnimParamType.h>
+#include <Maestro/Types/SequenceType.h>
 
 //////////////////////////////////////////////////////////////////////////
 class CConsoleKeyUIControls
@@ -69,7 +69,7 @@ bool CConsoleKeyUIControls::OnKeySelectionChange(CTrackViewKeyBundle& selectedKe
             IConsoleKey consoleKey;
             keyHandle.GetKey(&consoleKey);
 
-            mv_command = ((QString)consoleKey.command.c_str()).toLatin1().data();
+            mv_command = ((QString)consoleKey.command.c_str()).toUtf8().data();
 
             bAssigned = true;
         }
@@ -80,9 +80,9 @@ bool CConsoleKeyUIControls::OnKeySelectionChange(CTrackViewKeyBundle& selectedKe
 // Called when UI variable changes.
 void CConsoleKeyUIControls::OnUIChange(IVariable* pVar, CTrackViewKeyBundle& selectedKeys)
 {
-    CTrackViewSequence* pSequence = GetIEditor()->GetAnimation()->GetSequence();
+    CTrackViewSequence* sequence = GetIEditor()->GetAnimation()->GetSequence();
 
-    if (!pSequence || !selectedKeys.AreAllKeysOfSameType())
+    if (!sequence || !selectedKeys.AreAllKeysOfSameType())
     {
         return;
     }
@@ -99,11 +99,23 @@ void CConsoleKeyUIControls::OnUIChange(IVariable* pVar, CTrackViewKeyBundle& sel
 
             if (pVar == mv_command.GetVar())
             {
-                consoleKey.command = ((QString)mv_command).toLatin1().data();
+                consoleKey.command = ((QString)mv_command).toUtf8().data();
             }
 
-            CUndo::Record(new CUndoTrackObject(keyHandle.GetTrack()));
-            keyHandle.SetKey(&consoleKey);
+            bool isDuringUndo = false;
+            AzToolsFramework::ToolsApplicationRequests::Bus::BroadcastResult(isDuringUndo, &AzToolsFramework::ToolsApplicationRequests::Bus::Events::IsDuringUndoRedo);
+
+            if (isDuringUndo)
+            {
+                keyHandle.SetKey(&consoleKey);
+            }
+            else
+            {
+                AzToolsFramework::ScopedUndoBatch undoBatch("Set Key Value");
+                keyHandle.SetKey(&consoleKey);
+                undoBatch.MarkEntityDirty(sequence->GetSequenceComponentEntityId());
+            }
+
         }
     }
 }

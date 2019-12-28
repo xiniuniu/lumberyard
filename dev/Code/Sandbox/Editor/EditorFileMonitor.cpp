@@ -67,7 +67,7 @@ bool CEditorFileMonitor::RegisterListener(IFileChangeListener* pListener, const 
 static string CanonicalizePath(const char* path)
 {
     auto canon = QFileInfo(path).canonicalFilePath();
-    return canon.isEmpty() ? string(path) : string(canon.toLatin1());
+    return canon.isEmpty() ? string(path) : string(canon.toUtf8());
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -113,7 +113,7 @@ bool CEditorFileMonitor::RegisterListener(IFileChangeListener* pListener, const 
         if (modDirectory != 0)
         {
             // Clear the naivePath and set it to the appropriate default for mods.
-            naivePath = QString(GetIEditor()->GetMasterCDFolder()).toLatin1().data();
+            naivePath = QString(GetIEditor()->GetMasterCDFolder()).toUtf8().data();
             naivePath = PathUtil::AddSlash(naivePath);
         }
         else
@@ -359,7 +359,7 @@ void CEditorFileMonitor::OnFileMonitorChange(const SFileChangeInfo& rChange)
             stack_string strPath = qPrintable(filenameRelGame);
             CryStringUtils::UnifyFilePath(strPath);
 
-            if (isLMG)
+            if (isLMG && pICharacterManager)
             {
                 CryLog("Reload blendspace file: %s", (LPCTSTR)strPath);
                 pICharacterManager->ReloadLMG(strPath.c_str());

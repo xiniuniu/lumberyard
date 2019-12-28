@@ -23,24 +23,15 @@ class QPushButton;
 
 namespace AzQtComponents
 {
+
     class AZ_QT_COMPONENTS_API EditorProxyStyle
         : public QProxyStyle
     {
         Q_OBJECT
     public:
 
-        enum AutoWindowDecorationMode
-        {
-            AutoWindowDecorationMode_None = 0, // No auto window decorations
-            AutoWindowDecorationMode_Whitelisted = 1, // Nice window decorations for hardcoded types (QMessageBox, QInputDialog (add more as you wish))
-            AutoWindowDecorationMode_AnyWindow = 2 // Any widget having the Qt::WindowFlag will get custom window decorations
-        };
-
         explicit EditorProxyStyle(QStyle* style = nullptr);
         ~EditorProxyStyle();
-
-        // The default is AutoWindowDecorationMode_Whitelisted
-        void setAutoWindowDecorationMode(AutoWindowDecorationMode);
 
         void polishToolbars(QMainWindow*);
 
@@ -56,8 +47,6 @@ namespace AzQtComponents
 
         static QColor dropZoneColorOnHover();
 
-        static void addTitleBarOverdrawWidget(QWidget* widget);
-
         // The QPushButtons set with the "Primary" property in the QStackedwidget in the AssetImporterManager
         // do not work with the stylesheet.
         // These buttons are painted in EditorProxyStyle.cpp, but for some reasons they cannot
@@ -68,7 +57,7 @@ namespace AzQtComponents
 
     protected:
         void polish(QWidget* widget) override;
-        void polish(QApplication *app) override;
+        void unpolish(QWidget* widget) override;
         QSize sizeFromContents(ContentsType type, const QStyleOption* option,
             const QSize& size, const QWidget* widget) const override;
 
@@ -112,13 +101,11 @@ namespace AzQtComponents
         void handleToolBarOrientationChange(Qt::Orientation orientation);
         void handleToolBarIconSizeChange();
         void fixToolBarSizeConstraints(QToolBar* tb);
-        void ensureCustomWindowDecorations(QWidget* w);
         void polishToolbar(QToolBar*);
         QPainterPath borderLineEditRect(const QRect& rect, bool rounded = true) const;
         void drawLineEditIcon(QPainter* painter, const QRect& rect, const int flavor) const;
         void drawStyledLineEdit(const QLineEdit* le, QPainter* painter, const QPainterPath& path) const;
         void drawSearchLineEdit(const QLineEdit* le, QPainter* painter, const QPainterPath& path, const QColor& borderColor) const;
         void drawLineEditStyledSpinBox(const QWidget* le, QPainter* painter, const QRect& rect, bool focusOn = false) const;
-        AutoWindowDecorationMode m_autoWindowDecorationMode = AutoWindowDecorationMode_Whitelisted;
     };
 } // namespace AzQtComponents

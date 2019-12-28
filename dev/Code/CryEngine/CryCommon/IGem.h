@@ -13,7 +13,7 @@
 #define CRYINCLUDE_CRYCOMMON_IGEM_H
 #pragma once
 
-#include "BoostHelpers.h"
+#include "SmartPointersHelpers.h"
 #include "CryExtension/ICryUnknown.h"
 #include "CryExtension/Impl/ClassWeaver.h"
 #include "platform.h"
@@ -52,7 +52,7 @@ public:
     bool Initialize(SSystemGlobalEnvironment&, const SSystemInitParams&) override final { return true; }
 };
 
-DECLARE_BOOST_POINTERS(IGem)
+DECLARE_SMART_POINTERS(IGem)
 
 #define _GEM_IMPLEMENT_BEGIN()      \
     CRYINTERFACE_BEGIN()            \

@@ -44,6 +44,7 @@ def list(context, args):
 
     context.view.show_manifest_file(filesList)
 
+
 def gui_is_stack_configured(context):
     try:
         stack_id = context.config.get_resource_group_stack_id(context.config.default_deployment,
@@ -75,12 +76,18 @@ def gui_list(context, args, pak_status = None):
     sections['PakStatus'] = pak_status
     context.view.show_manifest_file(sections)
 
+def validate_manifest_name(manifest_name):
+    regex_str = '^[-0-9a-zA-Z!_][-0-9a-zA-Z!_.]*$'
+    return re.match(regex_str, manifest_name) != None
+
 @stack_required
 def gui_list_manifests(context, args):
     list_manifests(context, args)
 
 @stack_required
 def gui_new_manifest(context, args):
+    if not validate_manifest_name(args.new_file_name):
+        raise HandledError('Invalid manifest name')
     manifest_path = os.path.normpath(os.path.dirname(_get_default_manifest_path(context)))
     new_file_name = os.path.join(manifest_path, args.new_file_name + os.path.extsep + 'json')
     new_file_platforms = args.platform_list
@@ -270,6 +277,8 @@ def validate_add_key_name(file_name):
         raise HandledError('File does not match naming rules')
 
 def command_new_manifest(context, args):
+    if not validate_manifest_name(args.manifest_name):
+        raise HandledError('Invalid manifest name')
     manifest_path = determine_manifest_path(context, args.manifest_path)
     manifest_dir_path = os.path.normpath(os.path.dirname(manifest_path))
     new_manifest_name = os.path.join(manifest_dir_path, args.manifest_name + os.path.extsep + 'json')
@@ -333,9 +342,10 @@ def _add_file_to_pak(context, file_name, file_platform, pak_file, manifest_path,
     pak_list = _get_paks_list(context, manifest)
     pak_platform_type = ''
     pak_found = False
-    for existing_file in pak_list:
-        if existing_file['pakFile'] == pak_file:
-            pak_platform_type = existing_file['platformType']
+    pak_entry = {}
+    for pak_entry in pak_list:
+        if pak_entry['pakFile'] == pak_file:
+            pak_platform_type = pak_entry['platformType']
             pak_found = True
             break
 
@@ -344,19 +354,22 @@ def _add_file_to_pak(context, file_name, file_platform, pak_file, manifest_path,
 
     file_list = _get_files_list(context, manifest, 'Files')
     file_found = False
-    for existing_file in file_list:
-        if not entry_matches_platform(existing_file, pak_platform_type):
+    file_entry = {}
+    for file_entry in file_list:
+        if not entry_matches_platform(file_entry, pak_platform_type):
             continue
 
-        if entry_matches_file(existing_file, file_name, file_platform):
-            existing_file['pakFile'] = pak_file
-            platform_name = existing_file.get('platformType')
+        if entry_matches_file(file_entry, file_name, file_platform):
+            file_entry['pakFile'] = pak_file
+            file_entry['hash'] = '' # Need to be sure to add this to the pak next update
+            platform_name = file_entry.get('platformType')
             file_found = True
+            break
     if not file_found:
         raise HandledError('No matching file found {} platform {}'.format(file_name,pak_platform_type))
     manifest['Files'] = file_list
     _save_content_manifest(context, manifest_path, manifest)
-             
+
 def command_add_file_entry(context, args):
     add_file_entry(context, args.manifest_path, args.file_name, args.file_section, None, args.cache_root, args.bucket_prefix, args.output_root, args.platform_type)
       
@@ -528,6 +541,7 @@ def _update_file_hash_section(context, manifest_path, manifest, section):
         if not os.path.isfile(this_file_path):
             show_manifest.invalid_file(this_file_path)
             thisFile['hash'] = ''
+            thisFile['size'] = None
             continue
         hex_return = hashlib.md5(open(this_file_path,'rb').read()).hexdigest()
         manifestHash = thisFile.get('hash','')
@@ -536,6 +550,8 @@ def _update_file_hash_section(context, manifest_path, manifest, section):
             
         show_manifest.hash_comparison_disk(this_file_path, manifestHash, hex_return)
         thisFile['hash'] = hex_return
+        file_stat = os.stat(this_file_path)
+        thisFile['size'] = file_stat.st_size
     manifest[section] = filesList
     return files_updated
     
@@ -636,30 +652,36 @@ def _create_bucket_key(fileEntry):
     return fileKey
 
 
-def get_standalone_manifest_key(context, manifest_path):
+def get_standalone_manifest_pak_key(context, manifest_path):
 
     return os.path.split(_get_path_for_standalone_manifest_pak(context, manifest_path))[1]
 
+def get_standalone_manifest_key(context, manifest_path):
+
+    return os.path.split(manifest_path)[1]
 
 # When uploading all of the changed content within a top level manifest we're going to need to pak up the manifest itself and upload that as well
 # This method lets us simply append an entry about that manifest pak to the list of "changed content" so it all goes up in one pass
-def add_manifest_pak_entry(context, manifest, manifest_path, filesList):  
+def add_manifest_pak_entry(context, manifest, manifest_path, filesList):
     manifest_object = {}
-    manifest_object['keyName'] = get_standalone_manifest_key(context, manifest_path)
+    manifest_object['keyName'] = get_standalone_manifest_pak_key(context, manifest_path)
     manifest_object['localFolder'] = dynamic_content_settings.get_pak_folder()
     manifest_object['hash'] = hashlib.md5(open(manifest_path,'rb').read()).hexdigest()
+    file_stat = os.stat(manifest_path)
+    manifest_object['size'] = file_stat.st_size
     filesList.append(manifest_object)
     
 def _create_manifest_bucket_key_map(context, manifest, manifest_path):
     filesList = _get_files_list(context, manifest, 'Paks')
-    
+
     add_manifest_pak_entry(context, manifest, manifest_path, filesList)
-    
+
     returnMap = {}
     thisFile = {}
     for thisFile in filesList:
         fileKey = _create_bucket_key(thisFile)
         returnMap[fileKey] = thisFile.get('hash','')
+
     return returnMap
 
 def list_bucket_content(context, args):
@@ -692,11 +714,27 @@ def compare_bucket_content(context, args):
             continue
         show_manifest.hash_comparison_bucket(thisKey, thisHash, _get_bucket_item_hash(headResponse))
 
+def check_matched_bucket_entry(context, localFile, localHash, bucketKey):
+    s3 = context.aws.client('s3')
+    bucketName = _get_content_bucket(context)
+
+    try:
+        headResponse = s3.head_object(
+            Bucket = bucketName,
+            Key = bucketKey
+        )
+    except Exception as e:
+        print("Didn't find entry {}".format(bucketKey))
+        return False
+    bucket_hash = _get_bucket_item_hash(headResponse)
+    print("Comparing {} vs Bucket {}".format(localHash, bucket_hash))
+    return bucket_hash == localHash
+
 def _get_bucket_item_hash(bucketItem):
     return bucketItem.get('Metadata',{}).get(_get_meta_hash_name(),{})
 
 # Retrieve the list of files in the bucket which do not line up with our current manifest
-def _get_unmatched_content(context, manifest, manifest_path, deployment_name):
+def _get_unmatched_content(context, manifest, manifest_path, deployment_name, do_signing):
     s3 = context.aws.client('s3')
     bucketName = _get_content_bucket_by_name(context, deployment_name)
     manifestDict = _create_manifest_bucket_key_map(context, manifest, manifest_path)
@@ -712,7 +750,7 @@ def _get_unmatched_content(context, manifest, manifest_path, deployment_name):
             returnDict[thisKey] = thisHash
             continue
         show_manifest.hash_comparison_bucket(thisKey, thisHash, _get_bucket_item_hash(headResponse))
-        if _get_bucket_item_hash(headResponse) != thisHash:
+        if _get_bucket_item_hash(headResponse) != thisHash or staging.signing_status_changed(context, thisKey, do_signing):
             returnDict[thisKey] = thisHash
     return returnDict
 
@@ -736,23 +774,31 @@ def command_upload_manifest_content(context, args):
     staging_args = staging.parse_staging_arguments(args)
     upload_manifest_content(context, args.manifest_path, args.deployment_name, staging_args, args.all, args.signing)
 
+def _append_loose_manifest(context, filesList, manifest_path):
+    manifest_object = {}
+    manifest_object['keyName'] = os.path.split(manifest_path)[1]
+    manifest_object['localFolder'] = dynamic_content_settings.get_manifest_folder()
+    manifest_object['hash'] = hashlib.md5(open(manifest_path,'rb').read()).hexdigest()
+    file_stat = os.stat(manifest_path)
+    manifest_object['size'] = file_stat.st_size
+    filesList.append(manifest_object)
+
 # 1 - Build new paks to ensure our paks are up to date and our manifest reflects the latest changes
 # 2 - Update our manifest hashes to match our current content
 # 3 - Check each item in our manifest against a HEAD call to get the metadata with our saved local hash values
 # 4 - Upload each unmatched pak file
-# 5 - Upload the manifest
-def upload_manifest_content(context, manifest_path, deployment_name, staging_args, upload_all = False, do_signing=False):
-    build_new_paks(context, manifest_path)
+# 5 - Upload the manifest (In pak and loose)
+def upload_manifest_content(context, manifest_path, deployment_name, staging_args, upload_all = False, do_signing = False):
+    build_new_paks(context, manifest_path, upload_all)
     manifest_path, manifest = _get_path_and_manifest(context, manifest_path)
     _update_file_hashes(context, manifest_path, manifest)
-    remainingContent = _get_unmatched_content(context, manifest, manifest_path, deployment_name)
+    remainingContent = _get_unmatched_content(context, manifest, manifest_path, deployment_name, do_signing)
     bucketName = _get_content_bucket_by_name(context, deployment_name)
     filesList = _get_files_list(context, manifest, 'Paks')
+    _append_loose_manifest(context, filesList, manifest_path)
     thisFile = {}
-    base_content_path = os.path.join(context.config.root_directory_path, context.config.game_directory_name)
     did_upload = False
-    uploaded_files = []
-    uploaded_signatures = {}
+    uploaded_files = {}
     for thisFile in filesList:
         thisKey = _create_bucket_key(thisFile)
         if thisKey in remainingContent or upload_all:
@@ -764,31 +810,27 @@ def upload_manifest_content(context, manifest_path, deployment_name, staging_arg
             context.view.found_updated_item(thisKey)
             _do_file_upload(context, this_file_path, bucketName, thisKey, thisFile['hash'])
             did_upload = True
-            uploaded_files.append(thisKey)
-            
+            upload_info = {}
+
             if do_signing:
                 this_signature = signing.get_file_signature(context, _get_path_for_file_entry(context, thisFile, context.config.game_directory_name))
-                uploaded_signatures[thisKey] = this_signature
-    
+                upload_info['Signature'] = this_signature
+            upload_info['Size'] = thisFile.get('size')
+            upload_info['Hash'] = thisFile.get('hash')
+            uploaded_files[thisKey] = upload_info
 
-    parent_key = get_standalone_manifest_key(context, manifest_path)
-
+    parent_pak_key = get_standalone_manifest_pak_key(context, manifest_path)
+    parent_loose_key = get_standalone_manifest_key(context, manifest_path)
     
     if staging_args != None:
-        for thisFile in uploaded_files:
-            staging_args['Signature'] = uploaded_signatures.get(thisFile)
-
-            
-
-            if parent_key == thisFile:
-
+        for thisFile, fileInfo in uploaded_files.iteritems():
+            staging_args['Signature'] = fileInfo.get('Signature')
+            staging_args['Size'] = fileInfo.get('Size')
+            staging_args['Hash'] = fileInfo.get('Hash')
+            if thisFile in [parent_pak_key, parent_loose_key]:
                 staging_args['Parent'] = ''
-
             else:
-
-                staging_args['Parent'] = parent_key
-
-            
+                staging_args['Parent'] = parent_pak_key
 
             staging.set_staging_status(thisFile, context, staging_args, deployment_name)
 
@@ -884,34 +926,56 @@ def _get_pak_for_entry(context, fileEntry, manifest_path):
 
     return pak_path.replace('\\','/')
 
+# manifest_path - full path and file name of manifest.json
+# manifest - full manifest dictionary object
+# pak_all - Disregard whether data appears to have been updated and return all of the paks with their content lists
 def _get_updated_local_content(context, manifest_path, manifest, pak_all):
     # sorts manifest files by pak_folder_path
     filesList = _get_files_list(context, manifest, 'Files')
     thisFile = {}
     context.view.finding_updated_content(manifest_path)
     returnData = {}
+    updated_paks = set()
     for thisFile in filesList:
         this_file_path = _get_path_for_file_entry(context, thisFile, context.config.game_directory_name)
         if not os.path.isfile(this_file_path):
             context.view.invalid_file(this_file_path)
             thisFile['hash'] = ''
+            thisFile['size'] = None
             continue
-        hex_return = hashlib.md5(open(this_file_path, 'rb').read()).hexdigest()
-        manifestHash = thisFile.get('hash', '')
-        context.view.hash_comparison_disk(this_file_path, manifestHash, hex_return)
-        
+
         relative_pak_folder = _get_pak_for_entry(context, thisFile, manifest_path)
 
         if not relative_pak_folder:
             continue
 
-        output_pak_path = get_pak_game_folder(context, relative_pak_folder)
-        
-        pak_exists = os.path.isfile(output_pak_path)
-        if hex_return != manifestHash or pak_all or not pak_exists:
-            if not returnData.get(relative_pak_folder):
-                returnData[relative_pak_folder] = []
-            returnData[relative_pak_folder].append(thisFile)
+        if not returnData.get(relative_pak_folder):
+            returnData[relative_pak_folder] = []
+        # Add an entry for every file regardless of whether it's updated - we'll remove the paks that
+        # have no updates at the end
+        returnData[relative_pak_folder].append(thisFile)
+
+        if relative_pak_folder in updated_paks:
+            #We know this pak needs an update already
+            continue
+
+        hex_return = hashlib.md5(open(this_file_path, 'rb').read()).hexdigest()
+        manifestHash = thisFile.get('hash', '')
+        context.view.hash_comparison_disk(this_file_path, manifestHash, hex_return)
+
+        if hex_return != manifestHash:
+            updated_paks.add(relative_pak_folder)
+
+    # pak_all is just a simple way to say give me back all of the data in the expected pak_file, list of files format
+    # regardless of updates.  In most cases we want to strip out the paks we haven't found any updates for
+    if not pak_all:
+        for this_pak in returnData.keys():
+            output_pak_path = get_pak_game_folder(context, this_pak)
+            pak_exists = os.path.isfile(output_pak_path)
+
+            if pak_exists and this_pak not in updated_paks:
+                show_manifest.skipping_unmodified_pak(this_pak)
+                del returnData[this_pak]
 
     return returnData
 
@@ -957,7 +1021,6 @@ def build_new_paks(context, manifest_path, pak_All = False):
 #todo add variable for a pak name, and add the pak name to the file entry in the manifest
     manifest_path, manifest = _get_path_and_manifest(context, manifest_path)
     updatedContent = _get_updated_local_content(context, manifest_path, manifest, pak_All)
-    pak_file_list = []
     for relative_folder_path, files in updatedContent.iteritems():
         # currently this command is only supported on windows
         archiver = pak_files.PakFileArchiver()
@@ -971,10 +1034,63 @@ def build_new_paks(context, manifest_path, pak_All = False):
             files_to_pak.append(file_pair)
             print file_pair
         archiver.archive_files(files_to_pak, pak_folder_path)
-        pak_file_list.append(pak_folder_path)
     _save_content_manifest(context, manifest_path, manifest)
     
     create_standalone_manifest_pak(context, manifest_path)  
 
 def get_list_objects_limit():
     return 1000 # This is an AWS internal limit on list_objects
+
+def upload_folder_command(context, args):
+    staging_args = staging.parse_staging_arguments(args)
+    upload_folder(context, args.folder, args.bundle_type, args.deployment_name, staging_args, args.signing)
+
+## Upload all of the bundles in a specific folder - no manifest necessary
+def upload_folder(context, folder, bundle_type, deployment_name, staging_args, do_signing = False):
+    folder_path = folder if os.path.isabs(folder) else os.path.abspath(folder)
+    bundles = glob.glob(os.path.join(folder_path, '*' + os.path.extsep + bundle_type))
+
+    if len(bundles) == 0:
+        print('No bundles of type {} found at {}'.format(bundle_type, folder_path))
+        return
+
+    print('Found {} potential {} bundles at {}'.format(len(bundles), bundle_type, folder_path))
+    bucketName = _get_content_bucket(context)
+
+    uploaded_files = {}
+    print('Comparing against bucket {}:'.format(bucketName))
+    for thisBundle in bundles:
+        thisKey = os.path.split(thisBundle)[1]
+        thisHash = hashlib.md5(open(thisBundle, 'rb').read()).hexdigest()
+        file_stat = os.stat(thisBundle)
+        thisSize = file_stat.st_size
+        print('Found bundle {}'.format(thisBundle))
+        print('Size {} Hash {}'.format(thisSize, thisHash))
+        if check_matched_bucket_entry(context, thisBundle,thisHash, thisKey):
+            print('Bucket entry matches, skipping')
+            continue
+
+        print('Uploading {} as {}'.format(thisBundle, thisKey))
+        _do_file_upload(context, thisBundle, bucketName, thisKey, thisHash)
+        did_upload = True
+        upload_info = {}
+
+        if do_signing:
+            this_signature = signing.get_file_signature(context, _get_path_for_file_entry(context, thisBundle,
+                                                                                          context.config.game_directory_name))
+            upload_info['Signature'] = this_signature
+        upload_info['Size'] = thisSize
+        upload_info['Hash'] = thisHash
+        uploaded_files[thisKey] = upload_info
+
+
+    if staging_args != None:
+        for thisFile, fileInfo in uploaded_files.iteritems():
+            staging_args['Signature'] = fileInfo.get('Signature')
+            staging_args['Size'] = fileInfo.get('Size')
+            staging_args['Hash'] = fileInfo.get('Hash')
+            staging_args['Parent'] = ''
+
+            staging.set_staging_status(thisFile, context, staging_args, deployment_name)
+
+

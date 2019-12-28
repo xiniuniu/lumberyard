@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "Snow_precompiled.h"
 #include "Snow.h"
 
 DECLARE_DEFAULT_COMPONENT_FACTORY(CSnow, CSnow)
@@ -74,8 +74,12 @@ void CSnow::FullSerialize(TSerialize ser)
 //------------------------------------------------------------------------
 void CSnow::Update(SEntityUpdateContext& ctx, int updateSlot)
 {
-    const IActor* pClient = GetISystem()->GetIGame()->GetIGameFramework()->GetClientActor();
-    if (pClient && Reset())
+    if (GetISystem()->GetIGame()->GetIGameFramework()->IsEditing())
+    {
+        return;
+    }
+
+    if (Reset())
     {
         if (!m_bEnabled || gEnv->IsEditor() && !gEnv->IsEditorSimulationMode() && !gEnv->IsEditorGameMode())
         {

@@ -1,5 +1,3 @@
-#pragma once
-
 /*
 * All or portions of this file Copyright (c) Amazon.com, Inc. or its affiliates or
 * its licensors.
@@ -12,13 +10,16 @@
 *
 */
 
+#pragma once
+
 #include <AzCore/std/smart_ptr/shared_ptr.h>
-#include "fbxsdk.h"
+#include <fbxsdk.h>
 
 namespace AZ
 {
     namespace FbxSDKWrapper
-    {
+    { 
+        using FbxSDKLongLong = FbxLongLong;
         class FbxAnimLayerWrapper;
         class FbxTimeSpanWrapper;
 
@@ -28,6 +29,7 @@ namespace AZ
             FbxAnimStackWrapper(FbxAnimStack* fbxAnimStack);
             virtual ~FbxAnimStackWrapper();
 
+            virtual const char* GetName() const;
             virtual int GetAnimationLayerCount() const;
             virtual const AZStd::shared_ptr<FbxAnimLayerWrapper> GetAnimationLayerAt(int index) const;
             virtual FbxTimeSpanWrapper GetLocalTimeSpan() const;
@@ -36,5 +38,5 @@ namespace AZ
             FbxAnimStackWrapper() = default;
             FbxAnimStack* m_fbxAnimStack;
         };
-    }
-}
+    } // namespace FbxSDKWrapper
+} // namespace AZ

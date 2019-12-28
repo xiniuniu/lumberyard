@@ -98,6 +98,7 @@ QMap<QString, AttributeItemLogicCallbacks::InnerCallbackType> AttributeItemLogic
 
     AddFunction(resolveVisibility)
     {
+        Q_UNUSED(thisFunctionName)
         CAttributeView* attributeView = caller->getAttributeView();
         attributeView->ResolveVisibility();
 
@@ -106,6 +107,7 @@ QMap<QString, AttributeItemLogicCallbacks::InnerCallbackType> AttributeItemLogic
 
     AddFunction(ResetPersistentState)
     {
+        Q_UNUSED(thisFunctionName)
         //Resets the sPersistentCallbackData to the initial state
         //This is used when a new particle is loaded
         sPersistentCallbackData.m_aspectRatios.clear();
@@ -288,8 +290,6 @@ bool AttributeItemLogicCallbacks::GetCallback(QString function, AttributeItemLog
 
     QString functionArgs = function.mid(openParPosition);
 
-    std::string sfunctionArgs = functionArgs.toStdString();
-
     if (functionName.size() == 0)
     {
         return false;
@@ -299,8 +299,6 @@ bool AttributeItemLogicCallbacks::GetCallback(QString function, AttributeItemLog
     if (*functionArgs.begin() == '(' && *(functionArgs.end() - 1) == ')')
     {
         functionArgs = functionArgs.mid(1, functionArgs.size() - 2); //Remove parentheses
-
-        std::string sfunctionArgs = functionArgs.toStdString();
 
         QStringList arguments = functionArgs.split(QRegExp(",", Qt::CaseSensitive, QRegExp::FixedString));
 

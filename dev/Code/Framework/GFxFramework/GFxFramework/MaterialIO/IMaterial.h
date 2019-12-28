@@ -61,7 +61,9 @@ namespace AZ
             extern const char* g_stringPhysicsNoDraw;
 
             extern const char* g_mtlExtension;
-            
+            extern const char* g_dccMaterialExtension;
+            extern const char* g_dccMaterialHashString;
+
             extern const unsigned g_materialNotFound;
         }
 
@@ -71,6 +73,8 @@ namespace AZ
             MTL_FLAG_MULTI_SUBMTL = 0x0100,   // This material is a multi sub material.
             MTL_FLAG_NODRAW = 0x0400,   // Do not render this material.
             MTL_64BIT_SHADERGENMASK = 0x80000,   // ShaderGen mask is remapped
+            ///! Set to 0x8000000 because it is not in CryCommon::EMaterialFlags
+            MTL_FLAG_NODRAW_TOUCHBENDING = 0x8000000, //Do not render this material. Used for TouchBending Simulation Trigger.
         };
 
         enum class TextureMapType
@@ -103,8 +107,9 @@ namespace AZ
             virtual bool UseVertexColor() const = 0;
             virtual void EnableUseVertexColor(bool useVertexColor) = 0;
 
-            virtual bool IsPhysicalMaterial() const = 0;
-            virtual void EnablePhysicalMaterial(bool physical) = 0;
+            ///! ORed enum EMaterialFlags
+            virtual int GetMaterialFlags() const = 0;
+            virtual void SetMaterialFlags(int flags) = 0;
 
             virtual const AZ::Vector3& GetDiffuseColor() const = 0;
             virtual void SetDiffuseColor(const AZ::Vector3& color) = 0;
@@ -116,6 +121,41 @@ namespace AZ
             virtual void SetOpacity(float opacity) = 0;
             virtual float GetShininess() const = 0;
             virtual void SetShininess(float shininess) = 0;
+
+            virtual AZ::u32 GetDccMaterialHash() const = 0;
+            virtual void SetDccMaterialHash(AZ::u32 hash) = 0;
+
+            AZ::u32 CalculateDccMaterialHash()
+            {
+                // Hash name
+                AZ::Crc32 hash(GetName().c_str());
+
+                // Hash texture names
+                hash.Add(GetTexture(TextureMapType::Diffuse).c_str());
+                hash.Add(GetTexture(TextureMapType::Specular).c_str());
+                hash.Add(GetTexture(TextureMapType::Bump).c_str());
+                
+                // Hash colors
+                hash.Add(&GetDiffuseColor(), sizeof(AZ::Vector3));
+                hash.Add(&GetSpecularColor(), sizeof(AZ::Vector3));
+                hash.Add(&GetEmissiveColor(), sizeof(AZ::Vector3));
+
+                // Hash floats
+                float tempFloat = GetOpacity();
+                hash.Add(&tempFloat, sizeof(float));
+                tempFloat = GetShininess();
+                hash.Add(&tempFloat, sizeof(float));
+
+                // Hash ints 
+                int tempInt = GetMaterialFlags();
+                hash.Add(&tempInt, sizeof(int));
+
+                // Hash booleans
+                bool tempBool = UseVertexColor();
+                hash.Add(&tempBool, sizeof(bool));
+
+                return hash;
+            }
         };
 
 

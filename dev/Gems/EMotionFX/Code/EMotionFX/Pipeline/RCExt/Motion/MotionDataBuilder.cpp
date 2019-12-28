@@ -24,12 +24,15 @@
 #include <SceneAPIExt/Rules/IMotionCompressionSettingsRule.h>
 #include <SceneAPIExt/Rules/CoordinateSystemRule.h>
 #include <SceneAPIExt/Rules/MotionRangeRule.h>
+#include <SceneAPIExt/Rules/MotionAdditiveRule.h>
 #include <RCExt/Motion/MotionDataBuilder.h>
 #include <RCExt/ExportContexts.h>
 #include <RCExt/CoordinateSystemConverter.h>
 
 #include <EMotionFX/Source/SkeletalMotion.h>
 #include <EMotionFX/Source/SkeletalSubMotion.h>
+#include <EMotionFX/Source/MorphSubMotion.h>
+#include <EMotionFX/Source/KeyTrackLinear.h>
 #include <MCore/Source/AzCoreConversions.h>
 
 #include <AzCore/Math/Quaternion.h>
@@ -109,7 +112,10 @@ namespace EMotionFX
                 coordSysConverter = CoordinateSystemConverter::CreateFromTransforms(ruleCoordSysConverter.GetSourceTransform(), orientedTarget, targetBasisIndices);
             }
 
+            // Grab the rules we need before visiting the scene graph.
             AZStd::shared_ptr<const Rule::IMotionCompressionSettingsRule> compressionRule = motionGroup.GetRuleContainerConst().FindFirstByType<Rule::IMotionCompressionSettingsRule>();
+            AZStd::shared_ptr<const Rule::MotionAdditiveRule> additiveRule = motionGroup.GetRuleContainerConst().FindFirstByType<Rule::MotionAdditiveRule>();
+            context.m_motion.SetIsAdditive(additiveRule);
 
             auto nameStorage = graph.GetNameStorage();
             auto contentStorage = graph.GetContentStorage();
@@ -222,16 +228,35 @@ namespace EMotionFX
                 }
 
                 const double timeStep = animation->GetTimeStepBetweenFrames();
+
+                AZ::Transform sampleFrameTransformInverse;
+                if (additiveRule)
+                {
+                    size_t sampleFrameIndex = additiveRule->GetSampleFrameIndex();
+                    if (sampleFrameIndex >= sceneFrameCount)
+                    {
+                        AZ_Assert(false, "The requested sample frame index is greater than the total frame number. Please fix it, or the frame 0 will be used as the sample frame.");
+                        sampleFrameIndex = 0;
+                    }
+                    sampleFrameTransformInverse = animation->GetKeyFrame(sampleFrameIndex).GetInverseFull();
+                }
+                
                 for (AZ::u32 frame = 0; frame < numFrames; ++frame)
                 {
                     const float time = aznumeric_cast<float>(frame * timeStep);
-                    const AZ::Transform boneTransform = animation->GetKeyFrame(frame + startFrame);
+                    AZ::Transform boneTransform = animation->GetKeyFrame(frame + startFrame);
+
+                    if (additiveRule)
+                    {
+                        // For additive motion, we stores the relative transform.
+                        boneTransform = sampleFrameTransformInverse * boneTransform;
+                    }
+                    
                     AZ::Transform boneTransformNoScale(boneTransform);
-
-                    const AZ::Vector3    position = coordSysConverter.ConvertVector3(boneTransform.GetTranslation());
-                    const AZ::Vector3    scale    = coordSysConverter.ConvertScale(boneTransformNoScale.ExtractScale());
-                    const AZ::Quaternion rotation = coordSysConverter.ConvertQuaternion(AZ::Quaternion::CreateFromTransform(boneTransformNoScale));
-
+                    AZ::Vector3    position = coordSysConverter.ConvertVector3(boneTransform.GetTranslation());
+                    AZ::Vector3    scale    = coordSysConverter.ConvertScale(boneTransformNoScale.ExtractScaleExact());
+                    AZ::Quaternion rotation = coordSysConverter.ConvertQuaternion(AZ::Quaternion::CreateFromTransform(boneTransformNoScale));
+                    
                     // Set the pose when this is the first frame.
                     // This is used as optimization so that poses or non-animated submotions do not need any key tracks.
                     if (frame == 0)
@@ -249,7 +274,7 @@ namespace EMotionFX
                 // Set the bind pose transform.
                 AZ::Transform bindBoneTransformNoScale(bindSpaceLocalTransform);
                 const AZ::Vector3    bindPos   = coordSysConverter.ConvertVector3(bindSpaceLocalTransform.GetTranslation());
-                const AZ::Vector3    bindScale = coordSysConverter.ConvertScale(bindBoneTransformNoScale.ExtractScale());
+                const AZ::Vector3    bindScale = coordSysConverter.ConvertScale(bindBoneTransformNoScale.ExtractScaleExact());
                 const AZ::Quaternion bindRot   = coordSysConverter.ConvertQuaternion(AZ::Quaternion::CreateFromTransform(bindBoneTransformNoScale));
                 subMotion->SetBindPosePos(bindPos);
                 subMotion->SetBindPoseRot(MCore::AzQuatToEmfxQuat(bindRot));
@@ -304,6 +329,43 @@ namespace EMotionFX
                 if (!AZ::IsClose(scaleFactor, 1.0f, FLT_EPSILON)) // If the scale factor is 1, no need to call Scale
                 {
                     context.m_motion.Scale(scaleFactor);
+                }
+            }
+
+            //process MorphTargetAnimation
+            //scene
+            //    IBlendShapeAnimationData
+            auto sceneGraphView = SceneViews::MakePairView(graph.GetNameStorage(), graph.GetContentStorage());
+            auto sceneGraphDownardsIteratorView = SceneViews::MakeSceneGraphDownwardsView<SceneViews::BreadthFirst>(
+                graph, graph.GetRoot(), sceneGraphView.begin(), true);
+
+            auto iterator = sceneGraphDownardsIteratorView.begin();
+
+            for (; iterator != sceneGraphDownardsIteratorView.end(); ++iterator)
+            {
+                SceneContainers::SceneGraph::HierarchyStorageConstIterator hierarchy = iterator.GetHierarchyIterator();
+                SceneContainers::SceneGraph::NodeIndex currentIndex = graph.ConvertToNodeIndex(hierarchy);
+                AZ_Assert(currentIndex.IsValid(), "While iterating through the Scene Graph an unexpected invalid entry was found.");
+                AZStd::shared_ptr<const SceneDataTypes::IGraphObject> currentItem = iterator->second;
+                if (hierarchy->IsEndPoint())
+                {
+                    if (currentItem->RTTI_IsTypeOf(SceneDataTypes::IBlendShapeAnimationData::TYPEINFO_Uuid()))
+                    {
+                        const SceneDataTypes::IBlendShapeAnimationData* blendShapeAnimationData = static_cast<const SceneDataTypes::IBlendShapeAnimationData*>(currentItem.get());
+
+                        uint32 id = MCore::GetStringIdPool().GenerateIdForString(blendShapeAnimationData->GetBlendShapeName());
+
+                        EMotionFX::MorphSubMotion* subMotion = EMotionFX::MorphSubMotion::Create(id);
+                        EMotionFX::KeyTrackLinear<float, MCore::Compressed16BitFloat>* keyTrack = subMotion->GetKeyTrack();
+                        const size_t keyFrameCount = blendShapeAnimationData->GetKeyFrameCount();
+                        const float keyFrameStep = static_cast<float>(blendShapeAnimationData->GetTimeStepBetweenFrames());
+                        for (int keyFrameIndex = 0; keyFrameIndex < keyFrameCount; keyFrameIndex++)
+                        {
+                            const float keyFrameValue = static_cast<float>(blendShapeAnimationData->GetKeyFrame(keyFrameIndex));
+                            keyTrack->AddKeySorted(keyFrameIndex * keyFrameStep, keyFrameValue);
+                        }
+                        context.m_motion.AddMorphSubMotion(subMotion);
+                    }
                 }
             }
 

@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "StarterGameGem_precompiled.h"
 #include "CameraSettingsComponent.h"
 
 #include <AzCore/RTTI/BehaviorContext.h>
@@ -251,7 +251,7 @@ namespace StarterGameGem
 		AZ::SerializeContext* serializeContext = azrtti_cast<AZ::SerializeContext*>(context);
 		if (serializeContext)
 		{
-			serializeContext->Class<CameraSettingsComponent>()
+			serializeContext->Class<CameraSettingsComponent, AZ::Component>()
 				->Version(1)
 				->Field("InitialSettings", &CameraSettingsComponent::m_initialSettings)
 				->Field("Settings", &CameraSettingsComponent::m_settings)

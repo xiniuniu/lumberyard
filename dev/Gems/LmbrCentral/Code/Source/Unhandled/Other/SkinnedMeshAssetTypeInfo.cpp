@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 #include "SkinnedMeshAssetTypeInfo.h"
 
 #include <LmbrCentral/Rendering/MaterialAsset.h>
@@ -50,6 +50,6 @@ namespace LmbrCentral
     }
     const char * SkinnedMeshAssetTypeInfo::GetBrowserIcon() const
     {
-        return "Editor/Icons/Components/SkinnedMesh.png";
+        return "Editor/Icons/Components/SkinnedMesh.svg";
     }
 } // namespace LmbrCentral

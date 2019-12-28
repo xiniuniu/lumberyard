@@ -13,26 +13,30 @@
 
 // Description : unified vector math lib
 
-
-#ifndef __VMATH__
-#define __VMATH__
+#pragma once
 
 #define VEC4_SSE
+#if defined(AZ_RESTRICTED_PLATFORM)
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/VMath_hpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/VMath_hpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/VMath_hpp_salem.inl"
+    #endif
+#endif
 
 //#include <math.h>
 #include <Cry_Math.h>
+#include <Cry3DEngineTraits.h>
 
 namespace NVMath
 {
 #if defined(_CPU_NEON)
     #include "VMath_NEON.hpp"
-#elif (defined(WIN32) || defined(WIN64) || defined(DURANGO) || defined(ORBIS) || defined(LINUX) || defined(MAC) || defined(IOS_SIMULATOR)) && (defined(VEC4_SSE) || defined(VEC4_SSE4))
+#elif (AZ_LEGACY_3DENGINE_TRAIT_HAS_SSE || defined(IOS_SIMULATOR)) && (defined(VEC4_SSE) || defined(VEC4_SSE4))
     #include "VMath_SSE.hpp"
 #else
     #include "VMath_C.hpp"
 #endif
 }
-
-
-#endif
-

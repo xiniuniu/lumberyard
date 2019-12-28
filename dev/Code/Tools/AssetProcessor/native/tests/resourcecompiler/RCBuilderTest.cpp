@@ -20,6 +20,7 @@
 #include "../../unittests/UnitTestRunner.h"
 
 #include <AssetBuilderSDK/AssetBuilderSDK.h>
+#include <AssetBuilderSDK/AssetBuilderBusses.h>
 #include <AzFramework/StringFunc/StringFunc.h>
 
 namespace AssetUtilities
@@ -45,6 +46,7 @@ TEST_F(RCBuilderTest, CreateBuilderDesc_CreateBuilder_Valid)
 
     ASSERT_EQ(this->GetBuilderName(), result.m_name);
     ASSERT_EQ(this->GetBuilderUUID(), result.m_busId);
+    ASSERT_EQ(false, result.IsExternalBuilder());
     ASSERT_TRUE(result.m_patterns.size() == 1);
     ASSERT_EQ(result.m_patterns[0].m_pattern, pattern.m_pattern);
 }
@@ -87,7 +89,7 @@ TEST_F(RCBuilderTest, Initialize_StandardInitializationWithDuplicateAndInvalidRe
     // Good spec
     AssetRecognizer     good;
     good.m_name = "Good";
-    good.m_patternMatcher = AssetUtilities::FilePatternMatcher("*.foo", AssetBuilderSDK::AssetBuilderPattern::PatternType::Wildcard);
+    good.m_patternMatcher = AssetBuilderSDK::FilePatternMatcher("*.foo", AssetBuilderSDK::AssetBuilderPattern::PatternType::Wildcard);
     AssetPlatformSpec   good_spec;
     good_spec.m_extraRCParams = "/i";
     good.m_platformSpecs["pc"] = good_spec;
@@ -95,10 +97,10 @@ TEST_F(RCBuilderTest, Initialize_StandardInitializationWithDuplicateAndInvalidRe
     // No Platform spec
     AssetRecognizer     no_platform;
     no_platform.m_name = "No Platform";
-    no_platform.m_patternMatcher = AssetUtilities::FilePatternMatcher("*.ccc", AssetBuilderSDK::AssetBuilderPattern::PatternType::Wildcard);
+    no_platform.m_patternMatcher = AssetBuilderSDK::FilePatternMatcher("*.ccc", AssetBuilderSDK::AssetBuilderPattern::PatternType::Wildcard);
 
     // Duplicate
-    AssetRecognizer     duplicate(good.m_name, good.m_testLockSource, good.m_priority, good.m_isCritical, good.m_supportsCreateJobs, good.m_patternMatcher, good.m_version, good.m_productAssetType);
+    AssetRecognizer     duplicate(good.m_name, good.m_testLockSource, good.m_priority, good.m_isCritical, good.m_supportsCreateJobs, good.m_patternMatcher, good.m_version, good.m_productAssetType, good.m_outputProductDependencies);
     duplicate.m_platformSpecs["pc"] = good_spec;
 
     configuration.m_recognizerContainer["good"] = good;
@@ -143,7 +145,7 @@ TEST_F(RCBuilderTest, CreateJobs_CreateSingleJobStandard_Valid)
 
     AssetRecognizer     good;
     good.m_name = "Good";
-    good.m_patternMatcher = AssetUtilities::FilePatternMatcher("*.foo", AssetBuilderSDK::AssetBuilderPattern::PatternType::Wildcard);
+    good.m_patternMatcher = AssetBuilderSDK::FilePatternMatcher("*.foo", AssetBuilderSDK::AssetBuilderPattern::PatternType::Wildcard);
     AssetPlatformSpec   good_spec;
     good_spec.m_extraRCParams = "/i";
     good.m_platformSpecs["pc"] = good_spec;
@@ -182,7 +184,7 @@ TEST_F(RCBuilderTest, CreateJobs_CreateMultiplesJobStandard_Valid)
     const AZStd::string     job_key_rc = "RCjob";
     {
         standard_AR_RC.m_name = "RCjob";
-        standard_AR_RC.m_patternMatcher = AssetUtilities::FilePatternMatcher("*.foo", AssetBuilderSDK::AssetBuilderPattern::PatternType::Wildcard);
+        standard_AR_RC.m_patternMatcher = AssetBuilderSDK::FilePatternMatcher("*.foo", AssetBuilderSDK::AssetBuilderPattern::PatternType::Wildcard);
         AssetPlatformSpec   good_rc_spec;
         good_rc_spec.m_extraRCParams = "/i";
         standard_AR_RC.m_platformSpecs["pc"] = good_rc_spec;
@@ -193,7 +195,7 @@ TEST_F(RCBuilderTest, CreateJobs_CreateMultiplesJobStandard_Valid)
     const AZStd::string     job_key_copy = "Copyjob";
     {
         standard_AR_Copy.m_name = QString(job_key_copy.c_str());
-        standard_AR_Copy.m_patternMatcher = AssetUtilities::FilePatternMatcher("*.foo", AssetBuilderSDK::AssetBuilderPattern::PatternType::Wildcard);
+        standard_AR_Copy.m_patternMatcher = AssetBuilderSDK::FilePatternMatcher("*.foo", AssetBuilderSDK::AssetBuilderPattern::PatternType::Wildcard);
         AssetPlatformSpec   good_copy_spec;
         good_copy_spec.m_extraRCParams = "copy";
         standard_AR_Copy.m_platformSpecs["pc"] = good_copy_spec;
@@ -256,7 +258,7 @@ TEST_F(RCBuilderTest, CreateJobs_CreateSingleJobCopy_Valid)
 
     AssetRecognizer     copy;
     copy.m_name = "Copy";
-    copy.m_patternMatcher = AssetUtilities::FilePatternMatcher("*.copy", AssetBuilderSDK::AssetBuilderPattern::PatternType::Wildcard);
+    copy.m_patternMatcher = AssetBuilderSDK::FilePatternMatcher("*.copy", AssetBuilderSDK::AssetBuilderPattern::PatternType::Wildcard);
     AssetPlatformSpec   copy_spec;
     copy_spec.m_extraRCParams = "copy";
     copy.m_platformSpecs["pc"] = copy_spec;
@@ -295,7 +297,7 @@ TEST_F(RCBuilderTest, CreateJobs_CreateSingleJobStandardSkip_Valid)
     {
         AssetRecognizer     skip;
         skip.m_name = "Skip";
-        skip.m_patternMatcher = AssetUtilities::FilePatternMatcher("*.skip", AssetBuilderSDK::AssetBuilderPattern::PatternType::Wildcard);
+        skip.m_patternMatcher = AssetBuilderSDK::FilePatternMatcher("*.skip", AssetBuilderSDK::AssetBuilderPattern::PatternType::Wildcard);
         AssetPlatformSpec   skip_spec;
         skip_spec.m_extraRCParams = "skip";
         skip.m_platformSpecs["pc"] = skip_spec;
@@ -330,7 +332,7 @@ TEST_F(RCBuilderTest, CreateJobs_CreateSingleJobStandard_Failed)
 
     AssetRecognizer     good;
     good.m_name = "Good";
-    good.m_patternMatcher = AssetUtilities::FilePatternMatcher("*.foo", AssetBuilderSDK::AssetBuilderPattern::PatternType::Wildcard);
+    good.m_patternMatcher = AssetBuilderSDK::FilePatternMatcher("*.foo", AssetBuilderSDK::AssetBuilderPattern::PatternType::Wildcard);
     AssetPlatformSpec   good_spec;
     good_spec.m_extraRCParams = "/i";
     good.m_platformSpecs["pc"] = good_spec;
@@ -363,7 +365,7 @@ TEST_F(RCBuilderTest, CreateJobs_CreateSingleJobStandard_ShuttingDown)
 
     AssetRecognizer     good;
     good.m_name = "Good";
-    good.m_patternMatcher = AssetUtilities::FilePatternMatcher("*.foo", AssetBuilderSDK::AssetBuilderPattern::PatternType::Wildcard);
+    good.m_patternMatcher = AssetBuilderSDK::FilePatternMatcher("*.foo", AssetBuilderSDK::AssetBuilderPattern::PatternType::Wildcard);
     AssetPlatformSpec   good_spec;
     good_spec.m_extraRCParams = "/i";
     good.m_platformSpecs["pc"] = good_spec;
@@ -398,7 +400,7 @@ TEST_F(RCBuilderTest, CreateJobs_CreateSingleJobBadJobRequest1_Failed)
 
     AssetRecognizer     good;
     good.m_name = "Good";
-    good.m_patternMatcher = AssetUtilities::FilePatternMatcher("*.foo", AssetBuilderSDK::AssetBuilderPattern::PatternType::Wildcard);
+    good.m_patternMatcher = AssetBuilderSDK::FilePatternMatcher("*.foo", AssetBuilderSDK::AssetBuilderPattern::PatternType::Wildcard);
     AssetPlatformSpec   good_spec;
     good_spec.m_extraRCParams = "/i";
     good.m_platformSpecs["pc"] = good_spec;
@@ -817,4 +819,91 @@ TEST_F(RCBuilderTest, TestProcessRCResultFolder_WithResponseFromRC)
     ASSERT_EQ(response.m_outputProducts[1].m_legacySubIDs[1], (AZ_CRC("file.caf", 0x91277b80) & 0x0000FFFF));
 }
 
+class MockBuilderListener : public AssetBuilderSDK::AssetBuilderBus::Handler
+{
+public:
+    void RegisterBuilderInformation(const AssetBuilderSDK::AssetBuilderDesc& builderDesc) override
+    {
+        m_wasCalled = true;
+        m_result = builderDesc;
+    }
+
+    bool m_wasCalled = false;
+    AssetBuilderSDK::AssetBuilderDesc m_result;
+};
+
+
+class RCBuilderFingerprintTest
+    : public RCBuilderTest
+{
+    
+public:
+
+    // A utility function which feeds in the version and asset type to the builder, fingerprints it, and returns the fingerprint
+    AZStd::string BuildFingerprint(int versionNumber, AZ::Uuid builderProductType)
+    {
+        MockRCCompiler*                     mockRC = new MockRCCompiler();
+        TestInternalRecognizerBasedBuilder  test(mockRC);
+
+        MockRecognizerConfiguration         configuration;
+
+        AssetPlatformSpec   good_spec;
+        good_spec.m_extraRCParams = "/i";
+
+        AssetRecognizer     good;
+        good.m_name = "Good";
+        good.m_version = versionNumber;
+        good.m_patternMatcher = AssetBuilderSDK::FilePatternMatcher("*.foo", AssetBuilderSDK::AssetBuilderPattern::PatternType::Wildcard);
+        good.m_platformSpecs["pc"] = good_spec;
+        good.m_productAssetType = builderProductType;
+        
+        configuration.m_recognizerContainer["good"] = good;
+
+        MockBuilderListener listener;
+        listener.BusConnect();
+
+        bool initialization_result = test.Initialize(configuration);
+        listener.BusDisconnect();
+
+        EXPECT_TRUE(listener.m_wasCalled);
+        EXPECT_TRUE(initialization_result);
+
+        EXPECT_STRNE(listener.m_result.m_analysisFingerprint.c_str(), "");
+        return listener.m_result.m_analysisFingerprint;
+    }
+};
+
+TEST_F(RCBuilderFingerprintTest, DifferentVersion_Has_DifferentAnalysisFingerprint)
+{
+    AZ::Uuid uuid1 = AZ::Uuid::CreateRandom();
+    AZStd::string analysisFingerprint1 = BuildFingerprint(1, uuid1);
+    AZStd::string analysisFingerprint2 = BuildFingerprint(2, uuid1);
+    EXPECT_STRNE(analysisFingerprint1.c_str(), analysisFingerprint2.c_str());
+}
+
+TEST_F(RCBuilderFingerprintTest, DifferentAssetType_Has_DifferentAnalysisFingerprint)
+{
+    AZ::Uuid uuid1 = AZ::Uuid::CreateRandom();
+    AZ::Uuid uuid2 = AZ::Uuid::CreateRandom();
+    AZStd::string analysisFingerprint1 = BuildFingerprint(1, uuid1);
+    AZStd::string analysisFingerprint2 = BuildFingerprint(1, uuid2);
+    EXPECT_STRNE(analysisFingerprint1.c_str(), analysisFingerprint2.c_str());
+}
+
+TEST_F(RCBuilderFingerprintTest, DifferentAssetTypeAndVersion_Has_DifferentAnalysisFingerprint)
+{
+    AZ::Uuid uuid1 = AZ::Uuid::CreateRandom();
+    AZ::Uuid uuid2 = AZ::Uuid::CreateRandom();
+    AZStd::string analysisFingerprint1 = BuildFingerprint(1, uuid1);
+    AZStd::string analysisFingerprint2 = BuildFingerprint(2, uuid2);
+    EXPECT_STRNE(analysisFingerprint1.c_str(), analysisFingerprint2.c_str());
+}
+
+TEST_F(RCBuilderFingerprintTest, SameVersionAndSameType_Has_SameAnalysisFingerprint)
+{
+    AZ::Uuid uuid1 = AZ::Uuid::CreateRandom();
+    AZStd::string analysisFingerprint1 = BuildFingerprint(1, uuid1);
+    AZStd::string analysisFingerprint2 = BuildFingerprint(1, uuid1);
+    EXPECT_STREQ(analysisFingerprint1.c_str(), analysisFingerprint2.c_str());
+}
 

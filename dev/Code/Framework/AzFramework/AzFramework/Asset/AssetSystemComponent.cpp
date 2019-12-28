@@ -15,6 +15,7 @@
 #include <AzCore/std/string/conversions.h>
 #include <AzCore/Component/ComponentApplicationBus.h>
 #include <AzCore/IO/FileIO.h>
+#include <AzCore/IO/Streamer.h>
 #include <AzCore/IO/SystemFile.h>
 #include <AzCore/std/chrono/chrono.h>
 #include <AzCore/std/string/conversions.h>
@@ -22,6 +23,7 @@
 #include <AzFramework/API/BootstrapReaderBus.h>
 #include <AzFramework/Asset/AssetCatalogBus.h>
 #include <AzFramework/Asset/AssetProcessorMessages.h>
+#include <AzFramework/Asset/AssetSeedList.h>
 #include <AzFramework/Network/AssetProcessorConnection.h>
 
 namespace AzFramework
@@ -34,19 +36,21 @@ namespace AzFramework
         const char* const ASSET_PROCESSOR_REMOTE_IP = "remote_ip";
         const char* const ASSET_PROCESSOR_REMOTE_PORT = "remote_port";
 
-        void OnAssetSystemMessage(unsigned int /*typeId*/, const void* buffer, unsigned int bufferSize)
+        void OnAssetSystemMessage(unsigned int /*typeId*/, const void* buffer, unsigned int bufferSize, AZ::SerializeContext* context)
         {
             AssetNotificationMessage message;
-            if (!AZ::Utils::LoadObjectFromBufferInPlace(buffer, bufferSize, message))
+            // note that we forbid asset loading and we set STRICT mode.  These messages are all the kind of message that is supposed to be transmitted between the
+            // same version of software, and are created at runtime, not loaded from disk, so they should not contain errors - if they do, it requires investigation.
+            if (!AZ::Utils::LoadObjectFromBufferInPlace(buffer, bufferSize, message, context, AZ::ObjectStream::FilterDescriptor(&AZ::Data::AssetFilterNoAssetLoading, AZ::ObjectStream::FILTERFLAG_STRICT)))
             {
-                AZ_TracePrintf("AssetSystem", "Problem deserializing AssetNotificationMessage");
+                AZ_WarningOnce("AssetSystem", false, "AssetNotificationMessage received but unable to deserialize it.  Is AssetProcessor.exe up to date?");
                 return;
             }
 
             if (message.m_data.length() > AZ_MAX_PATH_LEN)
             {
                 auto maxPath = message.m_data.substr(0, AZ_MAX_PATH_LEN - 1);
-                AZ_TracePrintf("AssetSystem", "HotUpdate: filename too long(%zd) : %s...", bufferSize, maxPath.c_str());
+                AZ_Warning("AssetSystem", false, "HotUpdate: filename too long(%zd) : %s...", bufferSize, maxPath.c_str());
                 return;
             }
 
@@ -57,6 +61,16 @@ namespace AzFramework
                 break;
             case AssetNotificationMessage::AssetRemoved:
                 AssetSystemBus::QueueBroadcast(&AssetSystemBus::Events::AssetRemoved, message);
+                break;
+            case AssetNotificationMessage::JobFileClaimed:
+                if (AZ::IO::Streamer::IsReady())
+                {
+                    AZ::IO::Streamer::Instance().FlushCacheAsync(message.m_data.c_str());
+                }
+                AssetSystemInfoBus::Broadcast(&AssetSystemInfoBus::Events::AssetFileClaimed, message.m_data);
+                break;
+            case AssetNotificationMessage::JobFileReleased:
+                AssetSystemInfoBus::Broadcast(&AssetSystemInfoBus::Events::AssetFileReleased, message.m_data);
                 break;
             case AssetNotificationMessage::JobStarted:
                 AssetSystemInfoBus::Broadcast(&AssetSystemInfoBus::Events::AssetCompilationStarted, message.m_data);
@@ -74,7 +88,7 @@ namespace AzFramework
             }
             break;
             default:
-                AZ_TracePrintf("AssetSystem", "Unknown AssetNotificationMessage type");
+                AZ_WarningOnce("AssetSystem", false, "Unknown AssetNotificationMessage type received from network.  Is AssetProcessor.exe up to date?");
                 break;
             }
         }
@@ -86,14 +100,17 @@ namespace AzFramework
 
         void AssetSystemComponent::Activate()
         {
+            AZ::SerializeContext* context = nullptr;
+            AZ::ComponentApplicationBus::BroadcastResult(context, &AZ::ComponentApplicationRequests::GetSerializeContext);
+
             EnableSocketConnection();
 
             m_cbHandle = m_socketConn->AddMessageHandler(AZ_CRC("AssetProcessorManager::AssetNotification", 0xd6191df5),
-                    [](unsigned int typeId, unsigned int /*serial*/, const void* data, unsigned int dataLength)
+                    [context](unsigned int typeId, unsigned int /*serial*/, const void* data, unsigned int dataLength)
                     {
                         if (dataLength)
                         {
-                            OnAssetSystemMessage(typeId, data, dataLength);
+                            OnAssetSystemMessage(typeId, data, dataLength, context);
                         }
                     });
 
@@ -123,18 +140,24 @@ namespace AzFramework
                 apConnection->Configure(m_branchToken.c_str(), m_platform.c_str(), "");
             }
 
+            AzFramework::AssetSystemBus::AllowFunctionQueuing(true);
             AssetSystemRequestBus::Handler::BusConnect();
+            AZ::SystemTickBus::Handler::BusConnect();
         }
 
         void AssetSystemComponent::Deactivate()
         {
+            AZ::SystemTickBus::Handler::BusDisconnect();
             AssetSystemRequestBus::Handler::BusDisconnect();
-            m_socketConn->RemoveMessageHandler(AZ_CRC("AssetProcessorManager::AssetNotification", 0xd6191df5), m_cbHandle);
-            m_socketConn->Disconnect();
             
-            AzFramework::AssetSystemBus::ClearQueuedEvents();
-
+            m_socketConn->RemoveMessageHandler(AZ_CRC("AssetProcessorManager::AssetNotification", 0xd6191df5), m_cbHandle);
+            m_socketConn->Disconnect(true);
+            
             DisableSocketConnection();
+
+            // clear the queue out early
+            AzFramework::AssetSystemBus::AllowFunctionQueuing(false);
+            AzFramework::AssetSystemBus::ClearQueuedEvents();
         }
 
         void AssetSystemComponent::Reflect(AZ::ReflectContext* context)
@@ -153,9 +176,11 @@ namespace AzFramework
             GetRelativeProductPathFromFullSourceOrProductPathRequest::Reflect(context);
             GetFullSourcePathFromRelativeProductPathRequest::Reflect(context);
             SourceAssetInfoRequest::Reflect(context);
+            AssetInfoRequest::Reflect(context);
             RegisterSourceAssetRequest::Reflect(context);
             UnregisterSourceAssetRequest::Reflect(context);
             ShowAssetProcessorRequest::Reflect(context);
+            ShowAssetInAssetProcessorRequest::Reflect(context);
             FileOpenRequest::Reflect(context);
             FileCloseRequest::Reflect(context);
             FileReadRequest::Reflect(context);
@@ -175,10 +200,13 @@ namespace AzFramework
             FileRenameRequest::Reflect(context);
             FindFilesRequest::Reflect(context);
 
+            FileTreeRequest::Reflect(context);
+
             // Responses
             GetRelativeProductPathFromFullSourceOrProductPathResponse::Reflect(context);
             GetFullSourcePathFromRelativeProductPathResponse::Reflect(context);
             SourceAssetInfoResponse::Reflect(context);
+            AssetInfoResponse::Reflect(context);
             FileOpenResponse::Reflect(context);
             FileReadResponse::Reflect(context);
             FileWriteResponse::Reflect(context);
@@ -196,16 +224,20 @@ namespace AzFramework
             FileCopyResponse::Reflect(context);
             FileRenameResponse::Reflect(context);
             FindFilesResponse::Reflect(context);
+
+            FileTreeResponse::Reflect(context);
+
             SaveAssetCatalogRequest::Reflect(context);
             SaveAssetCatalogResponse::Reflect(context);
 
             AssetNotificationMessage::Reflect(context);
-
+            AssetSeedListReflector::Reflect(context);
+            SeedInfo::Reflect(context);
             AZ::SerializeContext* serialize = azrtti_cast<AZ::SerializeContext*>(context);
             if (serialize)
             {
                 serialize->Class<AssetSystemComponent, AZ::Component>()
-                    ->SerializerForEmptyClass();
+                    ;
             }
         }
 
@@ -295,6 +327,26 @@ namespace AzFramework
             m_branchToken = branchtoken;
         }
 
+        bool AssetSystemComponent::Disconnect()
+        {
+            auto apConnection = azrtti_cast<AssetProcessorConnection*>(m_socketConn.get());
+            if (!apConnection)
+            {
+                return false;
+            }
+
+            bool result = true;
+
+            if (apConnection->IsConnected())
+            {
+                result = apConnection->Disconnect(true);
+            }
+
+            AzFramework::AssetSystemBus::ClearQueuedEvents();
+
+            return result;
+        }
+
         bool AssetSystemComponent::SaveCatalog()
         {
             auto apConnection = azrtti_cast<AssetProcessorConnection*>(m_socketConn.get());
@@ -315,28 +367,37 @@ namespace AzFramework
 
         AssetStatus AssetSystemComponent::CompileAssetSync(const AZStd::string& assetPath)
         {
-            return SendAssetStatusRequest(assetPath, false);
+            return SendAssetStatusRequest(assetPath, false, false);
         }
-
         AssetStatus AssetSystemComponent::GetAssetStatus(const AZStd::string& assetPath)
         {
-            return SendAssetStatusRequest(assetPath, true);
+            return SendAssetStatusRequest(assetPath, true, false);
         }
 
-        void AssetSystemComponent::UpdateQueuedEvents()
+        AssetStatus AssetSystemComponent::CompileAssetSync_FlushIO(const AZStd::string& assetPath)
+        {
+            return SendAssetStatusRequest(assetPath, false, true);
+        }
+
+        AssetStatus AssetSystemComponent::GetAssetStatus_FlushIO(const AZStd::string& assetPath)
+        {
+            return SendAssetStatusRequest(assetPath, true, true);
+        }
+
+        void AssetSystemComponent::OnSystemTick()
         {
             AZ_TRACE_METHOD();
             AssetSystemBus::ExecuteQueuedEvents();
             LegacyAssetEventBus::ExecuteQueuedEvents();
         }
 
-        AssetStatus AssetSystemComponent::SendAssetStatusRequest(const AZStd::string& assetPath, bool statusOnly)
+        AssetStatus AssetSystemComponent::SendAssetStatusRequest(const AZStd::string& assetPath, bool statusOnly, bool requireFencing)
         {
             AssetStatus eStatus = AssetStatus_Unknown;
 
             if (m_socketConn && m_socketConn->IsConnected())
             {
-                RequestAssetStatus request(assetPath.c_str(), statusOnly);
+                RequestAssetStatus request(assetPath.c_str(), statusOnly, requireFencing);
                 ResponseAssetStatus response;
                 SendRequest(request, response);
 

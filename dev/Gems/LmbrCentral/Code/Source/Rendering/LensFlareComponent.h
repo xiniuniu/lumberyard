@@ -16,6 +16,7 @@
 #include <AzFramework/Asset/SimpleAsset.h>
 
 #include "LightInstance.h"
+#include <LmbrCentral/Rendering/LensFlareAsset.h>
 #include <LmbrCentral/Rendering/LensFlareComponentBus.h>
 #include <LmbrCentral/Rendering/RenderNodeBus.h>
 #include <LmbrCentral/Rendering/MaterialAsset.h>
@@ -36,6 +37,9 @@ namespace LmbrCentral
         virtual ~LensFlareConfiguration() {};
 
         static void Reflect(AZ::ReflectContext* context);
+        static bool VersionConverter(AZ::SerializeContext& context, AZ::SerializeContext::DataElementNode& classElement);
+
+        AZ::Data::Asset<LensFlareAsset> m_asset;                 //! Used at asset compile time to track the dependency. Not used at edit or runtime.
 
         //! Settings common to all LY engine lights
         EngineSpec m_minSpec;
@@ -54,8 +58,9 @@ namespace LmbrCentral
         float m_brightness;
 
         float m_viewDistMultiplier;
+        float m_viewDistMultiplierUser; // Value set by user from UI.
         bool m_affectsThisAreaOnly;
-        bool m_ignoreVisAreas;
+        bool m_useVisAreas;
         bool m_indoorOnly;
         bool m_attachToSun;
 
@@ -80,9 +85,14 @@ namespace LmbrCentral
             return !m_syncAnimWithLight;
         }
 
+        AZ_INLINE bool ShouldViewDistanceMultiplier() {
+            return !m_attachToSun;
+        }
+        
         // Property event-handlers implemented in editor component.
         virtual AZ::u32 PropertyChanged() { return 0; }
         virtual AZ::u32 SyncAnimationChanged() { return AZ_CRC("RefreshNone", 0x98a5045b); }
+        virtual AZ::u32 AttachToSunChanged() {return AZ_CRC("RefreshNone", 0x98a5045b); }
     };
 
 
@@ -142,6 +152,8 @@ namespace LmbrCentral
 
         static void Reflect(AZ::ReflectContext* context);
         //////////////////////////////////////////////////////////////////////////
+
+        LensFlareConfiguration GetLensFlareConfiguration();
 
     protected:
 

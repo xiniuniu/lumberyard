@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "CryLegacy_precompiled.h"
 
 #include <AzTest/AzTest.h>
 
@@ -32,5 +32,3 @@ TEST_F(CryLegacyTest, ExampleTest)
 {
     ASSERT_TRUE(true);
 }
-
-AZ_UNIT_TEST_HOOK();

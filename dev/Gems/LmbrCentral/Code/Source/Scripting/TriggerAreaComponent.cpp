@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 
 #include <AzCore/Serialization/SerializeContext.h>
 #include <AzCore/Component/ComponentApplicationBus.h>
@@ -571,7 +571,7 @@ namespace LmbrCentral
         if (IsLegacyEntityId(entityId))
         {
             const /*Cry*/ EntityId id = GetLegacyEntityId(entityId);
-            IActor* actor = gEnv->pGame->GetIGameFramework()->GetIActorSystem()->GetActor(id);
+            IActor* actor = gEnv->pGame && gEnv->pGame->GetIGameFramework() ? gEnv->pGame->GetIGameFramework()->GetIActorSystem()->GetActor(id) : nullptr;
             if (actor && actor->GetChannelId() != kInvalidChannelId)
             {
                 return true;
@@ -588,7 +588,7 @@ namespace LmbrCentral
     {
         // We don't yet have a way to create player actors in AZ::Entity/Components,
         // so check legacy code paths.
-        if (IsLegacyEntityId(entityId))
+        if (IsLegacyEntityId(entityId) && gEnv->pGame)
         {
             const /*Cry*/ EntityId id = GetLegacyEntityId(entityId);
             return (id == gEnv->pGame->GetClientActorId());

@@ -36,6 +36,7 @@
 #include <SceneAPI/SceneCore/DataTypes/GraphData/IMeshVertexColorData.h>
 #include <SceneAPI/SceneCore/DataTypes/Groups/ISceneNodeGroup.h>
 #include <SceneAPI/SceneCore/DataTypes/Rules/IMeshAdvancedRule.h>
+#include <SceneAPI/SceneCore/DataTypes/Rules/ITouchBendingRule.h>
 #include <SceneAPI/SceneCore/DataTypes/Rules/IPhysicsRule.h>
 #include <SceneAPI/SceneCore/DataTypes/Rules/IMaterialRule.h>
 #include <SceneAPI/SceneCore/DataTypes/Rules/ILodRule.h>
@@ -54,24 +55,10 @@ namespace AZ
         namespace Export
         {
             //
-            // MaterialExporterComponent
+            // BaseMaterialExporterComponent
             //
 
-            MaterialExporterComponent::MaterialExporterComponent()
-            {
-                BindToCall(&MaterialExporterComponent::ExportMaterials);
-            }
-
-            void MaterialExporterComponent::Reflect(ReflectContext* context)
-            {
-                SerializeContext* serializeContext = azrtti_cast<SerializeContext*>(context);
-                if (serializeContext)
-                {
-                    serializeContext->Class<MaterialExporterComponent, SceneAPI::SceneCore::ExportingComponent>()->Version(1);
-                }
-            }
-
-            Events::ProcessingResult MaterialExporterComponent::ExportMaterials(Events::PreExportEventContext& context) const
+            Events::ProcessingResult BaseMaterialExporterComponent::ExportMaterialsToTempDir(Events::PreExportEventContext& context, bool registerProducts) const
             {
                 using MaterialExporterMap = AZStd::unordered_map<AZStd::string, MtlMaterialExporter>;
                 
@@ -88,20 +75,30 @@ namespace AZ
                 {
                     AZ_TraceContext("Group", group.GetName());
 
+                    const AZ::SceneAPI::Containers::RuleContainer& rules = group.GetRuleContainerConst();
+                    AZStd::shared_ptr<const DataTypes::IMaterialRule> materialRule = rules.FindFirstByType<DataTypes::IMaterialRule>();
+                    bool updateMaterial = materialRule ? materialRule->UpdateMaterials() : false;
+
                     // Look for a material file in the source directory, which is will be the canonical material to use. If there's none
                     //      then write one in the cache.
                     AZStd::string sourceMaterialPath = context.GetScene().GetSourceFilename();
-                    AzFramework::StringFunc::Path::ReplaceFullName(sourceMaterialPath, group.GetName().c_str(), GFxFramework::MaterialExport::g_mtlExtension);
+                    AzFramework::StringFunc::Path::ReplaceExtension(sourceMaterialPath, GFxFramework::MaterialExport::g_mtlExtension);
                     AZ_TraceContext("Material source file path", sourceMaterialPath);
-                    if (AZ::IO::SystemFile::Exists(sourceMaterialPath.c_str()))
+                    bool sourceFileExists = AZ::IO::SystemFile::Exists(sourceMaterialPath.c_str());
+
+                    if (sourceFileExists && !updateMaterial)
                     {
                         // Don't write to the cache if there's a source material as this will be the master material.
                         continue;
                     }
 
+                    AZStd::string cacheFileName;
+                    bool succeeded = AzFramework::StringFunc::Path::GetFileName(sourceMaterialPath.c_str(), cacheFileName);
+                    AZ_Assert(succeeded, "Failed to retrieve a valid material file name from %s", sourceMaterialPath.c_str());
+
                     AZStd::string materialCachePath;
-                    if (!AzFramework::StringFunc::Path::ConstructFull(context.GetOutputDirectory().c_str(), group.GetName().c_str(),
-                        GFxFramework::MaterialExport::g_mtlExtension, materialCachePath, true))
+                    if (!AzFramework::StringFunc::Path::ConstructFull(context.GetOutputDirectory().c_str(), cacheFileName.c_str(),
+                        GFxFramework::MaterialExport::g_dccMaterialExtension, materialCachePath, true))
                     {
                         AZ_TracePrintf(Utilities::ErrorWindow, "Failed to construct the full output path for the material.");
                         result += Events::ProcessingResult::Failure;
@@ -143,7 +140,8 @@ namespace AZ
                     AZStd::string& materialCachePath = entry.first;
                     AZ_TraceContext("Material cache file path", materialCachePath);
                     MtlMaterialExporter& exporter = entry.second;
-                    if (exporter.WriteToFile(materialCachePath.c_str(), false)) // No need to update with changes as the cache version will always be clean.
+                    const bool update = false;   // No need to update with changes as the cache version will always be clean.
+                    if (exporter.WriteToFile(materialCachePath.c_str(), update))
                     {
                         // Materials can belong to multiple groups, but they're currently still referenced by name in engine, so the ID doesn't really matter.
                         //      This is made worse due to the fact that once the material is moved from the cache to the source folder the source id also
@@ -156,8 +154,11 @@ namespace AZ
                         }
                         else
                         {
-                            static const Data::AssetType materialAssetType("{F46985B5-F7FF-4FCB-8E8C-DC240D701841}"); // from MaterialAsset.h
-                            context.GetProductList().AddProduct(AZStd::move(entry.first), Uuid::CreateName(filename.c_str()), materialAssetType);
+                            if (registerProducts)
+                            {
+                                static const Data::AssetType dccMaterialAssetType("{C88469CF-21E7-41EB-96FD-BF14FBB05EDC}"); // from MaterialAsset.h
+                                context.GetProductList().AddProduct(AZStd::move(entry.first), Uuid::CreateName(filename.c_str()), dccMaterialAssetType);
+                            }
                         }
                     }
                     else
@@ -170,7 +171,7 @@ namespace AZ
                 return result.GetResult();
             }
 
-            AZStd::string MaterialExporterComponent::GetTextureRootPath() const
+            AZStd::string BaseMaterialExporterComponent::GetTextureRootPath() const
             {
                 using AzToolsFramework::AssetSystemRequestBus;
 
@@ -184,6 +185,53 @@ namespace AZ
                 {
                     AZ_TracePrintf(Utilities::WarningWindow, "Unable to get determine game folder. Texture path may be invalid.");
                     return "";
+                }
+            }
+
+            //
+            // MaterialExporterComponent
+            //
+            MaterialExporterComponent::MaterialExporterComponent()
+            {
+                BindToCall(&MaterialExporterComponent::ExportMaterials);
+            }
+
+            Events::ProcessingResult MaterialExporterComponent::ExportMaterials(Events::PreExportEventContext& context) const
+            {
+                // Creates materials in the intermediate folder but doesn't register them as products with the Asset Processor.
+                return BaseMaterialExporterComponent::ExportMaterialsToTempDir(context, false);
+            }
+
+            void MaterialExporterComponent::Reflect(ReflectContext* context)
+            {
+                SerializeContext* serializeContext = azrtti_cast<SerializeContext*>(context);
+                if (serializeContext)
+                {
+                    serializeContext->Class<MaterialExporterComponent, SceneCore::ExportingComponent>()->Version(1);
+                }
+            }
+
+            //
+            // RCMaterialExporterComponent
+            //
+            RCMaterialExporterComponent::RCMaterialExporterComponent()
+            {
+                BindToCall(&RCMaterialExporterComponent::ExportMaterials);
+            }
+
+            Events::ProcessingResult RCMaterialExporterComponent::ExportMaterials(Events::PreExportEventContext& context) const
+            {
+                // Creates materials in the intermediate folder and registers them as products with the Asset Processor. This is done
+                // for the ResourceCompilerScene as it has logic to deal with legacy issues such when RCScene ran without sub id generation.
+                return BaseMaterialExporterComponent::ExportMaterialsToTempDir(context, true);
+            }
+
+            void RCMaterialExporterComponent::Reflect(ReflectContext* context)
+            {
+                SerializeContext* serializeContext = azrtti_cast<SerializeContext*>(context);
+                if (serializeContext)
+                {
+                    serializeContext->Class<RCMaterialExporterComponent, SceneCore::RCExportingComponent>()->Version(1);
                 }
             }
 
@@ -234,25 +282,36 @@ namespace AZ
                 const Containers::SceneGraph& sceneGraph = scene.GetGraph();
                 const AZ::SceneAPI::Containers::RuleContainer& rules = sceneNodeGroup.GetRuleContainerConst();
 
+                int physicsMaterialFlags = 0;
+                AZStd::vector<AZStd::string> targetNodes;
+                AZStd::shared_ptr<const DataTypes::ITouchBendingRule> touchBendingRule = rules.FindFirstByType<DataTypes::ITouchBendingRule>();
                 AZStd::shared_ptr<const DataTypes::IPhysicsRule> physicsRule = rules.FindFirstByType<DataTypes::IPhysicsRule>();
+                AZ_Assert(!(touchBendingRule && physicsRule), "TouchBending and Physics Rules Are Mutually Exclusive.");
+                if (touchBendingRule)
+                {
+                    targetNodes = Utilities::SceneGraphSelector::GenerateTargetNodes(sceneGraph,
+                        touchBendingRule->GetSceneNodeSelectionList(), Utilities::SceneGraphSelector::IsMesh);
+                    physicsMaterialFlags = AZ::GFxFramework::EMaterialFlags::MTL_FLAG_NODRAW_TOUCHBENDING;
+                }
                 if (physicsRule)
                 {
-                    AZStd::vector<AZStd::string> physTargetNodes = Utilities::SceneGraphSelector::GenerateTargetNodes(sceneGraph, 
+                    targetNodes = Utilities::SceneGraphSelector::GenerateTargetNodes(sceneGraph,
                         physicsRule->GetSceneNodeSelectionList(), Utilities::SceneGraphSelector::IsMesh);
-                    for (auto& nodeName : physTargetNodes)
+                    physicsMaterialFlags = AZ::GFxFramework::EMaterialFlags::MTL_FLAG_NODRAW;
+                }
+                for (auto& nodeName : targetNodes)
+                {
+                    auto index = sceneGraph.Find(nodeName);
+                    //if we find any valid nodes add a MaterialInfo and stop.
+                    if (index.IsValid())
                     {
-                        auto index = sceneGraph.Find(nodeName);
-                        //if we find any valid nodes add a physics rule and stop.
-                        if (index.IsValid())
-                        {
-                            MaterialInfo info;
-                            info.m_name = GFxFramework::MaterialExport::g_stringPhysicsNoDraw;
-                            info.m_materialData = nullptr;
-                            info.m_usesVertexColoring = false;
-                            info.m_physicalize = true;
-                            m_materialGroup.m_materials.push_back(info);
-                            break;
-                        }
+                        MaterialInfo info;
+                        info.m_name = GFxFramework::MaterialExport::g_stringPhysicsNoDraw;
+                        info.m_materialData = nullptr;
+                        info.m_usesVertexColoring = false;
+                        info.m_physicsMaterialFlags = physicsMaterialFlags;
+                        m_materialGroup.m_materials.push_back(info);
+                        break;
                     }
                 }
 
@@ -287,7 +346,7 @@ namespace AZ
                                         info.m_name = nodeName;
                                         info.m_materialData = azrtti_cast<const DataTypes::IMaterialData*>(*it);
                                         info.m_usesVertexColoring = UsesVertexColoring(sceneNodeGroup, scene, it.GetHierarchyIterator());
-                                        info.m_physicalize = false;
+                                        info.m_physicsMaterialFlags = 0;
                                         m_materialGroup.m_materials.push_back(info);
                                     }
                                 }
@@ -337,7 +396,7 @@ namespace AZ
                                             info.m_name = nodeName;
                                             info.m_materialData = azrtti_cast<const DataTypes::IMaterialData*>(*it);
                                             info.m_usesVertexColoring = UsesVertexColoring(sceneNodeGroup, scene, it.GetHierarchyIterator());
-                                            info.m_physicalize = false;
+                                            info.m_physicsMaterialFlags = 0;
                                             m_materialGroup.m_materials.push_back(info);
                                         }
                                     }
@@ -416,8 +475,10 @@ namespace AZ
                 {
                     AZStd::shared_ptr<AZ::GFxFramework::IMaterial> mat = AZStd::make_shared<AZ::GFxFramework::Material>();
                     mat->EnableUseVertexColor(material.m_usesVertexColoring);
-                    mat->EnablePhysicalMaterial(material.m_physicalize);
-                    hasPhysicalMaterial |= material.m_physicalize;
+                    mat->SetMaterialFlags(material.m_physicsMaterialFlags);
+                    //Done this way to avoid too long of a line.
+                    hasPhysicalMaterial |= ((material.m_physicsMaterialFlags & AZ::GFxFramework::EMaterialFlags::MTL_FLAG_NODRAW) != 0);
+                    hasPhysicalMaterial |= ((material.m_physicsMaterialFlags & AZ::GFxFramework::EMaterialFlags::MTL_FLAG_NODRAW_TOUCHBENDING) != 0);
                     mat->SetName(material.m_name);
                     if (material.m_materialData)
                     {
@@ -442,22 +503,27 @@ namespace AZ
                         mat->SetOpacity(material.m_materialData->GetOpacity());
                         mat->SetShininess(material.m_materialData->GetShininess());
                     }
+
+                    mat->SetDccMaterialHash(mat->CalculateDccMaterialHash());
+
                     size_t matIndex = matGroup.FindMaterialIndex(material.m_name);
                     if (update && matIndex != GFxFramework::MaterialExport::g_materialNotFound)
                     {
                         AZStd::shared_ptr<GFxFramework::IMaterial> origMat = matGroup.GetMaterial(matIndex);
                         origMat->SetName(mat->GetName());
                         origMat->EnableUseVertexColor(mat->UseVertexColor());
-                        origMat->EnablePhysicalMaterial(mat->IsPhysicalMaterial());
+                        origMat->SetMaterialFlags(mat->GetMaterialFlags());
                         origMat->SetTexture(GFxFramework::TextureMapType::Diffuse, mat->GetTexture(GFxFramework::TextureMapType::Diffuse));
                         origMat->SetTexture(GFxFramework::TextureMapType::Specular, mat->GetTexture(GFxFramework::TextureMapType::Specular));
                         origMat->SetTexture(GFxFramework::TextureMapType::Bump, mat->GetTexture(GFxFramework::TextureMapType::Bump));
+                        origMat->SetDccMaterialHash(mat->GetDccMaterialHash());
                     }
                     //This rule could change independently of an update material flag as it is set in the advanced rule.
                     else if (matIndex != GFxFramework::MaterialExport::g_materialNotFound)
                     {
                         AZStd::shared_ptr<GFxFramework::IMaterial> origMat = matGroup.GetMaterial(matIndex);
                         origMat->EnableUseVertexColor(mat->UseVertexColor());
+                        origMat->SetDccMaterialHash(mat->GetDccMaterialHash());
                     }
                     else
                     {

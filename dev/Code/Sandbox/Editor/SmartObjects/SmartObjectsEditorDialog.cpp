@@ -90,7 +90,6 @@ CSOLibrary* CSOLibrary::m_pInstance = NULL;
 // functor used for comparing and ordering data structures by name
 template< class T >
 struct less_name
-    : public std::binary_function < const T&, const T&, bool >
 {
     bool operator() (const T& _Left, const T& _Right) const
     {
@@ -101,7 +100,6 @@ struct less_name
 // functor used for comparing and ordering data structures by name (case insensitive)
 template< class T >
 struct less_name_no_case
-    : public std::binary_function < const T&, const T&, bool >
 {
     bool operator() (const T& _Left, const T& _Right) const
     {
@@ -224,10 +222,10 @@ bool CSOLibrary::Load()
     QString smartObjectsXmlPath = Path::Make(Path::GetEditingGameDataFolder().c_str(), SMART_OBJECTS_XML);
     if (QFileInfo(smartObjectsXmlPath).exists())
     {
-        if (!LoadFromFile(smartObjectsXmlPath.toLatin1().data()))
+        if (!LoadFromFile(smartObjectsXmlPath.toUtf8().data()))
         {
             m_bLoadNeeded = true;
-            Warning("CSOLibrary::Load() failed to load from %s", smartObjectsXmlPath);
+            Warning("CSOLibrary::Load() failed to load from %s", smartObjectsXmlPath.toUtf8().constData());
             return false;
         }
         m_bSaveNeeded = false;
@@ -568,8 +566,8 @@ public:
         QString temp;
         bool result = false;
 
-        condition.sName = static_cast<QString>(sName).toLatin1().data();
-        condition.sDescription = static_cast<QString>(sDescription).toLatin1().data();
+        condition.sName = static_cast<QString>(sName).toUtf8().data();
+        condition.sDescription = static_cast<QString>(sDescription).toUtf8().data();
 
         QString newLocation;
         QString location = sFolder;
@@ -582,40 +580,40 @@ public:
         if (newLocation != condition.sFolder.c_str())
         {
             result = true;
-            condition.sFolder = newLocation.toLatin1().data();
+            condition.sFolder = newLocation.toUtf8().data();
         }
 
         condition.bEnabled = bEnabled;
         condition.iRuleType = bNavigationRule ? 1 : 0;
-        condition.sEvent = static_cast<QString>(sEvent).toLatin1().data();
-        condition.sChainedUserEvent = static_cast<QString>(sChainedUserEvent).toLatin1().data();
-        condition.sChainedObjectEvent = static_cast<QString>(sChainedObjectEvent).toLatin1().data();
+        condition.sEvent = static_cast<QString>(sEvent).toUtf8().data();
+        condition.sChainedUserEvent = static_cast<QString>(sChainedUserEvent).toUtf8().data();
+        condition.sChainedObjectEvent = static_cast<QString>(sChainedObjectEvent).toUtf8().data();
 
         QRegularExpression reg("(^[ :]+)|([ :]+$)");
 
         userClass.Get(temp);
-        condition.sUserClass = temp.remove(reg).toLatin1().data();
+        condition.sUserClass = temp.remove(reg).toUtf8().data();
         userState.Get(temp);
-        condition.sUserState = temp.toLatin1().data();
+        condition.sUserState = temp.toUtf8().data();
         userHelper.Get(temp);
         temp.remove(0, temp.lastIndexOf(':') + 1);
-        condition.sUserHelper = temp.toLatin1().data();
+        condition.sUserHelper = temp.toUtf8().data();
         condition.iMaxAlertness = iMaxAlertness;
 
         objectClass.Get(temp);
-        condition.sObjectClass = temp.remove(reg).toLatin1().data();
+        condition.sObjectClass = temp.remove(reg).toUtf8().data();
         objectState.Get(temp);
-        condition.sObjectState = temp.toLatin1().data();
+        condition.sObjectState = temp.toUtf8().data();
         objectHelper.Get(temp);
         temp.remove(0, temp.lastIndexOf(':') + 1);
-        condition.sObjectHelper = temp.toLatin1().data();
+        condition.sObjectHelper = temp.toUtf8().data();
 
         entranceHelper.Get(temp);
         temp.remove(0, temp.lastIndexOf(':') + 1);
-        condition.sEntranceHelper = temp.toLatin1().data();
+        condition.sEntranceHelper = temp.toUtf8().data();
         exitHelper.Get(temp);
         temp.remove(0, temp.lastIndexOf(':') + 1);
-        condition.sExitHelper = temp.toLatin1().data();
+        condition.sExitHelper = temp.toUtf8().data();
 
         condition.fDistanceFrom = limitsDistanceFrom;
         condition.fDistanceTo = limitsDistanceTo;
@@ -634,25 +632,25 @@ public:
 
         condition.fLookAtOnPerc = fLookAtOnPerc;
         objectPreActionState.Get(temp);
-        condition.sObjectPreActionState = temp.toLatin1().data();
+        condition.sObjectPreActionState = temp.toUtf8().data();
         userPreActionState.Get(temp);
-        condition.sUserPreActionState = temp.toLatin1().data();
+        condition.sUserPreActionState = temp.toUtf8().data();
         condition.eActionType = (EActionType) (int) actionType;
         actionName.Get(temp);
-        condition.sAction = temp.toLatin1().data();
+        condition.sAction = temp.toUtf8().data();
         objectPostActionState.Get(temp);
-        condition.sObjectPostActionState = temp.toLatin1().data();
+        condition.sObjectPostActionState = temp.toUtf8().data();
         userPostActionState.Get(temp);
-        condition.sUserPostActionState = temp.toLatin1().data();
+        condition.sUserPostActionState = temp.toUtf8().data();
 
         condition.fApproachSpeed = approachSpeed;
         condition.iApproachStance = approachStance;
         animationHelper.Get(temp);
         temp.remove(0, temp.lastIndexOf(':') + 1);
-        condition.sAnimationHelper = temp.toLatin1().data();
+        condition.sAnimationHelper = temp.toUtf8().data();
         approachHelper.Get(temp);
         temp.remove(0, temp.lastIndexOf(':') + 1);
-        condition.sApproachHelper = temp.toLatin1().data();
+        condition.sApproachHelper = temp.toUtf8().data();
         condition.fStartWidth = fStartWidth;
         condition.fDirectionTolerance = fStartDirectionTolerance;
         condition.fStartArcAngle = fStartArcAngle;
@@ -690,13 +688,13 @@ public:
         QRegularExpression reg("(^[ :]+)|([ :]+$)");
 
         QString temp = QtUtil::ToQString(condition.sUserClass);
-        userClass = temp.remove(reg).toLatin1().data();
+        userClass = temp.remove(reg).toUtf8().data();
         userState = condition.sUserState.c_str();
         userHelper = temp.isEmpty() ? "" : temp + ':' + condition.sUserHelper.c_str();
         iMaxAlertness = condition.iMaxAlertness;
 
         temp = condition.sObjectClass;
-        objectClass = temp.remove(reg).toLatin1().data();
+        objectClass = temp.remove(reg).toUtf8().data();
         objectState = condition.sObjectState.c_str();
         objectHelper = temp.isEmpty() ? "" : temp + ':' + condition.sObjectHelper.c_str();
 
@@ -951,7 +949,7 @@ private:
                     if (pParam->pVariable)
                     {
                         pParam->pVariable->SetHumanName(pParam->sCaption);
-                        pParam->pVariable->SetDescription(pParam->sHelp.toLatin1().data());
+                        pParam->pVariable->SetDescription(pParam->sHelp);
                         pParam->pVariable->SetFlags(pParam->bEditable ? 0 : IVariable::UI_DISABLED);
                         var->AddVariable(param->pVariable);
                     }
@@ -963,7 +961,7 @@ private:
                 pParam->pVariable->DeleteAllVariables();
 
                 pParam->pVariable->SetName(pParam->sName);
-                pParam->pVariable->SetDescription(pParam->sHelp.toLatin1().data());
+                pParam->pVariable->SetDescription(pParam->sHelp);
                 var->AddVariable(pParam->pVariable);
                 AddVariablesFromTemplate(pParam->pVariable, pParam->pChildren, messageBoxParent);
 
@@ -993,7 +991,7 @@ private:
                     if (pParam->pVariable)
                     {
                         pParam->pVariable->SetHumanName(pParam->sCaption);
-                        pParam->pVariable->SetDescription(pParam->sHelp.toLatin1().data());
+                        pParam->pVariable->SetDescription(pParam->sHelp);
                         pParam->pVariable->SetFlags(pParam->bEditable ? 0 : IVariable::UI_DISABLED);
                         var->AddVariable(param->pVariable);
                     }
@@ -1005,7 +1003,7 @@ private:
                 pParam->pVariable->DeleteAllVariables();
 
                 pParam->pVariable->SetName(pParam->sName);
-                pParam->pVariable->SetDescription(pParam->sHelp.toLatin1().data());
+                pParam->pVariable->SetDescription(pParam->sHelp);
                 var->AddVariable(pParam->pVariable);
                 AddVariablesFromTemplate(pParam->pVariable, pParam->pChildren, messageBoxParent);
 
@@ -1282,19 +1280,19 @@ public:
             switch (index.column())
             {
             case ColumnName:
-                if (condition->sName == value.toString().toLatin1().data())
+                if (condition->sName == value.toString().toUtf8().data())
                 {
                     return true;
                 }
-                condition->sName = value.toString().toLatin1().data();
+                condition->sName = value.toString().toUtf8().data();
                 emit dataChanged(index, index);
                 return true;
             case ColumnDescription:
-                if (condition->sDescription == value.toString().toLatin1().data())
+                if (condition->sDescription == value.toString().toUtf8().data())
                 {
                     return true;
                 }
-                condition->sDescription = value.toString().toLatin1().data();
+                condition->sDescription = value.toString().toUtf8().data();
                 emit dataChanged(index, index);
                 return true;
             }
@@ -1372,13 +1370,13 @@ public:
 
         const QByteArray d = data->data(QStringLiteral("x-application/x-smartobjects-rows"));
         QVector<int> rows(d.count() / sizeof(int));
-        std::copy(d.begin(), d.end(), reinterpret_cast<char*>(rows.data()));
+        AZStd::copy(d.begin(), d.end(), reinterpret_cast<char*>(rows.data()));
         const QString path = parent.data(Qt::UserRole).toString();
         for (auto i : rows)
         {
             const QModelIndex index = sourceModel()->index(i, 0);
             auto cond = index.data(Qt::UserRole).value<SmartObjectCondition*>();
-            cond->sFolder = path.toLatin1().data();
+            cond->sFolder = path.toUtf8().data();
             sourceModel()->setData(index, QVariant::fromValue(cond), Qt::UserRole);
         }
         return true;
@@ -1581,7 +1579,7 @@ CSmartObjectsEditorDialog::CSmartObjectsEditorDialog()
     centralWidget->layout()->addWidget(m_View);
     setCentralWidget(centralWidget);
 
-    connect(m_topLabel, &SmartObjectsEditorDialogLabel::closeRequested, [this]() {
+    connect(m_topLabel, &SmartObjectsEditorDialogLabel::closeRequested, this, [this]() {
         m_bFilterCanceled = true;
         m_bSinkNeeded = true;
     });
@@ -1591,9 +1589,6 @@ CSmartObjectsEditorDialog::CSmartObjectsEditorDialog()
     GetIEditor()->GetObjectManager()->AddObjectEventListener(functor(*this, &CSmartObjectsEditorDialog::OnObjectEvent));
     m_bSinkNeeded = true;
 
-    //! This callback will be called on response to object event.
-    typedef Functor2<CBaseObject*, int> EventCallback;
-
     OnInitDialog();
 
     m_View->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -1601,7 +1596,7 @@ CSmartObjectsEditorDialog::CSmartObjectsEditorDialog()
     connect(m_View, &QWidget::customContextMenuRequested, this, &CSmartObjectsEditorDialog::OnContextMenu);
     connect(m_View->header(), &QWidget::customContextMenuRequested, this, &CSmartObjectsEditorDialog::OnReportColumnRClick);
     connect(m_View->selectionModel(), &QItemSelectionModel::selectionChanged, this, &CSmartObjectsEditorDialog::OnReportSelChanged);
-    connect(m_View, &QAbstractItemView::clicked, [&](const QModelIndex& index) { OnReportHyperlink(index); });
+    connect(m_View, &QAbstractItemView::clicked, this, &CSmartObjectsEditorDialog::OnReportHyperlink);
     connect(m_Tree->selectionModel(), &QItemSelectionModel::currentChanged, this, &CSmartObjectsEditorDialog::OnTreeSelChanged);
 
     connect(m_Description, &QTextEdit::textChanged, this, &CSmartObjectsEditorDialog::OnDescriptionEdit);
@@ -2153,7 +2148,7 @@ void CSmartObjectsEditorDialog::ParseClassesFromProperties(CBaseObject* pObject,
                 pVariable->Get(value);
                 if (!value.isEmpty())
                 {
-                    CSOLibrary::String2Classes(value.toLatin1().data(), classes);
+                    CSOLibrary::String2Classes(value.toUtf8().data(), classes);
                 }
             }
         }
@@ -2168,7 +2163,7 @@ void CSmartObjectsEditorDialog::ParseClassesFromProperties(CBaseObject* pObject,
                 pVariable->Get(value);
                 if (!value.isEmpty())
                 {
-                    CSOLibrary::String2Classes(value.toLatin1().data(), classes);
+                    CSOLibrary::String2Classes(value.toUtf8().data(), classes);
                 }
             }
         }
@@ -2230,7 +2225,7 @@ void CSmartObjectsEditorDialog::SinkSelection()
 
             SetStrings classes;
             ParseClassesFromProperties(pSelected, classes);
-            if (classes.find(m_sEditedClass.toLatin1().data()) != classes.end())
+            if (classes.find(m_sEditedClass.toUtf8().data()) != classes.end())
             {
                 setEntities.insert(static_cast< CEntityObject* >(pSelected));
             }
@@ -2702,7 +2697,7 @@ void CSmartObjectsEditorDialog::OnAddEntry()
         "",                 //  string  sUserState;
         "",                 //  string  sUserHelper;
 
-        m_sFirstFilterClass.toLatin1().data(),//    string  sObjectClass;
+        m_sFirstFilterClass.toUtf8().data(),//    string  sObjectClass;
         "",                 //  string  sObjectState;
         "",                 //  string  sObjectHelper;
 
@@ -2755,7 +2750,7 @@ void CSmartObjectsEditorDialog::OnAddEntry()
     };
     condition.sName = dlg.item().toLocal8Bit().data();
     condition.sDescription = dlg.description().toLocal8Bit().data();
-    condition.sFolder = GetCurrentFolderPath().toLatin1().data();
+    condition.sFolder = GetCurrentFolderPath().toUtf8().data();
     condition.iOrder = INT_MAX;
 
     const MapTemplates& mapTemplates = GetIEditor()->GetAI()->GetMapTemplates();
@@ -2850,8 +2845,8 @@ void CSmartObjectsEditorDialog::OnDuplicateEntry()
         return;
     }
 
-    condition.sName = dlg.item().toLatin1().data();
-    condition.sDescription = dlg.description().toLatin1().data();
+    condition.sName = dlg.item().toUtf8().data();
+    condition.sDescription = dlg.description().toUtf8().data();
 
     m_model->addCondition(condition);
     ModifyRuleOrder(INT_MAX, order);
@@ -3164,7 +3159,7 @@ void CSmartObjectsEditorDialog::OnReportColumnRClick(const QPoint& point)
 {
     QMenu menu;
 
-    connect(menu.addAction(tr("Name/Description")), &QAction::triggered, [=]()
+    connect(menu.addAction(tr("Name/Description")), &QAction::triggered, m_View, [=]()
         {
             m_View->header()->setSectionHidden(SmartObjectsEditorModel::ColumnName, false);
             m_View->header()->setSectionHidden(SmartObjectsEditorModel::ColumnDescription, false);
@@ -3174,7 +3169,7 @@ void CSmartObjectsEditorDialog::OnReportColumnRClick(const QPoint& point)
             m_View->header()->setSectionHidden(SmartObjectsEditorModel::ColumnObjectState, true);
             m_View->header()->setSectionHidden(SmartObjectsEditorModel::ColumnAction, true);
         });
-    connect(menu.addAction(tr("Name/User/Object")), &QAction::triggered, [=]()
+    connect(menu.addAction(tr("Name/User/Object")), &QAction::triggered, m_View, [=]()
         {
             m_View->header()->setSectionHidden(SmartObjectsEditorModel::ColumnName, false);
             m_View->header()->setSectionHidden(SmartObjectsEditorModel::ColumnDescription, true);
@@ -3197,7 +3192,7 @@ void CSmartObjectsEditorDialog::OnReportColumnRClick(const QPoint& point)
             QAction* action = menu.addAction(sCaption);
             action->setCheckable(true);
             action->setChecked(!m_View->header()->isSectionHidden(i));
-            connect(action, &QAction::triggered, [=]() {m_View->header()->setSectionHidden(i, !action->isChecked()); });
+            connect(action, &QAction::triggered, this, [=]() {m_View->header()->setSectionHidden(i, !action->isChecked()); });
         }
     }
 
@@ -3299,14 +3294,14 @@ void SmartObjectsEditorModel::MoveAllRules(const QString& from, const QString& t
         SmartObjectCondition& condition = *it;
         if (from.compare(condition.sFolder.c_str(), Qt::CaseInsensitive) == 0)
         {
-            condition.sFolder = to.toLatin1().data();
+            condition.sFolder = to.toUtf8().data();
         }
         else
         {
             temp = condition.sFolder.substr(0, len).c_str();
             if (from1.compare(temp, Qt::CaseInsensitive) == 0)
             {
-                condition.sFolder = (to + QLatin1Char('/') + condition.sFolder.substr(len).c_str()).toLatin1().data();
+                condition.sFolder = (to + QLatin1Char('/') + condition.sFolder.substr(len).c_str()).toUtf8().data();
                 setData(index(i, 0), QVariant::fromValue<SmartObjectCondition*>(&(*it)), Qt::UserRole);
             }
         }
@@ -3318,7 +3313,7 @@ void CSmartObjectsEditorDialog::OnDescriptionEdit()
     QModelIndex index = m_View->currentIndex();
     index = index.sibling(index.row(), SmartObjectsEditorModel::ColumnDescription);
     m_View->model()->setData(index, m_Description->toPlainText());
-    gSmartObjectsUI.sDescription = m_Description->toPlainText().toLatin1().data();
+    gSmartObjectsUI.sDescription = m_Description->toPlainText().toUtf8().data();
 }
 
 bool CSmartObjectsEditorDialog::CheckOutLibrary()
@@ -3357,7 +3352,7 @@ bool CSOLibrary::StartEditing()
     Load();
 
     AZStd::string fullPath = Path::GetEditingGameDataFolder() + "/" + SMART_OBJECTS_XML;
-    CFileUtil::CreateDirectory(Path::GetPath(fullPath.c_str()).toLatin1().data());
+    CFileUtil::CreateDirectory(Path::GetPath(fullPath.c_str()).toUtf8().data());
     if (!CFileUtil::OverwriteFile(fullPath.c_str()))
     {
         return false;
@@ -3376,7 +3371,7 @@ bool CSOLibrary::Save()
 
     // save to SmartObjects.xml
     QString sSavePath = fullPath.c_str();
-    if (!SaveToFile(sSavePath.toLatin1().data()))
+    if (!SaveToFile(sSavePath.toUtf8().data()))
     {
         Warning("CSOLibrary::Save() failed to save in %s", SMART_OBJECTS_XML);
         return false;
@@ -3386,7 +3381,6 @@ bool CSOLibrary::Save()
 }
 
 struct less_ptr
-    : public std::binary_function < const SmartObjectCondition*, const SmartObjectCondition*, bool >
 {
     bool operator() (const SmartObjectCondition* _Left, const SmartObjectCondition* _Right) const
     {
@@ -3478,10 +3472,10 @@ bool CSOLibrary::SaveToFile(const char* sFileName)
         XmlNodeRef node(root->createNode("Class"));
         const CClassData& classData = *itClasses;
 
-        node->setAttr("name",          classData.name.toLatin1().data());
-        node->setAttr("description",   classData.description.toLatin1().data());
-        node->setAttr("location",      classData.location.toLatin1().data());
-        node->setAttr("template",      classData.templateName.toLatin1().data());
+        node->setAttr("name",          classData.name.toUtf8().data());
+        node->setAttr("description",   classData.description.toUtf8().data());
+        node->setAttr("location",      classData.location.toUtf8().data());
+        node->setAttr("template",      classData.templateName.toUtf8().data());
 
         root->addChild(node);
     }
@@ -3492,9 +3486,9 @@ bool CSOLibrary::SaveToFile(const char* sFileName)
         XmlNodeRef node(root->createNode("State"));
         const CStateData& stateData = *itStates;
 
-        node->setAttr("name",          stateData.name.toLatin1().data());
-        node->setAttr("description",   stateData.description.toLatin1().data());
-        node->setAttr("location",      stateData.location.toLatin1().data());
+        node->setAttr("name",          stateData.name.toUtf8().data());
+        node->setAttr("description",   stateData.description.toUtf8().data());
+        node->setAttr("location",      stateData.location.toUtf8().data());
 
         root->addChild(node);
     }
@@ -3505,11 +3499,11 @@ bool CSOLibrary::SaveToFile(const char* sFileName)
         XmlNodeRef node(root->createNode("Helper"));
         const CHelperData& helper = *itHelpers;
 
-        node->setAttr("className",     helper.className.toLatin1().data());
-        node->setAttr("name",          helper.name.toLatin1().data());
+        node->setAttr("className",     helper.className.toUtf8().data());
+        node->setAttr("name",          helper.name.toUtf8().data());
         node->setAttr("pos",           helper.qt.t);
         node->setAttr("rot",           helper.qt.q);
-        node->setAttr("description",   helper.description.toLatin1().data());
+        node->setAttr("description",   helper.description.toUtf8().data());
 
         root->addChild(node);
     }
@@ -3520,8 +3514,8 @@ bool CSOLibrary::SaveToFile(const char* sFileName)
         XmlNodeRef node(root->createNode("Event"));
         const CEventData& event = *it;
 
-        node->setAttr("name",          event.name.toLatin1().data());
-        node->setAttr("description",   event.description.toLatin1().data());
+        node->setAttr("name",          event.name.toUtf8().data());
+        node->setAttr("description",   event.description.toUtf8().data());
 
         root->addChild(node);
     }
@@ -3736,7 +3730,7 @@ bool CSOLibrary::LoadFromFile(const char* sFileName)
             QString name = node->getAttr("name");
             QString description = node->getAttr("description");
             QString location = node->getAttr("location");
-            AddState(name.toLatin1().data(), description.toLatin1().data(), location.toLatin1().data());
+            AddState(name.toUtf8().data(), description.toUtf8().data(), location.toUtf8().data());
         }
         else if (node->isTag("Class"))
         {
@@ -3744,7 +3738,7 @@ bool CSOLibrary::LoadFromFile(const char* sFileName)
             QString description = node->getAttr("description");
             QString location = node->getAttr("location");
             QString templateName = node->getAttr("template");
-            AddClass(name.toLatin1().data(), description.toLatin1().data(), location.toLatin1().data(), templateName.toLatin1().data());
+            AddClass(name.toUtf8().data(), description.toUtf8().data(), location.toUtf8().data(), templateName.toUtf8().data());
         }
     }
 
@@ -3958,27 +3952,27 @@ void CSmartObjectsEditorDialog::SetTemplateDefaults(SmartObjectCondition& condit
                 }
                 else if (pParam->sName == "sEvent")
                 {
-                    condition.sEvent = pParam->sValue.toLatin1().data();
+                    condition.sEvent = pParam->sValue.toUtf8().data();
                 }
                 else if (pParam->sName == "sChainedUserEvent")
                 {
-                    condition.sChainedUserEvent = pParam->sValue.toLatin1().data();
+                    condition.sChainedUserEvent = pParam->sValue.toUtf8().data();
                 }
                 else if (pParam->sName == "sChainedObjectEvent")
                 {
-                    condition.sChainedObjectEvent = pParam->sValue.toLatin1().data();
+                    condition.sChainedObjectEvent = pParam->sValue.toUtf8().data();
                 }
                 else if (pParam->sName == "userClass")
                 {
-                    condition.sUserClass = pParam->sValue.toLatin1().data();
+                    condition.sUserClass = pParam->sValue.toUtf8().data();
                 }
                 else if (pParam->sName == "userState")
                 {
-                    condition.sUserState = pParam->sValue.toLatin1().data();
+                    condition.sUserState = pParam->sValue.toUtf8().data();
                 }
                 else if (pParam->sName == "userHelper")
                 {
-                    condition.sUserHelper = pParam->sValue.toLatin1().data();
+                    condition.sUserHelper = pParam->sValue.toUtf8().data();
                 }
                 else if (pParam->sName == "iMaxAlertness")
                 {
@@ -3986,23 +3980,23 @@ void CSmartObjectsEditorDialog::SetTemplateDefaults(SmartObjectCondition& condit
                 }
                 else if (pParam->sName == "objectClass")
                 {
-                    condition.sObjectClass = pParam->sValue.toLatin1().data();
+                    condition.sObjectClass = pParam->sValue.toUtf8().data();
                 }
                 else if (pParam->sName == "objectState")
                 {
-                    condition.sObjectState = pParam->sValue.toLatin1().data();
+                    condition.sObjectState = pParam->sValue.toUtf8().data();
                 }
                 else if (pParam->sName == "objectHelper")
                 {
-                    condition.sObjectHelper = pParam->sValue.toLatin1().data();
+                    condition.sObjectHelper = pParam->sValue.toUtf8().data();
                 }
                 else if (pParam->sName == "entranceHelper")
                 {
-                    condition.sEntranceHelper = pParam->sValue.toLatin1().data();
+                    condition.sEntranceHelper = pParam->sValue.toUtf8().data();
                 }
                 else if (pParam->sName == "exitHelper")
                 {
-                    condition.sExitHelper = pParam->sValue.toLatin1().data();
+                    condition.sExitHelper = pParam->sValue.toUtf8().data();
                 }
                 else if (pParam->sName == "limitsDistanceFrom")
                 {
@@ -4058,11 +4052,11 @@ void CSmartObjectsEditorDialog::SetTemplateDefaults(SmartObjectCondition& condit
                 }
                 else if (pParam->sName == "userPreActionState")
                 {
-                    condition.sUserPreActionState = pParam->sValue.toLatin1().data();
+                    condition.sUserPreActionState = pParam->sValue.toUtf8().data();
                 }
                 else if (pParam->sName == "objectPreActionState")
                 {
-                    condition.sObjectPreActionState = pParam->sValue.toLatin1().data();
+                    condition.sObjectPreActionState = pParam->sValue.toUtf8().data();
                 }
                 else if (pParam->sName == "actionType")
                 {
@@ -4070,15 +4064,15 @@ void CSmartObjectsEditorDialog::SetTemplateDefaults(SmartObjectCondition& condit
                 }
                 else if (pParam->sName == "actionName")
                 {
-                    condition.sAction = pParam->sValue.toLatin1().data();
+                    condition.sAction = pParam->sValue.toUtf8().data();
                 }
                 else if (pParam->sName == "userPostActionState")
                 {
-                    condition.sUserPostActionState = pParam->sValue.toLatin1().data();
+                    condition.sUserPostActionState = pParam->sValue.toUtf8().data();
                 }
                 else if (pParam->sName == "objectPostActionState")
                 {
-                    condition.sObjectPostActionState = pParam->sValue.toLatin1().data();
+                    condition.sObjectPostActionState = pParam->sValue.toUtf8().data();
                 }
                 else if (pParam->sName == "approachSpeed")
                 {
@@ -4090,11 +4084,11 @@ void CSmartObjectsEditorDialog::SetTemplateDefaults(SmartObjectCondition& condit
                 }
                 else if (pParam->sName == "animationHelper")
                 {
-                    condition.sAnimationHelper = pParam->sValue.toLatin1().data();
+                    condition.sAnimationHelper = pParam->sValue.toUtf8().data();
                 }
                 else if (pParam->sName == "approachHelper")
                 {
-                    condition.sApproachHelper = pParam->sValue.toLatin1().data();
+                    condition.sApproachHelper = pParam->sValue.toUtf8().data();
                 }
                 else if (pParam->sName == "fStartRadiusTolerance")   // backward compatibility
                 {

@@ -41,8 +41,8 @@ namespace AZ
             bool UseVertexColor() const override;
             void EnableUseVertexColor(bool useVertexColor) override;
             
-            bool IsPhysicalMaterial() const override;
-            void EnablePhysicalMaterial(bool physical) override;
+            int GetMaterialFlags() const override;
+            void SetMaterialFlags(int flags) override;
 
             const AZ::Vector3& GetDiffuseColor() const override;
             const AZ::Vector3& GetSpecularColor() const override;
@@ -56,20 +56,26 @@ namespace AZ
             void SetOpacity(float opacity) override;
             void SetShininess(float shininess) override;
 
+            AZ::u32 GetDccMaterialHash() const override;
+            void SetDccMaterialHash(AZ::u32 hash) override;
+
         private:
             AZStd::string m_materialName;
             AZStd::string m_diffuseMap;
             AZStd::string m_specularMap;
             AZStd::string m_normalMap;
             AZStd::string m_empty;//dummy place holder string to kill warning
+            int m_flags;
             bool m_useVertexColor;
-            bool m_physicsMaterial;
+
 
             AZ::Vector3 m_diffuseColor;
             AZ::Vector3 m_specularColor;
             AZ::Vector3 m_emissiveColor;
             float m_opacity;
             float m_shininess;
+
+            AZ::u32 m_dccMaterialHash;
         };
 
         class MaterialGroup
@@ -100,6 +106,8 @@ namespace AZ
             bool AddMaterialNode(const IMaterial& mat);
             bool UpdateMaterialNode(const IMaterial& mat);
             void RemoveMaterialNode(const IMaterial& mat);
+
+            AZ::u32 CalculateDccMaterialHash();
 
             void CreateMtlFile();
             void UpdateMtlFile();

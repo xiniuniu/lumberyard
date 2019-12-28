@@ -1,25 +1,37 @@
+/*
+* All or portions of this file Copyright (c) Amazon.com, Inc. or its affiliates, or 
+* a third party where indicated.
+*
+* For complete copyright and license terms please see the LICENSE at the root of this
+* distribution (the "License"). All use of this software is governed by the License,  
+* or, if provided, by the license below or the license accompanying this file. Do not
+* remove or modify any license notices. This file is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  
+*
+*/
 
-#include "StdAfx.h"
+#include "CloudGemSpeechRecognition_precompiled.h"
 
 #include <AzCore/Serialization/SerializeContext.h>
 #include <AzCore/Serialization/EditContext.h>
 #include <AzCore/Component/ComponentApplicationBus.h>
-#include <base64.h>
+#include <Base64.h>
 #include <AzCore/JSON/document.h>
 
 #include "CloudGemSpeechRecognitionSystemComponent.h"
-#include "AWS/ServiceAPI/CloudGemSpeechRecognitionClientComponent.h"
+#include "AWS/ServiceApi/CloudGemSpeechRecognitionClientComponent.h"
 #include "VoiceRecorderSystemComponent.h"
 
 namespace CloudGemSpeechRecognition
 {
+
     void CloudGemSpeechRecognitionSystemComponent::Reflect(AZ::ReflectContext* context)
     {
         if (AZ::SerializeContext* serialize = azrtti_cast<AZ::SerializeContext*>(context))
         {
             serialize->Class<CloudGemSpeechRecognitionSystemComponent, AZ::Component>()
-                ->Version(0)
-                ->SerializerForEmptyClass();
+                ->Version(1)
+                ;
 
             if (AZ::EditContext* ec = serialize->GetEditContext())
             {
@@ -34,9 +46,10 @@ namespace CloudGemSpeechRecognition
         AZ::BehaviorContext* bc = azrtti_cast<AZ::BehaviorContext*>(context);
         if (bc)
         {
-            bc->Class<CloudGemSpeechRecognitionSystemComponent>()
-                ->Method("BeginSpeechCapture", &CloudGemSpeechRecognitionSystemComponent::BeginSpeechCapture)
-                ->Method("EndSpeechCaptureAndCallBot", &CloudGemSpeechRecognitionSystemComponent::EndSpeechCaptureAndCallBot)
+            bc->EBus<SpeechRecognitionRequestBus>("CloudGemSpeechRecoginition", "SpeechRecognitionRequestBus")
+                ->Attribute(AZ::Script::Attributes::Category, "Cloud Gem")
+                ->Event("BeginSpeechCapture", &SpeechRecognitionRequestBus::Events::BeginSpeechCapture)
+                ->Event("EndSpeechCaptureAndCallBot", &SpeechRecognitionRequestBus::Events::EndSpeechCaptureAndCallBot)
                 ;
         }
     }
@@ -58,12 +71,12 @@ namespace CloudGemSpeechRecognition
     void CloudGemSpeechRecognitionSystemComponent::Activate()
     {
         EBUS_EVENT(AZ::ComponentApplicationBus, RegisterComponentDescriptor, CloudGemSpeechRecognition::ServiceAPI::CloudGemSpeechRecognitionClientComponent::CreateDescriptor());
-        CloudGemSpeechRecognitionRequestBus::Handler::BusConnect();
+        SpeechRecognitionRequestBus::Handler::BusConnect();
     }
 
     void CloudGemSpeechRecognitionSystemComponent::Deactivate()
     {
-        CloudGemSpeechRecognitionRequestBus::Handler::BusDisconnect();
+        SpeechRecognitionRequestBus::Handler::BusDisconnect();
     }
 
 

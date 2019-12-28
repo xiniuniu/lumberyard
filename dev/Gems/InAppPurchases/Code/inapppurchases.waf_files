@@ -1,8 +1,8 @@
 {
     "none": {
         "Root": [
-            "Source/StdAfx.cpp",
-            "Source/StdAfx.h"
+            "Source/InAppPurchases_precompiled.cpp",
+            "Source/InAppPurchases_precompiled.h"
         ]
     },
     "auto": {
@@ -13,6 +13,7 @@
         ],
         "Implementation": [
             "Source/InAppPurchasesModule.cpp",
+            "Source/InAppPurchasesSystemComponent.cpp",
             "Source/InAppPurchasesInterface.cpp",
             "Source/InAppPurchasesFlowNodes.cpp"
         ]

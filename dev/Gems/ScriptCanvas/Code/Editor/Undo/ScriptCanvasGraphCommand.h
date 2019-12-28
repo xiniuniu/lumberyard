@@ -46,9 +46,9 @@ namespace ScriptCanvasEditor
         void Undo() override;
         void Redo() override;
 
-        bool Changed() const override { return m_undoState != m_redoState;  }
-
         virtual void Capture(AZ::Entity* scriptCanvasEntity, bool captureUndo);
+
+        bool Changed() const override;
 
     protected:
         GraphItemCommand(const GraphItemCommand&) = delete;
@@ -56,7 +56,8 @@ namespace ScriptCanvasEditor
 
         virtual void RestoreItem(const AZStd::vector<AZ::u8>& restoreBuffer);
 
-        AZ::EntityId m_scriptCanvasEntityId; ///< The id of the ScriptCanvas Entity with the Script Canvas Graph and Graph Canvas Scene
+        AZ::EntityId m_graphCanvasGraphId;
+        AZ::EntityId m_scriptCanvasGraphId; ///< The id of the ScriptCanvas Entity with the Script Canvas Graph and Graph Canvas Scene
         AZStd::vector<AZ::u8> m_undoState;
         AZStd::vector<AZ::u8> m_redoState;
     };

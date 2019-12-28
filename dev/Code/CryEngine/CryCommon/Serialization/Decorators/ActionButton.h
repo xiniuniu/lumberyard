@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include <BoostHelpers.h>
+#include <SmartPointersHelpers.h>
 #include <Serialization/IArchive.h>
 #include <functor.h>
 
@@ -21,7 +21,7 @@ namespace Serialization
 {
     struct IActionButton;
 
-    DECLARE_BOOST_POINTERS(IActionButton)
+    DECLARE_SMART_POINTERS(IActionButton)
 
     struct IActionButton
     {

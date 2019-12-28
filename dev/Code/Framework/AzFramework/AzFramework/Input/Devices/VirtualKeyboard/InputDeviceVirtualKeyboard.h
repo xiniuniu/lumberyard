@@ -61,6 +61,14 @@ namespace AzFramework
         AZ_CLASS_ALLOCATOR(InputDeviceVirtualKeyboard, AZ::SystemAllocator, 0);
 
         ////////////////////////////////////////////////////////////////////////////////////////////
+        // Type Info
+        AZ_RTTI(InputDeviceVirtualKeyboard, "{85BA81F4-EB74-4CFB-8504-DD8C555D8D79}", InputDevice);
+
+        ////////////////////////////////////////////////////////////////////////////////////////////
+        // Reflection
+        static void Reflect(AZ::ReflectContext* context);
+
+        ////////////////////////////////////////////////////////////////////////////////////////////
         //! Constructor
         InputDeviceVirtualKeyboard();
 

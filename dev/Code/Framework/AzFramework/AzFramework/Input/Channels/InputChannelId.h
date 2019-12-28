@@ -13,6 +13,7 @@
 #pragma once
 
 #include <AzCore/Math/Crc.h>
+#include <AzCore/RTTI/ReflectContext.h>
 #include <AzCore/std/hash.h>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -24,13 +25,36 @@ namespace AzFramework
     {
     public:
         ////////////////////////////////////////////////////////////////////////////////////////////
+        // Constants
+        static const int NAME_BUFFER_SIZE = 64;
+        static const int MAX_NAME_LENGTH = NAME_BUFFER_SIZE - 1;
+
+        ////////////////////////////////////////////////////////////////////////////////////////////
+        // Allocator
+        AZ_CLASS_ALLOCATOR(InputChannelId, AZ::SystemAllocator, 0);
+
+        ////////////////////////////////////////////////////////////////////////////////////////////
+        // Type Info
+        AZ_TYPE_INFO(InputChannelId, "{7004B466-F6B4-41EF-AFFD-96A456121271}");
+
+        ////////////////////////////////////////////////////////////////////////////////////////////
+        // Reflection
+        static void Reflect(AZ::ReflectContext* context);
+
+        ////////////////////////////////////////////////////////////////////////////////////////////
         //! Constructor
-        //! \param[in] name Name of the input channel
+        //! \param[in] name Name of the input channel (will be truncated if exceeds MAX_NAME_LENGTH)
         explicit InputChannelId(const char* name = "");
 
         ////////////////////////////////////////////////////////////////////////////////////////////
-        // Default copying
-        AZ_DEFAULT_COPY(InputChannelId);
+        //! Copy constructor
+        //! \param[in] other Another instance of the class to copy from
+        InputChannelId(const InputChannelId& other);
+
+        ////////////////////////////////////////////////////////////////////////////////////////////
+        //! Copy assignment operator
+        //! \param[in] other Another instance of the class to copy from
+        InputChannelId& operator=(const InputChannelId& other);
 
         ////////////////////////////////////////////////////////////////////////////////////////////
         //! Default destructor
@@ -57,8 +81,8 @@ namespace AzFramework
     private:
         ////////////////////////////////////////////////////////////////////////////////////////////
         // Variables
-        const char* m_name;  //!< Name of the input channel
-        AZ::Crc32   m_crc32; //!< Crc32 of the input channel
+        char      m_name[NAME_BUFFER_SIZE]; //!< Name of the input channel
+        AZ::Crc32 m_crc32;                  //!< Crc32 of the input channel
     };
 } // namespace AzFramework
 

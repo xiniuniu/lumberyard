@@ -397,7 +397,7 @@ XmlNodeRef CCloudGroup::GenerateXml()
 
     if (GetMaterial())
     {
-        xml->setAttr("Material", GetMaterial()->GetName().toLatin1().data());
+        xml->setAttr("Material", GetMaterial()->GetName().toUtf8().data());
     }
 
     for (int i = 0; i < nNumCloudSprites; ++i)
@@ -506,7 +506,7 @@ void CCloudGroup::Export()
 
     if (CFileUtil::OverwriteFile(m_exportFile))
     {
-        XmlHelpers::SaveXmlNode(GetIEditor()->GetFileUtil(), xml, m_exportFile.toLatin1().data());
+        XmlHelpers::SaveXmlNode(GetIEditor()->GetFileUtil(), xml, m_exportFile.toUtf8().data());
     }
     else
     {
@@ -598,7 +598,7 @@ void CCloudGroup::Serialize(CObjectArchive& ar)
             ar.node->getAttr("ExportFile", m_exportFile);
 
             ReleaseCloudSprites();
-            XmlNodeRef xml = GetIEditor()->GetSystem()->LoadXmlFromFile(m_exportFile.toLatin1().data());
+            XmlNodeRef xml = GetIEditor()->GetSystem()->LoadXmlFromFile(m_exportFile.toUtf8().data());
 
             if (xml)
             {
@@ -626,7 +626,7 @@ void CCloudGroup::Serialize(CObjectArchive& ar)
         }
         else
         {
-            ar.node->setAttr("ExportFile", m_exportFile.toLatin1().data());
+            ar.node->setAttr("ExportFile", m_exportFile.toUtf8().data());
         }
     }
 }
@@ -641,7 +641,7 @@ void CCloudGroup::BrowseFile()
 
     if (!m_exportFile.isEmpty())
     {
-        strcpy(path, m_exportFile.toLatin1().data());
+        azstrcpy(path, AZ_ARRAY_SIZE(path), m_exportFile.toUtf8().data());
         char* ch1 = strrchr(path, '/');
         char* ch2 = strrchr(path, '\\');
         if (ch2 > ch1)
@@ -661,7 +661,7 @@ void CCloudGroup::BrowseFile()
 
     if (!(*path))
     {
-        strcpy(path, Path::GamePathToFullPath("Libs/Clouds/").toLatin1().data());
+        azstrcpy(path, AZ_ARRAY_SIZE(path), Path::GamePathToFullPath("Libs/Clouds/").toUtf8().data());
     }
 
     if (CFileUtil::SelectSaveFile("Clouds (*.xml)", "xml", path, fileName))
@@ -705,7 +705,7 @@ void CCloudGroup::Import()
 bool CCloudGroup::ImportExportFolder(const QString& fileName)
 {
     char path[MAX_PATH];
-    strcpy(path, fileName.toLatin1().data());
+    azstrcpy(path, AZ_ARRAY_SIZE(path), fileName.toUtf8().data());
     char* ch1 = strrchr(path, '\\');
     char* ch2 = strrchr(path, '/');
     if (ch2 > ch1)
@@ -716,13 +716,13 @@ bool CCloudGroup::ImportExportFolder(const QString& fileName)
     {
         char folder[MAX_PATH];
         *(ch1 + 1) = 0;
-        strcpy(folder, path);
+        azstrcpy(folder, AZ_ARRAY_SIZE(folder), path);
         
         QDirIterator dirIterator(QString::fromLatin1(path), {"*.cld"}, QDir::Files, QDirIterator::NoIteratorFlags);
         while (dirIterator.hasNext())
         {
             QFileInfo fileInfo(dirIterator.next());
-            strcpy(path, fileInfo.fileName().toLatin1().data());
+            azstrcpy(path, AZ_ARRAY_SIZE(path), fileInfo.fileName().toUtf8().data());
             char* ch1 = strrchr(path, '.');
             if (ch1)
             {
@@ -731,7 +731,7 @@ bool CCloudGroup::ImportExportFolder(const QString& fileName)
                     QString file = folder;
                     file += fileInfo.fileName();
                     ImportFS(file);
-                    strcpy(ch1, ".xml");
+                    azstrcpy(ch1, AZ_ARRAY_SIZE(ch1), ".xml");
                     m_exportFile = folder;
                     m_exportFile += path;
                     Export();
@@ -752,7 +752,7 @@ bool CCloudGroup::ImportFS(const QString& name)
     ISystem* iSystem = GetIEditor()->GetSystem();
     //return false;
     uint32 i;
-    AZ::IO::HandleType fileHandle = iSystem->GetIPak()->FOpen(name.toLatin1().data(), "rb");
+    AZ::IO::HandleType fileHandle = iSystem->GetIPak()->FOpen(name.toUtf8().data(), "rb");
     if (fileHandle == AZ::IO::InvalidHandle)
     {
         return false;

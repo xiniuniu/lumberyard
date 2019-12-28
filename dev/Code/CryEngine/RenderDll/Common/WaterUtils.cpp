@@ -14,8 +14,25 @@
 #include "StdAfx.h"
 
 
+#if defined(AZ_RESTRICTED_PLATFORM)
+#undef AZ_RESTRICTED_SECTION
+#define WATERUTILS_CPP_SECTION_1 1
+#define WATERUTILS_CPP_SECTION_2 2
+#endif
+
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION WATERUTILS_CPP_SECTION_1
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/WaterUtils_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/WaterUtils_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/WaterUtils_cpp_salem.inl"
+    #endif
+#endif
+
 #include <complex>
-#include <IJobManager_JobDelegator.h>
+#include <AzCore/Jobs/LegacyJobExecutor.h>
 
 #define WATER_UPDATE_THREAD_NAME "WaterUpdate"
 
@@ -41,9 +58,6 @@ struct SWaterUpdateThreadInfo
     float fTime;
     bool bOnlyHeight;
 };
-
-void WaterAsyncUpdate(CWaterSim*, int, float, bool, void*);
-DECLARE_JOB("WaterUpdate", TWaterUpdateJob, WaterAsyncUpdate);
 
 class CWaterSim
 {
@@ -74,8 +88,6 @@ public:
 
         m_nWorkerThreadID = m_nFillThreadID = 0;
         m_bQuit = false;
-
-        memset(&m_JobState, 0, sizeof(m_JobState));
     }
 
     virtual ~CWaterSim()
@@ -446,6 +458,16 @@ public:
                 float fAngularFreq = pK.w * fTime; //GetTermAngularFreq(fKLen)
 
                 float fAngularFreqSin = 0, fAngularFreqCos = 0;
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION WATERUTILS_CPP_SECTION_2
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/WaterUtils_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/WaterUtils_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/WaterUtils_cpp_salem.inl"
+    #endif
+#endif
                 sincos_tpl((f32)fAngularFreq, (f32*) &fAngularFreqSin, (f32*)&fAngularFreqCos);
 
                 complexF ep(fAngularFreqCos, fAngularFreqSin);
@@ -510,6 +532,8 @@ public:
 
     void Update(int nFrameID, float fTime, bool bOnlyHeight)
     {
+        AZ_PROFILE_FUNCTION(AZ::Debug::ProfileCategory::Renderer);
+
         CRenderer* rd = gRenDev;
 
         m_nFillThreadID = m_nWorkerThreadID = 0;
@@ -555,7 +579,7 @@ public:
         pSizer->AddObject(this, sizeof(*this));
     }
 
-    void SpawnUpdateJob(int nFrameID, float fTime, bool bOnlyHeight, void* pRawPtr)
+    void SpawnUpdateJob(int nFrameID, float fTime, bool bOnlyHeight, void*)
     {
         if (nFrameID != m_nFrameID)
         {
@@ -567,14 +591,18 @@ public:
         }
 
         WaitForJob();
-        TWaterUpdateJob job(this, nFrameID, fTime, bOnlyHeight, pRawPtr);
-        job.RegisterJobState(&m_JobState);
-        job.Run();
+        m_jobExecutor.Reset();
+        m_jobExecutor.StartJob(
+            [this, nFrameID, fTime, bOnlyHeight]()
+            {
+                this->Update(nFrameID, fTime, bOnlyHeight);
+            }
+        );
     }
 
     void WaitForJob()
     {
-        gEnv->GetJobManager()->WaitForJob(m_JobState);
+        m_jobExecutor.WaitForCompletion();
     }
 
 protected:
@@ -606,27 +634,15 @@ protected:
     float m_fMaxWaveSize;
     float m_fChoppyWaveScale;
 
-    JobManager::SJobState m_JobState;
-    SWaterUpdateThreadInfo m_JobInfo[2];
+    AZ::LegacyJobExecutor m_jobExecutor;
 } _ALIGN(128);
 
-
-void WaterAsyncUpdate(CWaterSim* pWaterSim, int nFrameID, float fTime, bool bOnlyHeight, void* pRawPtr)
-{
-    if (pWaterSim == NULL)
-    {
-        return;
-    }
-
-    pWaterSim->Update(nFrameID, fTime, bOnlyHeight);
-}
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void CWater::Create(float fA, float fWorldSizeX, float fWorldSizeY)
 {
-    MEMSTAT_CONTEXT(EMemStatContextTypes::MSC_Other, 0, "Water Sim");
     Release();
     m_pWaterSim = CryAlignedNew<CWaterSim>(); //::GetInstance();
     m_pWaterSim->Create(fA, fWorldSizeX, fWorldSizeY);

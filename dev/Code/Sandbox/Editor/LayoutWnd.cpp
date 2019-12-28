@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "LayoutWnd.h"
 #include "ViewPane.h"
 #include "QtViewPaneManager.h"
@@ -21,6 +21,8 @@
 #include <QApplication>
 #include <QSettings>
 #include <QMessageBox>
+
+#include <QToolBar>
 
 class CLayoutSplitterHandle
     : public QSplitterHandle
@@ -77,6 +79,7 @@ void CLayoutSplitter::CreateLayoutView(int row, int col, int id)
     assert(row >= 0 && row < 3);
     assert(col >= 0 && col < 3);
     CLayoutViewPane* viewPane = new CLayoutViewPane(this);
+    viewPane->setWindowFlags(Qt::Widget);
     insertWidget(orientation() == Qt::Horizontal ? col : row, viewPane);
     viewPane->SetId(id);
 }
@@ -196,8 +199,7 @@ void CLayoutWnd::MaximizeViewport(int paneId)
 
             if (pViewPane)
             {
-                BindViewport(m_maximizedView, viewClass, pViewPane->GetViewport());
-                pViewPane->DetachViewport();
+                MoveViewport(pViewPane, m_maximizedView, viewClass);
             }
             else
             {
@@ -219,9 +221,7 @@ void CLayoutWnd::MaximizeViewport(int paneId)
 
         if (pViewPane && m_maximizedView)
         {
-            // Bind viewport back.
-            BindViewport(pViewPane, viewClass, m_maximizedView->GetViewport());
-            m_maximizedView->DetachViewport();
+            MoveViewport(m_maximizedView, pViewPane, viewClass);
         }
 
         if (m_maximizedView)
@@ -664,6 +664,15 @@ void CLayoutWnd::FocusFirstLayoutViewPane(CLayoutSplitter* splitter)
             MainWindow::instance()->SetActiveView(view);
         }
     }
+}
+
+void CLayoutWnd::MoveViewport(CLayoutViewPane* from, CLayoutViewPane* to, const QString& viewClassName)
+{
+    // First detach from old pane, allowing the viewport to be disconnected from the event bus
+    // This must be done before re-binding the viewport and connecting to the bus with a new id
+    auto viewport = from->GetViewport();
+    from->DetachViewport();
+    BindViewport(to, viewClassName, viewport);
 }
 
 static CLayoutViewPane* layoutViewPaneForChild(QObject* child)

@@ -14,21 +14,36 @@
 // Description : to get some defines available in every CryEngine project
 
 
-#ifndef CRYINCLUDE_CRYCOMMON_PROJECTDEFINES_H
-#define CRYINCLUDE_CRYCOMMON_PROJECTDEFINES_H
 #pragma once
 
 
 #include "BaseTypes.h"
+#include <AzCore/PlatformDef.h>
 
 #if defined(_RELEASE) && !defined(RELEASE)
     #define RELEASE
 #endif
 
-#if   defined(WIN32) || defined(WIN64)
-#   if !defined(_RELEASE) || defined(PERFORMANCE_BUILD)
-#       define ENABLE_STATS_AGENT
-#   endif
+// Section dictionary
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define PROJECTDEFINES_H_SECTION_STATS_AGENT 1
+#define PROJECTDEFINES_H_SECTION_TRAITS 2
+#define PROJECTDEFINES_H_SECTION_VTX_IDX 3
+#endif
+
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION PROJECTDEFINES_H_SECTION_STATS_AGENT
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/ProjectDefines_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/ProjectDefines_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/ProjectDefines_h_salem.inl"
+    #endif
+#elif defined(WIN32) || defined(WIN64)
+#if !defined(_RELEASE) || defined(PERFORMANCE_BUILD)
+#define ENABLE_STATS_AGENT
+#endif
 #endif
 
 #define USE_STEAM 0 // Enable this to start using Steam
@@ -41,8 +56,22 @@
 // WARNING: If you change this typedef, you need to update AssetProcessorPlatformConfig.ini to convert cgf and abc files to the proper index format.
 #if defined(RESOURCE_COMPILER)
 typedef uint32 vtx_idx;
+#define AZ_RESTRICTED_SECTION_IMPLEMENTED
 #elif defined(MOBILE)
 typedef uint16 vtx_idx;
+#define AZ_RESTRICTED_SECTION_IMPLEMENTED
+#elif defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION PROJECTDEFINES_H_SECTION_VTX_IDX
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/ProjectDefines_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/ProjectDefines_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/ProjectDefines_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#undef AZ_RESTRICTED_SECTION_IMPLEMENTED
 #else
 // Uncomment one of the two following typedefs:
 typedef uint32 vtx_idx;
@@ -53,9 +82,6 @@ typedef uint32 vtx_idx;
 // see http://wiki/bin/view/CryEngine/TerrainTexCompression for more details on this
 // 0=off, 1=on
 #define TERRAIN_USE_CIE_COLORSPACE 0
-
-// for consoles every bit of memory is important so files for documentation purpose are excluded
-// they are part of regular compiling to verify the interface
 
 // When non-zero, const cvar accesses (by name) are logged in release-mode on consoles.
 // This can be used to find non-optimal usage scenario's, where the constant should be used directly instead.
@@ -84,23 +110,37 @@ typedef uint32 vtx_idx;
     #define USE_HTTP_WEBSOCKETS 0
 #endif
 
-#if !defined(RESOURCE_COMPILER)
-    #if defined(WIN32)
-        #define CAPTURE_REPLAY_LOG 1
+
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION PROJECTDEFINES_H_SECTION_TRAITS
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/ProjectDefines_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/ProjectDefines_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/ProjectDefines_h_salem.inl"
     #endif
+#else
+#define PROJECTDEFINES_H_TRAIT_DISABLE_MONOLITHIC_PROFILING_MARKERS 1
+#if !defined(LINUX) && !defined(APPLE)
+#define PROJECTDEFINES_H_TRAIT_ENABLE_SOFTCODE_SYSTEM 1
+#endif
+#if defined(WIN32) || defined(WIN64) || defined(LINUX) || defined(APPLE)
+#define PROJECTDEFINES_H_TRAIT_USE_GPU_PARTICLES 1
+#endif
+#define PROJECTDEFINES_H_TRAIT_USE_MESH_TESSELLATION 1
+#if defined(WIN32)
+#define PROJECTDEFINES_H_TRAIT_USE_SVO_GI 1
+#endif
+#if defined(APPLE) || defined(LINUX)
+#define AZ_LEGACY_CRYCOMMON_TRAIT_USE_PTHREADS 1
+#define AZ_LEGACY_CRYCOMMON_TRAIT_USE_UNIX_PATHS 1
+#endif
+#define SUPPORT_RSA_AND_STREAMCIPHER_PAK_ENCRYPTION     //C3/Warface Style - By Timur Davidenko and integrated by Rob Jessop
+#define SUPPORT_RSA_PAK_SIGNING                                             //RSA signature verification
 #endif
 
-#if defined(RESOURCE_COMPILER) || defined(_RELEASE)
-  #undef CAPTURE_REPLAY_LOG
-#endif
-
-#ifndef CAPTURE_REPLAY_LOG
-  #define CAPTURE_REPLAY_LOG 0
-#endif
-
-#if (defined(LINUX) || defined(ANDROID) || defined(APPLE) ||  defined(WIN32) || defined(DURANGO) || defined(ORBIS)) // ACCEPTED_USE
-    #define USE_GLOBAL_BUCKET_ALLOCATOR
-#endif
+#define USE_GLOBAL_BUCKET_ALLOCATOR
 
 #ifdef IS_PROSDK
 #   define USING_TAGES_SECURITY                 // Wrapper for TGVM security
@@ -128,23 +168,11 @@ typedef uint32 vtx_idx;
 # define PHYSICS_STACK_SIZE (128U << 10)
 #endif
 
-#if !defined(USE_LEVEL_HEAP)
-#define USE_LEVEL_HEAP 0
-#endif
-
-#if USE_LEVEL_HEAP && !defined(_RELEASE)
-#define TRACK_LEVEL_HEAP_USAGE 1
-#endif
-
-#ifndef TRACK_LEVEL_HEAP_USAGE
-#define TRACK_LEVEL_HEAP_USAGE 0
-#endif
-
 #if (!defined(_RELEASE) || defined(PERFORMANCE_BUILD)) && !defined(RESOURCE_COMPILER)
 #ifndef ENABLE_PROFILING_CODE
     #define ENABLE_PROFILING_CODE
 #endif
-#if !(defined(SANDBOX_EXPORTS) || defined(PLUGIN_EXPORTS) || (defined(AZ_MONOLITHIC_BUILD) && !defined(__ORBIS__))) // ACCEPTED_USE
+#if !(defined(SANDBOX_EXPORTS) || defined(PLUGIN_EXPORTS) || (defined(AZ_MONOLITHIC_BUILD) && PROJECTDEFINES_H_TRAIT_DISABLE_MONOLITHIC_PROFILING_MARKERS))
     #define ENABLE_PROFILING_MARKERS
 #endif
 
@@ -181,17 +209,17 @@ typedef uint32 vtx_idx;
 #endif
 
 // Reflect texture slot information - only used in the editor
-#if defined(WIN32) || defined(WIN64)
+#if defined(WIN32) || defined(WIN64) || defined(AZ_PLATFORM_MAC)
 #define SHADER_REFLECT_TEXTURE_SLOTS 1
 #else
 #define SHADER_REFLECT_TEXTURE_SLOTS 0
 #endif
 
-#if (defined(WIN32) || defined(WIN64) || defined(AZ_PLATFORM_APPLE_OSX)) && (!defined(_RELEASE) || defined(RESOURCE_COMPILER))
+#if (defined(WIN32) || defined(WIN64) || defined(AZ_PLATFORM_MAC)) && (!defined(_RELEASE) || defined(RESOURCE_COMPILER))
 #define CRY_ENABLE_RC_HELPER 1
 #endif
 
-#if !defined(_RELEASE) && !defined(LINUX) && !defined(APPLE) && !defined(DURANGO) && !defined(ORBIS) // ACCEPTED_USE
+#if !defined(_RELEASE) && PROJECTDEFINES_H_TRAIT_ENABLE_SOFTCODE_SYSTEM
     #define SOFTCODE_SYSTEM_ENABLED
 #endif
 
@@ -249,10 +277,12 @@ typedef uint32 vtx_idx;
         #define WATER_TESSELLATION
         #define PARTICLES_TESSELLATION
 
+        #if PROJECTDEFINES_H_TRAIT_USE_MESH_TESSELLATION
 // Mesh tessellation (displacement, smoothing, subd)
             #define MESH_TESSELLATION
 // Mesh tessellation also in motion blur passes
             #define MOTIONBLUR_TESSELLATION
+        #endif
 
 // Dependencies
         #ifdef MESH_TESSELLATION
@@ -286,9 +316,8 @@ typedef uint32 vtx_idx;
 // Modules   : Renderer, Engine
 // Platform  : DX11
 #if !defined(RENDERNODES_LEAN_AND_MEAN)
-    #if defined(WIN32)
-        #define FEATURE_SVO_GI // Separated for ease of scrubbing and validation
-        #define FEATURE_SVO_GI_ALLOW_HQ
+    #if PROJECTDEFINES_H_TRAIT_USE_SVO_GI
+        #define FEATURE_SVO_GI
     #endif
 #endif
 
@@ -297,10 +326,9 @@ typedef uint32 vtx_idx;
 #   define ENABLE_LOADING_PROFILER
 #endif
 
-
 #include "ProjectDefinesInclude.h"
 
-#if defined(SOFTCODE_ENABLED) && defined(NOT_USE_CRY_MEMORY_MANAGER)
+#if defined(SOFTCODE_ENABLED)
     #error "SoftCode currently relies on CryMemoryManager being enabled. Either build without SoftCode support, or enable CryMemoryManager."
 #endif
 
@@ -314,18 +342,14 @@ typedef uint32 vtx_idx;
 
 //#define SUPPORT_XTEA_PAK_ENCRYPTION                                       //C2 Style. Compromised - do not use
 //#define SUPPORT_STREAMCIPHER_PAK_ENCRYPTION                       //C2 DLC Style - by Mark Tully
-#define SUPPORT_RSA_AND_STREAMCIPHER_PAK_ENCRYPTION     //C3/Warface Style - By Timur Davidenko and integrated by Rob Jessop
 #if !defined(_RELEASE) || defined(PERFORMANCE_BUILD)
 #define SUPPORT_UNSIGNED_PAKS                                                   //Enable to load paks that aren't RSA signed
 #endif //!_RELEASE || PERFORMANCE_BUILD
-#define SUPPORT_RSA_PAK_SIGNING                                             //RSA signature verification
 
-// Disabled - needs fixing with April XDK
-
-#if (defined(WIN32) || defined(WIN64) || defined(LINUX) || defined(APPLE) || defined(ORBIS)) && !defined(NULL_RENDERER) // ACCEPTED_USE
-#define GPU_PARTICLES 1
+#if PROJECTDEFINES_H_TRAIT_USE_GPU_PARTICLES && !defined(NULL_RENDERER)
+    #define GPU_PARTICLES 1
 #else
-#define GPU_PARTICLES 0
+    #define GPU_PARTICLES 0
 #endif
 
 #if defined(SUPPORT_RSA_AND_STREAMCIPHER_PAK_ENCRYPTION) || defined(SUPPORT_RSA_PAK_SIGNING)
@@ -351,5 +375,3 @@ typedef uint32 vtx_idx;
 
 // The maximum number of joints in an animation
 #define MAX_JOINT_AMOUNT 1024
-
-#endif // CRYINCLUDE_CRYCOMMON_PROJECTDEFINES_H

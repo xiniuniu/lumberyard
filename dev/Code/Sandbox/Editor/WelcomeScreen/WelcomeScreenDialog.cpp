@@ -17,11 +17,12 @@
 #include <WelcomeScreen/ui_WelcomeScreenDialog.h>
 #include "LevelFileDialog.h"
 
-#include <qstringlistmodel.h>
-#include <qlistview.h>
-#include <qtooltip.h>
-#include <qmenu.h>
+#include <QStringListModel>
+#include <QListView>
+#include <QToolTip>
+#include <QMenu>
 #include <QDesktopServices>
+#include <QFileDialog>
 #include <QUrl>
 #include <QTimer>
 #include <QMessageBox>
@@ -57,11 +58,7 @@ static int GetSmallestScreenHeight()
 }
 
 WelcomeScreenDialog::WelcomeScreenDialog(QWidget* pParent)
-#ifdef Q_OS_WIN
     : QDialog(new WindowDecorationWrapper(WindowDecorationWrapper::OptionAutoAttach | WindowDecorationWrapper::OptionAutoTitleBarButtons, pParent), Qt::Dialog | Qt::CustomizeWindowHint | Qt::WindowCloseButtonHint | Qt::WindowTitleHint)
-#else
-    : QDialog(pParent, Qt::Dialog | Qt::CustomizeWindowHint | Qt::WindowCloseButtonHint | Qt::WindowTitleHint)
-#endif
     , ui(new Ui::WelcomeScreenDialog)
     , m_pRecentListModel(new QStringListModel(this))
     , m_pRecentList(nullptr)
@@ -87,33 +84,29 @@ WelcomeScreenDialog::WelcomeScreenDialog(QWidget* pParent)
         auto switchProjAction = currentProjectButtonMenu->addAction("Switch project...");
         auto openSAAction = currentProjectButtonMenu->addAction("Setup Assistant...");
 
-        QObject::connect(switchProjAction, &QAction::triggered, [this] {
+        QObject::connect(switchProjAction, &QAction::triggered, this, [this] {
             // close this dialog first before attempting to close the editor
             CCryEditApp* cryEdit = CCryEditApp::instance();
-            const char * closeMsg = "You must use the Project Configurator to set a new default project. \nDo you want to save your changes and close the editor before continuing to the Project Configurator?";
-            if (cryEdit->ToExternalToolPrompt(closeMsg, "Editor"))
+            if (cryEdit->OpenProjectConfiguratorSwitchProject())
             {
                 // close the dialog box before closing the editor
                 accept();
-                if (cryEdit->ToExternalToolSave() && cryEdit->OpenProjectConfigurator("Project Selection"))
-                {
-                    // close the window at the end of the qt event loop
-                    QTimer::singleShot(0, []() {MainWindow::instance()->close(); });
-                }
 
                 SendMetricsEvent("SwitchProjectButtonClicked");
             }
         });
 
-        QObject::connect(openSAAction, &QAction::triggered, [this] {
+        QObject::connect(openSAAction, &QAction::triggered, this, [this] {
             // close this dialog first before attempting to close the editor
             CCryEditApp* cryEdit = CCryEditApp::instance();
-            const char * closeMsg = "You must close the Editor before opening Setup Assistant. \nDo you want to save your changes?";
+
+            const QString closeMsg = tr(
+                "You must close the Editor before opening Setup Assistant.\nDo you want to close the editor before continuing to the Setup Assistant?");
             if (cryEdit->ToExternalToolPrompt(closeMsg, "Editor"))
             {
                 // close the dialog box before closing the editor
                 accept();
-                if (cryEdit->ToExternalToolSave() && cryEdit->OpenSetupAssistant())
+                if (cryEdit->OpenSetupAssistant())
                 {
                     // close the window at the end of the qt event loop
                     QTimer::singleShot(0, []() {MainWindow::instance()->close(); });
@@ -126,6 +119,7 @@ WelcomeScreenDialog::WelcomeScreenDialog(QWidget* pParent)
 
     ui->currentProjectButton->setMenu(currentProjectButtonMenu);
     ui->currentProjectButton->setText(gEnv->pConsole->GetCVar("sys_game_folder")->GetString());
+    ui->currentProjectButton->adjustSize();
     ui->currentProjectButton->setMinimumWidth(ui->currentProjectButton->width() + 40);
 
     ui->documentationLink->setCursor(Qt::PointingHandCursor);
@@ -138,6 +132,10 @@ WelcomeScreenDialog::WelcomeScreenDialog(QWidget* pParent)
 
     connect(ui->newLevelButton, &QPushButton::clicked, this, &WelcomeScreenDialog::OnNewLevelBtnClicked);
     connect(ui->openLevelButton, &QPushButton::clicked, this, &WelcomeScreenDialog::OnOpenLevelBtnClicked);
+
+    connect(ui->newSliceButton, &QPushButton::clicked, this, &WelcomeScreenDialog::OnNewSliceBtnClicked);
+    connect(ui->openSliceButton, &QPushButton::clicked, this, &WelcomeScreenDialog::OnOpenSliceBtnClicked);
+
     connect(ui->documentationButton, &QPushButton::clicked, this, &WelcomeScreenDialog::OnDocumentationBtnClicked);
     connect(ui->showOnStartup, &QCheckBox::clicked, this, &WelcomeScreenDialog::OnShowOnStartupBtnClicked);
     connect(ui->autoLoadLevel, &QCheckBox::clicked, this, &WelcomeScreenDialog::OnAutoLoadLevelBtnClicked);
@@ -155,6 +153,11 @@ WelcomeScreenDialog::WelcomeScreenDialog(QWidget* pParent)
     ui->articleViewContainerRoot->layout()->addWidget(m_articleViewContainer);
 
     m_manifest->Sync();
+
+#ifndef ENABLE_SLICE_EDITOR
+    ui->newSliceButton->hide();
+    ui->openSliceButton->hide();
+#endif
 
     // Adjust the height, if need be
     // Do it in the constructor so that the WindowDecoratorWrapper handles it correctly
@@ -181,14 +184,10 @@ void WelcomeScreenDialog::done(int result)
 {
     if (m_waitingOnAsync)
     {
-        m_closing = true;
-        m_doneResult = result;
         m_manifest->Abort();
     }
-    else
-    {
-        QDialog::done(result);
-    }
+
+    QDialog::done(result);
 }
 
 const QString& WelcomeScreenDialog::GetLevelPath()
@@ -219,7 +218,7 @@ void WelcomeScreenDialog::SetRecentFileList(RecentFileList* pList)
 
     m_pRecentList = pList;
 
-    QString gamePath = Path::GetExecutableParentDirectory() + QDir::separator().toLatin1() + gEnv->pConsole->GetCVar("sys_game_folder")->GetString();
+    QString gamePath = Path::GetExecutableParentDirectory() + QDir::separator() + gEnv->pConsole->GetCVar("sys_game_folder")->GetString();
     Path::ConvertSlashToBackSlash(gamePath);
     gamePath = Path::ToUnixPath(gamePath.toLower());
     gamePath = Path::AddSlash(gamePath);
@@ -361,6 +360,30 @@ void WelcomeScreenDialog::OnOpenLevelBtnClicked(bool checked)
     SendMetricsEvent("OpenLevelButtonClicked");
 }
 
+void WelcomeScreenDialog::OnNewSliceBtnClicked(bool checked)
+{
+    m_levelPath = "new slice";
+    accept();
+
+    SendMetricsEvent("NewSliceButtonClicked");
+}
+
+void WelcomeScreenDialog::OnOpenSliceBtnClicked(bool)
+{
+    QString fileName = QFileDialog::getOpenFileName(MainWindow::instance(),
+        tr("Open Slice"),
+        Path::GetEditingGameDataFolder().c_str(),
+        tr("Slice (*.slice)"));
+
+    if (!fileName.isEmpty())
+    {
+        m_levelPath = fileName;
+        accept();
+    }
+
+    SendMetricsEvent("OpenSliceButtonClicked");
+}
+
 void WelcomeScreenDialog::OnRecentLevelListItemClicked(const QModelIndex& modelIndex)
 {
     int index = modelIndex.row();
@@ -417,28 +440,14 @@ void WelcomeScreenDialog::OnDocumentationBtnClicked(bool checked)
 
 void WelcomeScreenDialog::SyncFail(News::ErrorCode error)
 {
-    if (m_closing || !ui->articleViewContainerRoot)
-    {
-        QDialog::done(m_doneResult);
-    }
-    else
-    {
-        m_articleViewContainer->AddErrorMessage();
-        m_waitingOnAsync = false;
-    }
+    m_articleViewContainer->AddErrorMessage();
+    m_waitingOnAsync = false;
 }
 
 void WelcomeScreenDialog::SyncSuccess()
 {
-    if (m_closing || !ui->articleViewContainerRoot)
-    {
-        QDialog::done(m_doneResult);
-    }
-    else
-    {
-        m_articleViewContainer->PopulateArticles();
-        m_waitingOnAsync = false;
-    }
+    m_articleViewContainer->PopulateArticles();
+    m_waitingOnAsync = false;
 }
 
 void WelcomeScreenDialog::previewAreaScrolled()

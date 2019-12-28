@@ -144,8 +144,6 @@ STexPool* CTextureStreamPoolMgr::GetPool(int nWidth, int nHeight, int nMips, int
 
 STexPoolItem* CTextureStreamPoolMgr::GetPoolItem(int nWidth, int nHeight, int nMips, int nArraySize, ETEX_Format eTF, bool bIsSRGB, ETEX_Type eTT, bool bShouldBeCreated, const char* sName, STextureInfo* pTI, bool bCanCreate, bool bWaitForIdle)
 {
-    MEMSTAT_CONTEXT_FMT(EMemStatContextTypes::MSC_Texture, 0, "Stream pool item %ix%ix%i", nWidth, nHeight, nMips);
-
     D3DFormat d3dFmt = CTexture::DeviceFormatFromTexFormat(eTF);
     if (bIsSRGB)
     {
@@ -261,11 +259,6 @@ STexPoolItem* CTextureStreamPoolMgr::GetPoolItem(int nWidth, int nHeight, int nM
 
         pIT->Link(&pPool->m_ItemsList);
         CryInterlockedAddSize(&m_nDeviceMemReserved, (ptrdiff_t)pPool->m_Size);
-
-#if !defined (_RELEASE) && defined(ENABLE_X360_TEXTURE_CAPTURE) // ACCEPTED_USE
-        h = PIXSetTextureName(pIT->m_pDevTexture->GetBaseTexture(), sName);
-        assert(SUCCEEDED(h));
-#endif
 
 #if !defined(_RELEASE)
         ++m_frameStats.nHardCreates;

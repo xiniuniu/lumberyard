@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "LyShineExamples_precompiled.h"
 #include <IFlowSystem.h>
 #include "FlowSystem/Nodes/FlowBaseNode.h"
 #include "UiDynamicContentDatabase.h"
@@ -17,11 +17,11 @@
 
 namespace
 {
-    const string g_uiDynamicContentDBGetNumColorsNodePath = "UiDynamicContentDB:GetNumColors";
-    const string g_uiDynamicContentDBGetColorNodePath = "UiDynamicContentDB:GetColor";
-    const string g_uiDynamicContentDBGetColorNameNodePath = "UiDynamicContentDB:GetColorName";
-    const string g_uiDynamicContentDBGetColorPriceNodePath = "UiDynamicContentDB:GetColorPrice";
-    const string g_uiDynamicContentDBRefreshNodePath = "UiDynamicContentDB:Refresh";
+    const char* g_uiDynamicContentDBGetNumColorsNodePath = "UiDynamicContentDB:GetNumColors";
+    const char* g_uiDynamicContentDBGetColorNodePath = "UiDynamicContentDB:GetColor";
+    const char* g_uiDynamicContentDBGetColorNameNodePath = "UiDynamicContentDB:GetColorName";
+    const char* g_uiDynamicContentDBGetColorPriceNodePath = "UiDynamicContentDB:GetColorPrice";
+    const char* g_uiDynamicContentDBRefreshNodePath = "UiDynamicContentDB:Refresh";
 }
 
 namespace LyShineExamples

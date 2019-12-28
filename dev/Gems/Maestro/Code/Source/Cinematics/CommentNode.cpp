@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "StdAfx.h"
+#include "Maestro_precompiled.h"
 #include <AzCore/Serialization/SerializeContext.h>
 #include "CommentNode.h"
 #include "AnimSplineTrack.h"
@@ -25,7 +25,7 @@
 namespace
 {
     bool s_nodeParamsInit = false;
-    std::vector<CAnimNode::SParamInfo> s_nodeParameters;
+    StaticInstance<std::vector<CAnimNode::SParamInfo>> s_nodeParameters;
 
     void AddSupportedParameters(const char* sName, AnimParamType paramId, AnimValueType valueType)
     {

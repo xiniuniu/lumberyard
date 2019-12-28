@@ -15,10 +15,20 @@
 #include <numeric>
 #include "ScopeGuard.h"
 #include "Algorithm.h"
+#include "System.h"
 
+#if defined(AZ_RESTRICTED_PLATFORM)
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/ImageHandler_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/ImageHandler_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/ImageHandler_cpp_salem.inl"
+    #endif
+#endif
 
-#if !(defined(ANDROID) || defined(IOS) || defined(APPLETV) || defined(LINUX)) // Rally US1050 - Compile libtiff for Android and IOS
-    #include "../../../SDKs/tiff/libtiff/tiffio.h"
+#if !(defined(ANDROID) || defined(IOS) || defined(APPLETV) || defined(LINUX)) && AZ_LEGACY_CRYSYSTEM_TRAIT_IMAGEHANDLER_TIFFIO // Rally US1050 - Compile libtiff for Android and IOS
+    #include <libtiff/tiffio.h>
 
 AZ_STATIC_ASSERT(sizeof(thandle_t) >= sizeof(AZ::IO::HandleType), "Platform defines thandle_t to be smaller than required");
 #endif
@@ -45,7 +55,7 @@ namespace
         unsigned int m_height;
         std::vector<unsigned char> m_data;
     };
-#if !(defined(ANDROID) || defined(IOS) || defined(APPLETV) || defined(DURANGO) || defined(LINUX) || defined(ORBIS))
+#if AZ_LEGACY_CRYSYSTEM_TRAIT_IMAGEHANDLER_TIFFIO
     struct TiffIO
     {
         static tsize_t Read(thandle_t handle, tdata_t buffer, tsize_t size)
@@ -125,7 +135,7 @@ std::unique_ptr<IImageHandler::IImage> ImageHandler::CreateImage(std::vector<uns
 
 std::unique_ptr<IImageHandler::IImage> ImageHandler::LoadImage(const char* filename) const
 {
-#if !(defined(ANDROID) || defined(IOS) || defined(APPLETV) || defined(DURANGO) || defined(LINUX) || defined(ORBIS))
+#if AZ_LEGACY_CRYSYSTEM_TRAIT_IMAGEHANDLER_TIFFIO
 
     AZ::IO::HandleType fileHandle;
     AZ::IO::FileIOBase::GetDirectInstance()->Open(filename, AZ::IO::GetOpenModeFromStringMode("rb"), fileHandle);
@@ -170,7 +180,7 @@ std::unique_ptr<IImageHandler::IImage> ImageHandler::LoadImage(const char* filen
 
 bool ImageHandler::SaveImage(IImageHandler::IImage* image, const char* filename) const
 {
-#if !(defined(ANDROID) || defined(IOS) || defined(APPLETV) || defined(DURANGO) || defined(LINUX) || defined(ORBIS))
+#if AZ_LEGACY_CRYSYSTEM_TRAIT_IMAGEHANDLER_TIFFIO
 
     AZ::IO::HandleType fileHandle;
     AZ::IO::FileIOBase::GetDirectInstance()->Open(filename, AZ::IO::GetOpenModeFromStringMode("wb"), fileHandle);

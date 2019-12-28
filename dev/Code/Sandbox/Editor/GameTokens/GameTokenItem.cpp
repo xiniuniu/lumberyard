@@ -87,7 +87,6 @@ inline const char* FlowTypeToName(EFlowDataTypes tokenType)
 }
 
 class CFlowDataReadVisitorEditor
-    : public boost::static_visitor<void>
 {
 public:
     CFlowDataReadVisitorEditor(const char* data)
@@ -96,35 +95,35 @@ public:
 
     void Visit(int& i)
     {
-        m_ok = 1 == sscanf(m_data, "%i", &i);
+        m_ok = 1 == azsscanf(m_data, "%i", &i);
     }
 
     void Visit(float& i)
     {
-        m_ok = 1 == sscanf(m_data, "%f", &i);
+        m_ok = 1 == azsscanf(m_data, "%f", &i);
     }
 
     void Visit(double& i)
     {
-        m_ok = 1 == sscanf(m_data, "%lf", &i);
+        m_ok = 1 == azsscanf(m_data, "%lf", &i);
     }
 
     void Visit(EntityId& i)
     {
-        m_ok = 1 == sscanf(m_data, "%u", &i);
+        m_ok = 1 == azsscanf(m_data, "%u", &i);
     }
 
     void Visit(FlowEntityId& i)
     {
         FlowEntityId* scannedEntityPtr;
-        m_ok = 1 == sscanf(m_data, "%p", &scannedEntityPtr);
+        m_ok = 1 == azsscanf(m_data, "%p", &scannedEntityPtr);
         i = *scannedEntityPtr;
     }
 
     void Visit(AZ::Vector3& v)
     {
         float x(0.0f), y(0.0f), z(0.0f);
-        m_ok = 3 == sscanf(m_data, "%g,%g,%g", &x, &y, &z);
+        m_ok = 3 == azsscanf(m_data, "%g,%g,%g", &x, &y, &z);
         v.SetX(x);
         v.SetY(y);
         v.SetZ(z);
@@ -132,7 +131,7 @@ public:
 
     void Visit(Vec3& i)
     {
-        m_ok = 3 == sscanf(m_data, "%g,%g,%g", &i.x, &i.y, &i.z);
+        m_ok = 3 == azsscanf(m_data, "%g,%g,%g", &i.x, &i.y, &i.z);
     }
 
     void Visit(string& i)
@@ -144,18 +143,18 @@ public:
     void Visit(bool& b)
     {
         int i;
-        m_ok = 1 == sscanf(m_data, "%i", &i);
+        m_ok = 1 == azsscanf(m_data, "%i", &i);
         if (m_ok)
         {
             b = (i != 0);
         }
         else
         {
-            if (_stricmp(m_data, "true") == 0)
+            if (azstricmp(m_data, "true") == 0)
             {
                 m_ok = b = true;
             }
-            else if (_stricmp(m_data, "false") == 0)
+            else if (azstricmp(m_data, "false") == 0)
             {
                 m_ok = true;
                 b = false;
@@ -194,7 +193,6 @@ private:
 
 //////////////////////////////////////////////////////////////////////////
 class CFlowDataWriteVisitorEditor
-    : public boost::static_visitor<void>
 {
 public:
     CFlowDataWriteVisitorEditor(string& out)
@@ -302,7 +300,7 @@ CGameTokenItem::~CGameTokenItem()
 {
     if (m_pTokenSystem)
     {
-        IGameToken* pToken = m_pTokenSystem->FindToken(m_cachedFullName.toLatin1().data());
+        IGameToken* pToken = m_pTokenSystem->FindToken(m_cachedFullName.toUtf8().data());
         if (pToken)
         {
             m_pTokenSystem->DeleteToken(pToken);
@@ -316,18 +314,18 @@ void CGameTokenItem::SetName(const QString& name)
     IGameToken* pToken = NULL;
     if (m_pTokenSystem)
     {
-        m_pTokenSystem->FindToken(GetFullName().toLatin1().data());
+        m_pTokenSystem->FindToken(GetFullName().toUtf8().data());
     }
     CBaseLibraryItem::SetName(name);
     if (m_pTokenSystem)
     {
         if (pToken)
         {
-            m_pTokenSystem->RenameToken(pToken, GetFullName().toLatin1().data());
+            m_pTokenSystem->RenameToken(pToken, GetFullName().toUtf8().data());
         }
         else
         {
-            m_pTokenSystem->SetOrCreateToken(GetFullName().toLatin1().data(), m_value);
+            m_pTokenSystem->SetOrCreateToken(GetFullName().toUtf8().data(), m_value);
         }
     }
     m_cachedFullName = GetFullName();
@@ -370,7 +368,7 @@ void CGameTokenItem::Serialize(SerializeContext& ctx)
     }
     else
     {
-        node->setAttr("Name", m_name.toLatin1().data());
+        node->setAttr("Name", m_name.toUtf8().data());
         // Saving.
         const char* sTypeName = FlowTypeToName((EFlowDataTypes)m_value.GetType());
         if (*sTypeName != 0)
@@ -381,7 +379,7 @@ void CGameTokenItem::Serialize(SerializeContext& ctx)
         node->setAttr("Value", sValue);
         if (!m_description.isEmpty())
         {
-            node->setAttr("Description", m_description.toLatin1().data());
+            node->setAttr("Description", m_description.toUtf8().data());
         }
 
         int localOnly = m_localOnly ? 1 : 0;
@@ -427,7 +425,7 @@ void CGameTokenItem::SetValue(const TFlowInputData& data, bool bUpdateGTS)
     m_value = data;
     if (bUpdateGTS && m_pTokenSystem)
     {
-        IGameToken* pToken = m_pTokenSystem->FindToken(m_cachedFullName.toLatin1().data());
+        IGameToken* pToken = m_pTokenSystem->FindToken(m_cachedFullName.toUtf8().data());
         if (pToken)
         {
             pToken->SetValue(m_value);
@@ -470,7 +468,7 @@ bool CGameTokenItem::SetTypeName(const char* typeName)
         // Unknown type.
         return false;
     }
-    SetValueString(prevVal.toLatin1().data());
+    SetValueString(prevVal.toUtf8().data());
     return true;
 }
 
@@ -483,7 +481,7 @@ void CGameTokenItem::Update()
     if (m_pTokenSystem)
     {
         // Recreate the game token with new default value, and set flags
-        if (IGameToken* pToken = m_pTokenSystem->SetOrCreateToken(GetFullName().toLatin1().data(), m_value))
+        if (IGameToken* pToken = m_pTokenSystem->SetOrCreateToken(GetFullName().toUtf8().data(), m_value))
         {
             if (m_localOnly)
             {

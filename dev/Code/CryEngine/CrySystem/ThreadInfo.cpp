@@ -13,14 +13,32 @@
 
 #include "StdAfx.h"
 #include "ThreadInfo.h"
+#include "System.h"
 
 ////////////////////////////////////////////////////////////////////////////
 
 
+#if defined(AZ_RESTRICTED_PLATFORM)
+#undef AZ_RESTRICTED_SECTION
+#define THREADINFO_CPP_SECTION_1 1
+#define THREADINFO_CPP_SECTION_2 2
+#endif
+
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION THREADINFO_CPP_SECTION_1
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/ThreadInfo_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/ThreadInfo_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/ThreadInfo_cpp_salem.inl"
+    #endif
+#endif
+
 ////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
-#if defined(WIN32) || defined(WIN64) || defined(DURANGO)
+#if AZ_LEGACY_CRYSYSTEM_TRAIT_THREADINFO_WINDOWS_STYLE
 ////////////////////////////////////////////////////////////////////////////
 void SThreadInfo::GetCurrentThreads(TThreadInfo& threadsOut)
 {
@@ -86,6 +104,15 @@ void SThreadInfo::CloseThreadHandles(const TThreads& threads)
 ////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
+#elif defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION THREADINFO_CPP_SECTION_2
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/ThreadInfo_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/ThreadInfo_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/ThreadInfo_cpp_salem.inl"
+    #endif
 #elif defined(LINUX) || defined(APPLE)
 void SThreadInfo::GetCurrentThreads(TThreadInfo& threadsOut)
 {
@@ -105,4 +132,4 @@ void SThreadInfo::CloseThreadHandles(const TThreads& threads)
 }
 
 ////////////////////////////////////////////////////////////////////////////
-#endif //#if defined(WIN32) || defined(WIN64) || defined(DRUANGO)
+#endif

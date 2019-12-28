@@ -17,13 +17,17 @@
 #include "Material/MaterialManager.h"
 #include "ErrorReport.h"
 
+#ifdef LY_TERRAIN_EDITOR
 #include "Terrain/Heightmap.h"
+#endif //#ifdef LY_TERRAIN_EDITOR
 
 #include "I3DEngine.h"
 
 #include "VegetationObject.h"
 
 #include "Util/BoostPythonHelpers.h"
+
+#include <AzCore/Math/Uuid.h>
 
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
@@ -48,7 +52,13 @@ CVegetationObject::CVegetationObject(int id)
 
     // Int vars.
     mv_size = 1;
+
+#ifdef LY_TERRAIN_EDITOR
     mv_hmin = GetIEditor()->GetHeightmap()->GetOceanLevel();
+#else
+    mv_hmin = GetIEditor()->Get3DEngine()->GetWaterLevel();
+#endif //#ifdef LY_TERRAIN_EDITOR
+
     mv_hmax = 4096;
     mv_slope_min = 0;
     mv_slope_max = 255;
@@ -84,7 +94,7 @@ CVegetationObject::CVegetationObject(int id)
     mv_allowIndoor = false;
     mv_autoMerged = false;
 
-    m_guid = QUuid::createUuid();
+    m_guid = AZ::Uuid::CreateRandom();
 
     mv_hideable.AddEnumItem("None", 0);
     mv_hideable.AddEnumItem("Hideable", 1);
@@ -124,8 +134,6 @@ CVegetationObject::CVegetationObject(int id)
     AddVariable(mv_useTerrainColor, "UseTerrainColor", functor(*this, &CVegetationObject::OnVarChange));
     AddVariable(mv_allowIndoor, "AllowIndoor", functor(*this, &CVegetationObject::OnVarChange));
     AddVariable(mv_bending, "Bending", functor(*this, &CVegetationObject::OnVarChange));
-    AddVariable(mv_hideable, "Hideable", "AI Occluder", functor(*this, &CVegetationObject::OnVarChange));
-    AddVariable(mv_playerHideable, "PlayerHideable", "Player Occluder", functor(*this, &CVegetationObject::OnVarChange));
 
     AddVariable(mv_affectedByBrushes, "GrowOnBrushes", functor(*this, &CVegetationObject::OnVarChange));
     AddVariable(mv_affectedByTerrain, "GrowOnTerrain", functor(*this, &CVegetationObject::OnVarChange));
@@ -135,26 +143,15 @@ CVegetationObject::CVegetationObject(int id)
     AddVariable(mv_damping, "Damping", functor(*this, &CVegetationObject::OnVarChange));
     AddVariable(mv_variance, "Variance", functor(*this, &CVegetationObject::OnVarChange));
     AddVariable(mv_airResistance, "AirResistance", functor(*this, &CVegetationObject::OnVarChange));
-    AddVariable(mv_aiRadius, "AIRadius", functor(*this, &CVegetationObject::OnVarChange));
-    AddVariable(mv_brightness, "Brightness", functor(*this, &CVegetationObject::OnVarChange));
     AddVariable(mv_density, "Density", "Density (m)", functor(*this, &CVegetationObject::OnVarChange));
     AddVariable(mv_hmin, VEGETATION_ELEVATION_MIN, "Altitude Min (m)", functor(*this, &CVegetationObject::OnVarChange));
     AddVariable(mv_hmax, VEGETATION_ELEVATION_MAX, "Altitude Max (m)", functor(*this, &CVegetationObject::OnVarChange));
     AddVariable(mv_slope_min, VEGETATION_SLOPE_MIN, functor(*this, &CVegetationObject::OnVarChange));
     AddVariable(mv_slope_max, VEGETATION_SLOPE_MAX, functor(*this, &CVegetationObject::OnVarChange));
-    AddVariable(mv_castShadows, "CastShadow", functor(*this, &CVegetationObject::OnVarChange));
-    AddVariable(mv_castShadowMinSpec, "CastShadowMinSpec", functor(*this, &CVegetationObject::OnVarChange));
-    AddVariable(mv_recvShadows, "RecvShadow", functor(*this, &CVegetationObject::OnVarChange));
-    AddVariable(mv_alphaBlend, "AlphaBlend", functor(*this, &CVegetationObject::OnVarChange));
-    AddVariable(mv_SpriteDistRatio, "SpriteDistRatio", "Sprite Distance", functor(*this, &CVegetationObject::OnVarChange));
     AddVariable(mv_LodDistRatio, "LodDistRatio", "LOD Distance", functor(*this, &CVegetationObject::OnVarChange));
     AddVariable(mv_MaxViewDistRatio, "MaxViewDistRatio", functor(*this, &CVegetationObject::OnVarChange));
     AddVariable(mv_material, "Material", functor(*this, &CVegetationObject::OnMaterialChange), IVariable::DT_MATERIAL);
-    AddVariable(mv_UseSprites, "UseSprites", functor(*this, &CVegetationObject::OnVarChange));
     AddVariable(mv_minSpec, "MinSpec", functor(*this, &CVegetationObject::OnVarChange));
-
-    AddVariable(mv_layerFrozen, "Frozen", functor(*this, &CVegetationObject::OnVarChange));
-    AddVariable(mv_layerWet, "Layer_Wet", "Wet", functor(*this, &CVegetationObject::OnVarChange));
 
     AddVariable(mv_fileName, "Object", "Object", functor(*this, &CVegetationObject::OnFileNameChange), IVariable::DT_OBJECT);
 }
@@ -218,7 +215,7 @@ void CVegetationObject::LoadObject()
             m_statObj->Release();
             m_statObj = 0;
         }
-        m_statObj = GetIEditor()->GetSystem()->GetI3DEngine()->LoadStatObjUnsafeManualRef(filename.toLatin1().data(), NULL, NULL, false);
+        m_statObj = GetIEditor()->GetSystem()->GetI3DEngine()->LoadStatObjUnsafeManualRef(filename.toUtf8().data(), NULL, NULL, false);
         if (m_statObj)
         {
             VegetationObjectBus::Handler::BusConnect(m_statObj);
@@ -250,6 +247,13 @@ void CVegetationObject::SetHidden(bool bHidden)
     }
     */
     SetEngineParams();
+
+    // Fully refresh our vegetation instances every time we toggle visibility.
+    // When becoming visible, the instances need to handle any other changes 
+    // that occurred while invisible, such as toggling the AutoMerged flag.
+    // When becoming invisible, the vegetation instances need to be given the
+    // chance to clean themselves up correctly.
+    GetIEditor()->GetVegetationMap()->RepositionObject(this);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -357,7 +361,7 @@ void CVegetationObject::OnFileNameChange(IVariable* var)
     {
         QString value;
         mv_fileName->Get(value);
-        AZ_Error("Vegetation", false, "'%s' File not found.", value);
+        AZ_Error("Vegetation", false, "'%s' File not found.", value.toUtf8().constData());
     }
     GetIEditor()->SetModifiedFlag();
     GetIEditor()->SetModifiedModule(eModifiedTerrain);
@@ -488,7 +492,7 @@ void CVegetationObject::Serialize(const XmlNodeRef& node, bool bLoading)
         // Loading
         QString fileName;
         node->getAttr("FileName", fileName);
-        fileName = PathUtil::ToUnixPath(fileName.toLatin1().data()).c_str();
+        fileName = PathUtil::ToUnixPath(fileName.toUtf8().data()).c_str();
         node->getAttr("GUID", m_guid);
         node->getAttr("Hidden", m_bHidden);
         node->getAttr("Category", m_category);
@@ -530,11 +534,11 @@ void CVegetationObject::Serialize(const XmlNodeRef& node, bool bLoading)
     {
         // Save.
         node->setAttr("Id", m_id);
-        node->setAttr("FileName", GetFileName().toLatin1().data());
+        node->setAttr("FileName", GetFileName().toUtf8().data());
         node->setAttr("GUID", m_guid);
         node->setAttr("Hidden", m_bHidden);
         node->setAttr("Index", m_index);
-        node->setAttr("Category", m_category.toLatin1().data());
+        node->setAttr("Category", m_category.toUtf8().data());
 
         if (!m_terrainLayers.empty())
         {
@@ -542,7 +546,7 @@ void CVegetationObject::Serialize(const XmlNodeRef& node, bool bLoading)
             for (int i = 0; i < m_terrainLayers.size(); i++)
             {
                 XmlNodeRef layer = layers->newChild("Layer");
-                layer->setAttr("Name", m_terrainLayers[i].toLatin1().data());
+                layer->setAttr("Name", m_terrainLayers[i].toUtf8().data());
             }
         }
     }

@@ -21,28 +21,20 @@
 #include <AzCore/std/typetraits/is_enum.h>
 #include <AzCore/std/typetraits/underlying_type.h>
 #include <AzCore/std/typetraits/add_reference.h>
+#include <AzCore/std/reference_wrapper.h>
+#include <AzCore/std/typetraits/remove_reference.h>
+#include <AzCore/std/typetraits/is_convertible.h>
+#include <AzCore/std/typetraits/is_lvalue_reference.h>
 
-#ifdef AZ_HAS_RVALUE_REFS
-#   include <AzCore/std/typetraits/decay.h>
-#   include <AzCore/std/typetraits/remove_reference.h>
-#   include <AzCore/std/typetraits/is_convertible.h>
-#   include <AzCore/std/typetraits/is_lvalue_reference.h>
-#endif // AZ_HAS_RVALUE_REFS
-#ifndef AZSTD_HAS_TYPE_TRAITS_INTRINSICS
-    #include <AzCore/std/typetraits/has_trivial_constructor.h>
-    #include <AzCore/std/typetraits/has_trivial_destructor.h>
-    #include <AzCore/std/typetraits/has_trivial_copy.h>
-    #include <AzCore/std/typetraits/has_trivial_assign.h>
-#endif
+#include <memory>
 
 namespace AZStd
 {
     //////////////////////////////////////////////////////////////////////////
     // rvalue
-#ifdef AZ_HAS_RVALUE_REFS
     // rvalue move
     template<class T>
-    typename AZStd::remove_reference<T>::type && move(T && t)
+    constexpr typename AZStd::remove_reference<T>::type && move(T && t)
     {
         return static_cast<typename AZStd::remove_reference<T>::type &&>(t);
     }
@@ -51,42 +43,53 @@ namespace AZStd
     /*template<class T, class U>
     inline T&& forward(U&& u)   { return static_cast<T&&>(u); }*/
     template<class T, class U>
-    inline T && forward(U && u
+    inline constexpr T && forward(U && u
         , typename AZStd::Utils::enable_if_c<AZStd::is_lvalue_reference<T>::value ? AZStd::is_lvalue_reference<U>::value : true>::type * = 0
         , typename AZStd::Utils::enable_if_c<AZStd::is_convertible<typename AZStd::remove_reference<U>::type*, typename AZStd::remove_reference<T>::type*>::value>::type * = 0)
     {
         return static_cast<T &&>(u);
     }
-#else
-    template<class T>
-    inline const T& move(const T& t)
-    {
-        return t;
-    }
-    template<class T, class U>
-    inline const T& forward(const U& u)
-    {
-        return static_cast<const T&>(u);
-    }
 
-#endif //AZ_HAS_RVALUE_REFS
+
+    template <class T>
+    struct default_delete
+    {
+        template <class U, 
+            class = typename enable_if<is_convertible<U*, T*>::value, void>::type>
+        void operator()(U* ptr) const
+        {
+            delete ptr;
+        }
+    };
+
+    template <class T>
+    struct default_delete<T[]>
+    {
+        template<class U,
+            class = typename enable_if<is_convertible<U(*)[], T(*)[]>::value, void>::type>
+        default_delete(const default_delete<U[]>&)
+        {
+        }
+
+        template<class U,
+            class = typename enable_if<is_convertible<U(*)[], T(*)[]>::value, void>::type>
+        void operator()(U *ptr) const
+        {
+            delete[] ptr;
+        }
+    };
+
+    template <class T>
+    struct no_delete
+    {
+        template <class U>
+        void operator()(U*) const {}
+    };
     //////////////////////////////////////////////////////////////////////////
 
     //////////////////////////////////////////////////////////////////////////
     // Swap
-    template<class T>
-    AZ_INLINE void swap(T& a, T& b)
-    {
-#ifdef AZ_HAS_RVALUE_REFS
-        T tmp = AZStd::move(a);
-        a = AZStd::move(b);
-        b = AZStd::move(tmp);
-#else
-        T tmp = a;
-        a = b;
-        b = tmp;
-#endif
-    }
+    using std::swap;
 
     template<class ForewardIterator1, class ForewardIterator2>
     AZ_FORCE_INLINE void                    iter_swap(ForewardIterator1 a, ForewardIterator2 b)
@@ -130,6 +133,7 @@ namespace AZStd
     template <size_t... Is>
     struct index_sequence
     {
+        static constexpr size_t size = sizeof...(Is);
     };
 
     // Collects internal details for generating index ranges [MIN, MAX)
@@ -189,7 +193,6 @@ namespace AZStd
             : first(rhs.first)
             , second(rhs.second) {}
 
-#ifdef AZ_HAS_RVALUE_REFS
         typedef typename AZStd::remove_reference<T1>::type TT1;
         typedef typename AZStd::remove_reference<T2>::type TT2;
 
@@ -247,7 +250,6 @@ namespace AZStd
                 second = AZStd::move(rhs.second);
             }
         }
-#endif // AZ_HAS_RVALUE_REFS
 
         AZ_FORCE_INLINE void swap(this_type& rhs)
         {
@@ -279,7 +281,6 @@ namespace AZStd
     };
 
     // pair
-#ifdef AZ_HAS_RVALUE_REFS
     template<class T1, class T2>
     inline
     void swap(pair<T1, T2>& left, pair<T1, T2>&& right)
@@ -295,7 +296,6 @@ namespace AZStd
         typedef pair<T1, T2> pair_type;
         right.swap(AZStd::forward<pair_type>(left));
     }
-#endif // #ifdef AZ_HAS_RVALUE_REFS
 
     template<class T1, class T2>
     AZ_FORCE_INLINE void swap(pair<T1, T2>& left, pair<T1, T2>& _Right)
@@ -339,23 +339,6 @@ namespace AZStd
         return !(left < right);
     }
 
-#ifndef AZSTD_HAS_TYPE_TRAITS_INTRINSICS
-    // Without compiler help we should help a little.
-    // the pair class doesn't have a dtor, so if the paired objects don't have one we don't need to call it.
-    template< class T1, class T2>
-    struct has_trivial_destructor< pair<T1, T2> >
-        : public ::AZStd::integral_constant<bool, ::AZStd::type_traits::ice_and<has_trivial_destructor<T1>::value, has_trivial_destructor<T2>::value>::value> {};
-    template< class T1, class T2>
-    struct has_trivial_constructor< pair<T1, T2> >
-        : public ::AZStd::integral_constant<bool, ::AZStd::type_traits::ice_and<has_trivial_constructor<T1>::value, has_trivial_constructor<T2>::value>::value> {};
-    template< class T1, class T2>
-    struct has_trivial_copy< pair<T1, T2> >
-        : public ::AZStd::integral_constant<bool, ::AZStd::type_traits::ice_and<has_trivial_copy<T1>::value, has_trivial_copy<T2>::value>::value> {};
-    template< class T1, class T2>
-    struct has_trivial_assign< pair<T1, T2> >
-        : public ::AZStd::integral_constant<bool, ::AZStd::type_traits::ice_and<has_trivial_assign<T1>::value, has_trivial_assign<T2>::value>::value> {};
-#endif
-
     //////////////////////////////////////////////////////////////////////////
     // Address of
     //////////////////////////////////////////////////////////////////////////
@@ -390,76 +373,9 @@ namespace AZStd
     //////////////////////////////////////////////////////////////////////////
     // Ref wrapper
     template<class T>
-    class reference_wrapper
-    {
-    public:
-        typedef T type;
-        explicit reference_wrapper(T& t)
-            : m_t(AZStd::addressof(t)) {}
-        operator T& () const {
-            return *m_t;
-        }
-        T& get() const { return *m_t; }
-        T* get_pointer() const { return m_t; }
-    private:
-        T* m_t;
-    };
-
-    template<class T>
-    AZ_FORCE_INLINE reference_wrapper<T> const ref(T& t)
-    {
-        return reference_wrapper<T>(t);
-    }
-
-    template<class T>
-    AZ_FORCE_INLINE reference_wrapper<T const> const cref(T const& t)
-    {
-        return reference_wrapper<T const>(t);
-    }
-
-    template<typename T>
-    class is_reference_wrapper
-        : public AZStd::false_type
-    {
-    };
-
-#ifdef AZ_HAS_RVALUE_REFS
-    template<class T>
-    struct unwrap_reference
-    {
-        typedef typename AZStd::decay<T>::type type;
-    };
-#else
-    template<typename T>
-    struct unwrap_reference
-    {
-        typedef T type;
-    };
-#endif
-
-#define AUX_REFERENCE_WRAPPER_METAFUNCTIONS_DEF(X) \
-    template<typename T>                           \
-    struct is_reference_wrapper< X >               \
-        : public AZStd::true_type                  \
-    {                                              \
-    };                                             \
-                                                   \
-    template<typename T>                           \
-    struct unwrap_reference< X >                   \
-    {                                              \
-        typedef T type;                            \
-    };                                             \
-
-    AUX_REFERENCE_WRAPPER_METAFUNCTIONS_DEF(reference_wrapper<T>)
-    AUX_REFERENCE_WRAPPER_METAFUNCTIONS_DEF(reference_wrapper<T> const)
-    AUX_REFERENCE_WRAPPER_METAFUNCTIONS_DEF(reference_wrapper<T> volatile)
-    AUX_REFERENCE_WRAPPER_METAFUNCTIONS_DEF(reference_wrapper<T> const volatile)
-#undef AUX_REFERENCE_WRAPPER_METAFUNCTIONS_DEF
-
-    template<class T>
     AZ_FORCE_INLINE T* get_pointer(reference_wrapper<T> const& r)
     {
-        return r.get_pointer();
+        return &r.get();
     }
     // end reference_wrapper
     //////////////////////////////////////////////////////////////////////////
@@ -477,7 +393,6 @@ namespace AZStd
 
     //////////////////////////////////////////////////////////////////////////
     // make_pair
-#ifdef AZ_HAS_RVALUE_REFS
     template<class T1, class T2>
     inline pair<typename AZStd::unwrap_reference<T1>::type, typename AZStd::unwrap_reference<T2>::type>
     make_pair(T1&& value1, T2&& value2)
@@ -508,14 +423,7 @@ namespace AZStd
         typedef pair<typename AZStd::unwrap_reference<T1>::type, typename AZStd::unwrap_reference<T2>::type> pair_type;
         return pair_type((typename AZStd::unwrap_reference<T1>::type)value1, (typename AZStd::unwrap_reference<T2>::type)value2);
     }
-#else
-    template<class T1, class T2>
-    inline pair<T1, T2> make_pair(const T1& value1, const T2& value2)
-    {
-        return pair<T1, T2>(value1, value2);
-    }
-#endif // AZ_HAS_RVALUE_REFS
-       //////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////
 
     template<class T, bool isEnum = AZStd::is_enum<T>::value>
     struct RemoveEnum
@@ -603,6 +511,43 @@ namespace AZStd
     {
         static const bool value = false;
     };
+
+    struct in_place_t
+    {
+        explicit constexpr in_place_t() = default;
+    };
+    constexpr in_place_t in_place{};
+
+    template<typename T>
+    struct in_place_type_t
+    {
+        explicit constexpr in_place_type_t() = default;
+    };
+    template <typename T>
+    constexpr in_place_type_t<T> in_place_type{};
+
+    template<size_t I>
+    struct in_place_index_t
+    {
+        explicit constexpr in_place_index_t() = default;
+    };
+    template<size_t I>
+    constexpr in_place_index_t<I> in_place_index{}; 
+
+    namespace Internal
+    {
+        template <typename T>
+        struct is_in_place_index
+            : false_type
+        {};
+
+        template <size_t Index>
+        struct is_in_place_index<in_place_index_t<Index>>
+            : true_type
+        {};
+        template <typename T>
+        using is_in_place_index_t = typename is_in_place_index<T>::type;
+    }
 }
 
 #endif // AZSTD_UTILS_H

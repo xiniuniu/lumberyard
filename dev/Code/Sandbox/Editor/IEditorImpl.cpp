@@ -49,6 +49,7 @@
 #include "MainWindow.h"
 #include "BaseLibraryDialog.h"
 #include "Material/Material.h"
+#include "Alembic/AlembicCompiler.h"
 #include "EntityPrototype.h"
 #include "Particles/ParticleManager.h"
 #include "Prefabs/PrefabManager.h"
@@ -61,23 +62,34 @@
 #include "RenderHelpers/AxisHelper.h"
 #include "PickObjectTool.h"
 #include "ObjectCreateTool.h"
+
+#ifdef LY_TERRAIN_EDITOR
 #include "TerrainModifyTool.h"
+#endif //#ifdef LY_TERRAIN_EDITOR
+
 #include "RotateTool.h"
-#include "ManipulatorShim.h"
+#include "NullEditTool.h"
 #include "VegetationMap.h"
 #include "VegetationTool.h"
+
+#ifdef LY_TERRAIN_EDITOR
 #include "TerrainTexturePainter.h"
+#endif //#ifdef LY_TERRAIN_EDITOR
+
 #include "EditMode/ObjectMode.h"
 #include "EditMode/VertexMode.h"
 #include "Modelling/ModellingMode.h"
+
+#ifdef LY_TERRAIN_EDITOR
 #include "Terrain/TerrainManager.h"
 #include "Terrain/SurfaceType.h"
+#endif //#ifdef LY_TERRAIN_EDITOR
+
 #include <I3DEngine.h>
 #include <IConsole.h>
 #include <IEntitySystem.h>
 #include <IMovieSystem.h>
 #include <ISourceControl.h>
-#include <IAssetTagging.h>
 #include "Util/BoostPythonHelpers.h"
 #include "Objects/ObjectLayerManager.h"
 #include "BackgroundTaskManager.h"
@@ -89,8 +101,10 @@
 #include "Mission.h"
 #include "MainStatusBar.h"
 #include <LyMetricsProducer/LyMetricsAPI.h>
-#include <aws/core/utils/memory/STL/AWSString.h>
+AZ_PUSH_DISABLE_WARNING(4251 4355 4996, "-Wunknown-warning-option")
+#include <aws/core/utils/memory/stl/AWSString.h>
 #include <aws/core/platform/FileSystem.h>
+AZ_POP_DISABLE_WARNING
 #include <WinWidget/WinWidgetManager.h>
 #include <AWSNativeSDKInit/AWSNativeSDKInit.h>
 
@@ -110,6 +124,7 @@
 #include <AzCore/Serialization/Utils.h>
 #include <AzFramework/Asset/AssetProcessorMessages.h>
 #include <AzFramework/Network/AssetProcessorConnection.h>
+#include <AzToolsFramework/Metrics/LyEditorMetricsBus.h>
 #include <AzToolsFramework/Asset/AssetProcessorMessages.h>
 #include <AzToolsFramework/UI/UICore/WidgetHelpers.h>
 #include <AzToolsFramework/Application/ToolsApplication.h>
@@ -128,8 +143,6 @@
 #include <QDir>
 
 #include <CloudCanvas/ICloudCanvas.h>
-
-LINK_SYSTEM_LIBRARY(version.lib)
 
 // even in Release mode, the editor will return its heap, because there's no Profile build configuration for the editor
 #ifdef _RELEASE
@@ -233,7 +246,6 @@ CEditorImpl::CEditorImpl()
     , m_pLasLoadedLevelErrorReport(nullptr)
     , m_pErrorsDlg(nullptr)
     , m_pSourceControl(nullptr)
-    , m_pAssetTagging(nullptr)
     , m_pFlowGraphManager(nullptr)
     , m_pSelectionTreeManager(nullptr)
     , m_pUIEnumsDatabase(nullptr)
@@ -254,7 +266,7 @@ CEditorImpl::CEditorImpl()
     , m_pAssetBrowser(nullptr)
     , m_pImageUtil(nullptr)
     , m_pLogFile(nullptr)
-    , m_isLegacyUIEnabled(true)
+    , m_isLegacyUIEnabled(false)
 {
     // note that this is a call into EditorCore.dll, which stores the g_pEditorPointer for all shared modules that share EditorCore.dll
     // this means that they don't need to do SetIEditor(...) themselves and its available immediately
@@ -266,6 +278,14 @@ CEditorImpl::CEditorImpl()
     m_pLevelIndependentFileMan = new CLevelIndependentFileMan;
     SetMasterCDFolder();
     gSettings.Load();
+
+    // retrieve this after the settings have been loaded
+    // this will end up being overridden if the CryEntityRemoval gem is present
+    // if the new viewport interaction model is enabled we must also disable the legacy ui
+    // it is not compatible with any of the legacy system (e.g. CryDesigner)
+    m_isLegacyUIEnabled = gSettings.enableLegacyUI && !gSettings.newViewportInteractionModel;
+    m_isNewViewportInteractionModelEnabled = gSettings.newViewportInteractionModel;
+
     m_pErrorReport = new CErrorReport;
     m_pFileNameResolver = new CMissingAssetResolver;
     m_pClassFactory = CClassFactory::Instance();
@@ -281,7 +301,11 @@ CEditorImpl::CEditorImpl()
     m_pShaderEnum = new CShaderEnum;
     m_pDisplaySettings->LoadRegistry();
     m_pPluginManager = new CPluginManager;
+
+#ifdef LY_TERRAIN_EDITOR
     m_pTerrainManager = new CTerrainManager();
+#endif //#ifdef LY_TERRAIN_EDITOR
+
     m_pVegetationMap = new CVegetationMap();
     m_pObjectManager = new CObjectManager;
     m_pViewManager = new CViewManager;
@@ -292,6 +316,7 @@ CEditorImpl::CEditorImpl()
     m_pEquipPackLib = new CEquipPackLib;
     m_pToolBoxManager = new CToolBoxManager;
     m_pMaterialManager = new CMaterialManager(regCtx);
+    m_pAlembicCompiler = new CAlembicCompiler();
     m_pSequenceManager = new CTrackViewSequenceManager;
     m_pAnimationContext = new CAnimationContext;
     m_pEntityManager = new CEntityPrototypeManager;
@@ -348,12 +373,11 @@ void CEditorImpl::Initialize()
     // on Windows 10
     QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
 
-#if defined(AZ_PLATFORM_WINDOWS)
     // Prevents (native) sibling widgets from causing problems with docked QOpenGLWidgets on Windows
     // The problem is due to native widgets ending up with pixel formats that are incompatible with the GL pixel format
     // (generally due to a lack of an alpha channel). This blocks the creation of a shared GL context.
+    // And on macOS it prevents all kinds of bugs related to native widgets, specially regarding toolbars (duplicate toolbars, artifacts, crashes).
     QCoreApplication::setAttribute(Qt::AA_DontCreateNativeWidgetSiblings);
-#endif
 
     // Activate QT immediately so that its available as soon as CEditorImpl is (and thus GetIEditor())
     InitializeEditorCommon(GetIEditor());
@@ -398,29 +422,37 @@ void CEditorImpl::UnloadPlugins(bool shuttingDown/* = false*/)
     // first, stop anyone from accessing plugins that provide things like source control.
     // note that m_psSourceControl is re-queried
     m_pSourceControl = nullptr;
-    m_pAssetTagging = nullptr;
 
     // Send this message to ensure that any widgets queued for deletion will get deleted before their
     // plugin containing their vtable is unloaded. If not, access violations can occur
     QCoreApplication::sendPostedEvents(Q_NULLPTR, QEvent::DeferredDelete);
 
     GetPluginManager()->ReleaseAllPlugins();
+
+#ifdef DEPRECATED_QML_SUPPORT
     m_QtApplication->UninitializeQML(); // destroy QML first since it will hang onto memory inside the DLLs
+#endif // #ifdef DEPRECATED_QML_SUPPORT
+
     GetPluginManager()->UnloadAllPlugins();
 
     if (!shuttingDown)
     {
+#ifdef DEPRECATED_QML_SUPPORT
         // since we mean to continue, so need to bring QML back up again in case someone needs it.
         m_QtApplication->InitializeQML();
+#endif // #ifdef DEPRECATED_QML_SUPPORT
     }
 }
 
 void CEditorImpl::LoadPlugins()
 {
     CryAutoLock<CryMutex> lock(m_pluginMutex);
+
+#ifdef DEPRECATED_QML_SUPPORT
     // plugins require QML, so make sure its present:
 
     m_QtApplication->InitializeQML();
+#endif // #ifdef DEPRECATED_QML_SUPPORT
 
     static const char* editor_plugins_folder = "EditorPlugins";
 
@@ -430,8 +462,11 @@ void CEditorImpl::LoadPlugins()
     EBUS_EVENT_RESULT(engineRoot, AzToolsFramework::ToolsApplicationRequestBus, GetEngineRootPath);
     if (engineRoot != nullptr)
     {
+        AZStd::string_view binFolderName;
+        AZ::ComponentApplicationBus::BroadcastResult(binFolderName, &AZ::ComponentApplicationRequests::GetBinFolder);
+
         QDir testDir;
-        testDir.setPath(QString("%1/" BINFOLDER_NAME).arg(engineRoot));
+        testDir.setPath(QString("%1/%2").arg(engineRoot, binFolderName.data()));
         if (testDir.exists() && testDir.cd(QString(editor_plugins_folder)))
         {
             editorPluginPathStr = testDir.absolutePath();
@@ -450,6 +485,7 @@ void CEditorImpl::LoadPlugins()
     InitMetrics();
 }
 
+#ifdef DEPRECATED_QML_SUPPORT
 QQmlEngine* CEditorImpl::GetQMLEngine() const
 {
     if (!m_QtApplication)
@@ -467,6 +503,7 @@ QQmlEngine* CEditorImpl::GetQMLEngine() const
 
     return pEngine;
 }
+#endif // #ifdef DEPRECATED_QML_SUPPORT
 
 CEditorImpl::~CEditorImpl()
 {
@@ -490,6 +527,7 @@ CEditorImpl::~CEditorImpl()
     SAFE_DELETE(m_particleManager)
     SAFE_DELETE(m_pEntityManager)
     SAFE_DELETE(m_pMaterialManager)
+    SAFE_DELETE(m_pAlembicCompiler)
     SAFE_DELETE(m_pEquipPackLib)
     SAFE_DELETE(m_pIconManager)
     SAFE_DELETE(m_pViewManager)
@@ -497,7 +535,11 @@ CEditorImpl::~CEditorImpl()
     SAFE_DELETE(m_pPrefabManager); // relies on flowgraphmanager
     SAFE_DELETE(m_pFlowGraphManager);
     SAFE_DELETE(m_pVegetationMap);
+
+#ifdef LY_TERRAIN_EDITOR
     SAFE_DELETE(m_pTerrainManager);
+#endif //#ifdef LY_TERRAIN_EDITOR
+
     // AI should be destroyed after the object manager, as the objects may
     // refer to AI components.
     SAFE_DELETE(m_pAIManager)
@@ -552,9 +594,12 @@ void CEditorImpl::SetMasterCDFolder()
     QString szFolder = qApp->applicationDirPath();
 
     // Remove Bin32/Bin64 folder/
+    AZStd::string_view binFolderName;
+    AZ::ComponentApplicationBus::BroadcastResult(binFolderName, &AZ::ComponentApplicationRequests::GetBinFolder);
+
     szFolder.remove(QRegularExpression(R"((\\|/)Bin32.*)"));
 
-    szFolder.remove(QRegularExpression(QStringLiteral("(\\\\|/)%1.*").arg(QRegularExpression::escape(BINFOLDER_NAME))));
+    szFolder.remove(QRegularExpression(QStringLiteral("(\\\\|/)%1.*").arg(QRegularExpression::escape(binFolderName.data()))));
 
 
     m_masterCDFolder = QDir::toNativeSeparators(szFolder);
@@ -583,6 +628,7 @@ void CEditorImpl::SetGameEngine(CGameEngine* ge)
 
     m_templateRegistry.LoadTemplates("Editor");
     m_pObjectManager->LoadClassTemplates("Editor");
+    m_pObjectManager->RegisterCVars();
 
     m_pMaterialManager->Set3DEngine();
     m_pAnimationContext->Init();
@@ -598,29 +644,36 @@ void CEditorImpl::RegisterTools()
 
     rc.pCommandManager = m_pCommandManager;
     rc.pClassFactory = m_pClassFactory;
+#ifdef LY_TERRAIN_EDITOR
     CTerrainModifyTool::RegisterTool(rc);
+#endif //#ifdef LY_TERRAIN_EDITOR
+
     CVegetationTool::RegisterTool(rc);
+
+#ifdef LY_TERRAIN_EDITOR
     CTerrainTexturePainter::RegisterTool(rc);
+#endif //#ifdef LY_TERRAIN_EDITOR
+
     CObjectMode::RegisterTool(rc);
     CSubObjectModeTool::RegisterTool(rc);
     CMaterialPickTool::RegisterTool(rc);
     CModellingModeTool::RegisterTool(rc);
     CVertexSnappingModeTool::RegisterTool(rc);
     CRotateTool::RegisterTool(rc);
-    ManipulatorShim::RegisterTool(rc);
+    NullEditTool::RegisterTool(rc);
 }
 
 void CEditorImpl::ExecuteCommand(const char* sCommand, ...)
 {
-    const size_t BUF_SIZE = 1024;
-    char buffer[BUF_SIZE];
     va_list args;
-
-    buffer[BUF_SIZE - 1] = '\0';
     va_start(args, sCommand);
-    vsprintf_s(buffer, BUF_SIZE, sCommand, args);
+    ExecuteCommand(QString::asprintf(sCommand, args));
     va_end(args);
-    m_pCommandManager->Execute(buffer);
+}
+
+void CEditorImpl::ExecuteCommand(const QString& command)
+{
+    m_pCommandManager->Execute(command.toUtf8().data());
 }
 
 void CEditorImpl::Update()
@@ -812,6 +865,17 @@ QString CEditorImpl::GetResolvedUserFolder()
 {
     m_userFolder = Path::GetResolvedUserSandboxFolder();
     return m_userFolder;
+}
+
+QString CEditorImpl::GetProjectName()
+{
+    ICVar* pCVar = (gEnv && gEnv->pConsole) ? gEnv->pConsole->GetCVar("sys_game_folder") : nullptr;
+    if (pCVar && pCVar->GetString())
+    {
+        return QString(pCVar->GetString());
+    }
+
+    return tr("unknown");
 }
 
 void CEditorImpl::SetDataModified()
@@ -1095,15 +1159,15 @@ void CEditorImpl::SetEditTool(const QString& sEditToolName, bool bStopCurrentToo
         }
     }
 
-    IClassDesc* pClass = GetIEditor()->GetClassFactory()->FindClass(sEditToolName.toLatin1().data());
+    IClassDesc* pClass = GetIEditor()->GetClassFactory()->FindClass(sEditToolName.toUtf8().data());
     if (!pClass)
     {
-        Warning("Editor Tool %s not registered.", sEditToolName.toLatin1().data());
+        Warning("Editor Tool %s not registered.", sEditToolName.toUtf8().data());
         return;
     }
     if (pClass->SystemClassID() != ESYSTEM_CLASS_EDITTOOL)
     {
-        Warning("Class name %s is not a valid Edit Tool class.", sEditToolName.toLatin1().data());
+        Warning("Class name %s is not a valid Edit Tool class.", sEditToolName.toUtf8().data());
         return;
     }
 
@@ -1116,13 +1180,18 @@ void CEditorImpl::SetEditTool(const QString& sEditToolName, bool bStopCurrentToo
     }
     else
     {
-        Warning("Class name %s is not a valid Edit Tool class.", sEditToolName.toLatin1().data());
+        Warning("Class name %s is not a valid Edit Tool class.", sEditToolName.toUtf8().data());
         return;
     }
 }
 
 CEditTool* CEditorImpl::GetEditTool()
 {
+    if (m_isNewViewportInteractionModelEnabled)
+    {
+        return nullptr;
+    }
+    
     return m_pEditTool;
 }
 
@@ -1222,15 +1291,12 @@ CBaseObject* CEditorImpl::NewObject(const char* typeName, const char* fileName, 
         editor->SetModifiedFlag();
         editor->SetModifiedModule(eModifiedBrushes);
     }
-    CBaseObject* object = editor->GetObjectManager()->NewObject(typeName, 0, fileName);
+    CBaseObject* object = editor->GetObjectManager()->NewObject(typeName, 0, fileName, name);
     if (!object)
     {
         return nullptr;
     }
-    if (name && name[0])
-    {
-        object->SetName(name);
-    }
+
     object->SetPos(Vec3(x, y, z));
 
     return object;
@@ -1330,10 +1396,8 @@ int CEditorImpl::ClearSelection()
     {
         return 0;
     }
-    string countString = GetCommandManager()->Execute("general.clear_selection");
-    int count = 0;
-    FromString(count, countString.c_str());
-    return count;
+    QString countString = GetCommandManager()->Execute("general.clear_selection");
+    return countString.toInt();
 }
 
 void CEditorImpl::LockSelection(bool bLock)
@@ -1389,10 +1453,14 @@ CViewManager* CEditorImpl::GetViewManager()
 
 CViewport* CEditorImpl::GetActiveView()
 {
-    CLayoutViewPane* viewPane = MainWindow::instance()->GetActiveView();
-    if (viewPane)
+    MainWindow* mainWindow = MainWindow::instance();
+    if (mainWindow)
     {
-        return qobject_cast<QtViewport*>(viewPane->GetViewport());
+        CLayoutViewPane* viewPane = mainWindow->GetActiveView();
+        if (viewPane)
+        {
+            return qobject_cast<QtViewport*>(viewPane->GetViewport());
+        }
     }
     return nullptr;
 }
@@ -1475,7 +1543,7 @@ void CEditorImpl::LaunchAWSConsole(QString destUrl)
     CCryEditApp::instance()->OnAWSLaunchConsolePage(destUrl.toStdString().c_str());
 }
 
-bool CEditorImpl::ToProjectConfigurator(const char* msg, const char* caption, const char* location)
+bool CEditorImpl::ToProjectConfigurator(const QString& msg, const QString& caption, const QString& location)
 {
     return CCryEditApp::instance()->ToProjectConfigurator(msg, caption, location);
 }
@@ -1492,8 +1560,13 @@ float CEditorImpl::GetTerrainElevation(float x, float y)
 
 CHeightmap* CEditorImpl::GetHeightmap()
 {
+#ifdef LY_TERRAIN_EDITOR
     assert(m_pTerrainManager);
     return m_pTerrainManager->GetHeightmap();
+#else
+    AZ_Assert(false, "The Height Map doesn't exist in this build.");
+    return nullptr;
+#endif //#ifdef LY_TERRAIN_EDITOR
 }
 
 CVegetationMap* CEditorImpl::GetVegetationMap()
@@ -1563,7 +1636,7 @@ void CEditorImpl::CloseView(const GUID& classId)
     IClassDesc* found = GetClassFactory()->FindClass(classId);
     if (found)
     {
-        CloseView(found->ClassName().toLatin1().data());
+        CloseView(found->ClassName().toUtf8().data());
     }
 }
 
@@ -1673,6 +1746,15 @@ bool CEditorImpl::IsInGameMode()
     return false;
 }
 
+bool CEditorImpl::IsInSimulationMode()
+{
+    if (m_pGameEngine)
+    {
+        return m_pGameEngine->GetSimulationMode();
+    }
+    return false;
+}
+
 bool CEditorImpl::IsInTestMode()
 {
     return CCryEditApp::instance()->IsInTestMode();
@@ -1698,82 +1780,114 @@ void CEditorImpl::EnableAcceleratos(bool bEnable)
     KeyboardCustomizationSettings::EnableShortcutsGlobally(bEnable);
 }
 
-void CEditorImpl::InitMetrics()
+static AZStd::string SafeGetStringFromDocument(rapidjson::Document& projectCfg, const char* memberName)
 {
-    QString fileToCheck = "project.json";
-    bool fullPathfound = false;
+    if (projectCfg.HasMember(memberName) && projectCfg[memberName].IsString())
+    {
+        return projectCfg[memberName].GetString();
+    }
+
+    return "";
+}
+
+AZStd::string CEditorImpl::LoadProjectIdFromProjectData()
+{
+    const char* MissingProjectId = "";
 
     // get the full path of the project.json
     AZStd::string fullPath;
-    AZStd::string relPath(fileToCheck.toUtf8().data());
-    EBUS_EVENT_RESULT(fullPathfound, AzToolsFramework::AssetSystemRequestBus, GetFullSourcePathFromRelativeProductPath, relPath, fullPath);
+    AZStd::string relPath("project.json");
+    bool fullPathFound = false;
+
+    using namespace AzToolsFramework;
+    AssetSystemRequestBus::BroadcastResult(fullPathFound, &AssetSystemRequestBus::Events::GetFullSourcePathFromRelativeProductPath, relPath, fullPath);
+
+    if (!fullPathFound)
+    {
+        return MissingProjectId;
+    }
 
     QFile file(fullPath.c_str());
-
-    QByteArray fileContents;
-    AZStd::string str;
-    const char* projectId = "";
-
-    if (file.open(QIODevice::ReadOnly))
+    if (!file.open(QIODevice::ReadOnly))
     {
-        // Read the project.json file using its full path
-        fileContents = file.readAll();
-        file.close();
-
-        rapidjson::Document projectCfg;
-        projectCfg.Parse(fileContents);
-
-        if (projectCfg.IsObject())
-        {
-            // get the project Id and project name from the project.json file
-            QString projectName = projectCfg["project_name"].IsString() ? projectCfg["project_name"].GetString() : "";
-
-            if (projectCfg.HasMember("project_id") && projectCfg["project_id"].IsString())
-            {
-                projectId = projectCfg["project_id"].GetString();
-            }
-
-            QFileInfo fileInfo(fullPath.c_str());
-            QDir folderDirectory = fileInfo.dir();
-
-            // get the project name from the folder directory
-            QString editorProjectName = folderDirectory.dirName();
-
-            // get the project Id generated by using the project name from the folder directory
-            QByteArray editorProjectNameUtf8 = editorProjectName.toUtf8();
-            AZ::Uuid id = AZ::Uuid::CreateName(editorProjectNameUtf8.constData());
-
-
-            // The projects that Lumberyard ships with had their project IDs hand-generated based on the name of the level.
-            // Therefore, if the UUID from the project name is the same as the UUID in the file, it's one of our projects
-            // and we can therefore send the name back, making it easier for Metrics to determine which level it was.
-            // We are checking to see if this is a project we ship with Lumberyard, and therefore we can unobfuscate non-customer information.
-            if (projectId && projectId[0] != '\0' && editorProjectName.compare(projectName, Qt::CaseInsensitive) == 0 &&
-                (id == AZ::Uuid(projectId)))
-            {
-                QByteArray projectNameUtf8 = projectName.toUtf8();
-
-                str += projectId;
-                str += " [";
-                str += projectNameUtf8.constData();
-                str += "]";
-            }
-
-
-            projectId = (str.length() != 0) ? str.c_str() : projectId;
-        }
+        return MissingProjectId;
     }
+
+    // Read the project.json file using its full path
+    QByteArray fileContents = file.readAll();
+    file.close();
+
+    rapidjson::Document projectCfg;
+    projectCfg.Parse(fileContents);
+
+    if (!projectCfg.IsObject())
+    {
+        return MissingProjectId;
+    }
+
+    AZStd::string projectId = SafeGetStringFromDocument(projectCfg, "project_id");
+
+    // if we don't have a valid projectId by now, it's not happening
+    if (projectId.empty() || projectId[0] == '\0')
+    {
+        return MissingProjectId;
+    }
+
+    // get the project Id and project name from the project.json file
+    QString projectName(SafeGetStringFromDocument(projectCfg, "project_name").data());
+
+    QFileInfo fileInfo(fullPath.c_str());
+    QDir folderDirectory = fileInfo.dir();
+
+    // get the project name from the folder directory
+    QString editorProjectName = folderDirectory.dirName();
+
+    // if the project name in the file doesn't match the directory name, it probably means that this is
+    // a copied project, and not safe to put any plain text into the projectId string
+    if (editorProjectName.compare(projectName, Qt::CaseInsensitive) != 0)
+    {
+        return projectId;
+    }
+
+    // get the project Id generated by using the project name from the folder directory
+    QByteArray editorProjectNameUtf8 = editorProjectName.toUtf8();
+    AZ::Uuid id = AZ::Uuid::CreateName(editorProjectNameUtf8.constData());
+
+    // The projects that Lumberyard ships with had their project IDs hand-generated based on the name of the level.
+    // Therefore, if the UUID from the project name is the same as the UUID in the file, it's one of our projects
+    // and we can therefore send the name back, making it easier for Metrics to determine which level it was.
+    // We are checking to see if this is a project we ship with Lumberyard, and therefore we can unobfuscate non-customer information.
+    if (id != AZ::Uuid(projectId.data()))
+    {
+        return projectId;
+    }
+
+    QByteArray projectNameUtf8 = projectName.toUtf8();
+
+    projectId += " [";
+    projectId += projectNameUtf8.constData();
+    projectId += "]";
+
+    return projectId;
+}
+
+void CEditorImpl::InitMetrics()
+{
+    AZStd::string projectId = LoadProjectIdFromProjectData();
 
     static char statusFilePath[_MAX_PATH + 1];
     {
         azstrcpy(statusFilePath, _MAX_PATH, AZ::IO::FileIOBase::GetInstance()->GetAlias("@devroot@"));
-        azstrcat(statusFilePath, _MAX_PATH, &(Aws::FileSystem::PATH_DELIM));
+        const char delim[] = { Aws::FileSystem::PATH_DELIM, 0 };
+        azstrcat(statusFilePath, _MAX_PATH, delim);
         azstrcat(statusFilePath, _MAX_PATH, m_crashLogFileName);
     }
 
     AWSNativeSDKInit::InitializationManager::InitAwsApi();
     const bool metricsInitAwsApi = false;
-    LyMetrics_Initialize("Editor.exe", 2, metricsInitAwsApi, projectId, statusFilePath);
+
+    // LY_METRICS_BUILD_TIME is defined by the build system
+    LyMetrics_Initialize("Editor.exe", 2, metricsInitAwsApi, projectId.data(), statusFilePath, LY_METRICS_BUILD_TIME);
 }
 
 void CEditorImpl::DetectVersion()
@@ -1833,14 +1947,14 @@ CShaderEnum* CEditorImpl::GetShaderEnum()
 
 bool CEditorImpl::ExecuteConsoleApp(const QString& CommandLine, QString& OutputText, bool bNoTimeOut, bool bShowWindow)
 {
-    CLogFile::FormatLine("Executing console application '%s'", CommandLine.toLatin1().data());
+    CLogFile::FormatLine("Executing console application '%s'", CommandLine.toUtf8().data());
 
     QProcess process;
     if (bShowWindow)
     {
 #if defined(AZ_PLATFORM_WINDOWS)
         process.start(QString("cmd.exe /C %1").arg(CommandLine));
-#elif defined(AZ_PLATFORM_APPLE_OSX)
+#elif defined(AZ_PLATFORM_MAC)
         process.start(QString("/usr/bin/osascript -e 'tell application \"Terminal\" to do script \"%1\"'").arg(QString(CommandLine).replace("\"", "\\\"")));
 #else
 #error "Needs to be implemented"
@@ -1950,6 +2064,8 @@ void CEditorImpl::Undo()
 {
     if (m_pUndoManager)
     {
+        AzToolsFramework::EditorMetricsEventBusSelectionChangeHelper selectionChangeMetricsHelper;
+
         m_pUndoManager->Undo();
     }
 }
@@ -1958,6 +2074,8 @@ void CEditorImpl::Redo()
 {
     if (m_pUndoManager)
     {
+        AzToolsFramework::EditorMetricsEventBusSelectionChangeHelper selectionChangeMetricsHelper;
+
         m_pUndoManager->Redo();
     }
 }
@@ -2010,6 +2128,17 @@ bool CEditorImpl::ClearLastUndoSteps(int steps)
     }
 
     m_pUndoManager->ClearUndoStack(steps);
+    return true;
+}
+
+bool CEditorImpl::ClearRedoStack()
+{
+    if (!m_pUndoManager || !m_pUndoManager->IsHaveRedo())
+    {
+        return false;
+    }
+
+    m_pUndoManager->ClearRedoStack();
     return true;
 }
 
@@ -2075,62 +2204,11 @@ void CEditorImpl::UnregisterDocListener(IDocListener* listener)
     }
 }
 
-const char* GetMetricNameForEvent(EEditorNotifyEvent aEventId)
-{
-    static const std::unordered_map< EEditorNotifyEvent, const char* > s_eventNameMap =
-    {
-        {eNotify_OnInit, "OnInit"},
-        {eNotify_OnBeginNewScene, "OnBeginNewScene"},
-        {eNotify_OnEndNewScene, "OnEndNewScene"},
-        {eNotify_OnBeginSceneOpen, "OnBeginSceneOpen"},
-        {eNotify_OnEndSceneOpen, "OnEndSceneOpen"},
-        {eNotify_OnBeginSceneSave, "OnBeginSceneSave"},
-        {eNotify_OnBeginLayerExport, "OnBeginLayerExport"},
-        {eNotify_OnEndLayerExport, "OnEndLayerExport"},
-        {eNotify_OnCloseScene, "OnCloseScene"},
-        {eNotify_OnMissionChange, "OnMissionChange"},
-        {eNotify_OnBeginLoad, "OnBeginLoad"},
-        {eNotify_OnEndLoad, "OnEndLoad"},
-        {eNotify_OnExportToGame, "OnExportToGame"},
-        {eNotify_OnEditModeChange, "OnEditModeChange"},
-        {eNotify_OnEditToolChange, "OnEditToolChange"},
-        {eNotify_OnBeginGameMode, "OnBeginGameMode"},
-        {eNotify_OnEndGameMode, "OnEndGameMode"},
-        {eNotify_OnEnableFlowSystemUpdate, "OnEnableFlowSystemUpdate"},
-        {eNotify_OnDisableFlowSystemUpdate, "OnDisableFlowSystemUpdate"},
-        {eNotify_OnSelectionChange, "OnSelectionChange"},
-        {eNotify_OnPlaySequence, "OnPlaySequence"},
-        {eNotify_OnStopSequence, "OnStopSequence"},
-        {eNotify_OnOpenGroup, "OnOpenGroup"},
-        {eNotify_OnCloseGroup, "OnCloseGroup"},
-        {eNotify_OnTerrainRebuild, "OnTerrainRebuild"},
-        {eNotify_OnBeginTerrainRebuild, "OnBeginTerrainRebuild"},
-        {eNotify_OnEndTerrainRebuild, "OnEndTerrainRebuild"},
-        {eNotify_OnLayerImportBegin, "OnLayerImportBegin"},
-        {eNotify_OnLayerImportEnd, "OnLayerImportEnd"},
-        {eNotify_OnAddAWSProfile, "OnAddAWSProfile"},
-        {eNotify_OnSwitchAWSProfile, "OnSwitchAWSProfile"},
-        {eNotify_OnSwitchAWSDeployment, "OnSwitchAWSDeployment"},
-        {eNotify_OnFirstAWSUse, "OnFirstAWSUse"}
-    };
-
-    auto eventIter = s_eventNameMap.find(aEventId);
-    if (eventIter == s_eventNameMap.end())
-    {
-        return nullptr;
-    }
-
-    return eventIter->second;
-}
-
 // Confetti Start: Leroy Sikkes
 void CEditorImpl::Notify(EEditorNotifyEvent event)
 {
     NotifyExcept(event, nullptr);
 }
-
-static const char* EDITOR_OPERATION_METRIC_EVENT_NAME = "EditorOperation";
-static const char* EDITOR_OPERATION_ATTRIBUTE_NAME = "Operation";
 
 void CEditorImpl::NotifyExcept(EEditorNotifyEvent event, IEditorNotifyListener* listener)
 {
@@ -2174,14 +2252,6 @@ void CEditorImpl::NotifyExcept(EEditorNotifyEvent event, IEditorNotifyListener* 
     }
 
     GetPluginManager()->NotifyPlugins(event);
-
-    const char* eventMetricName = GetMetricNameForEvent(event);
-    if (eventMetricName)
-    {
-        auto metricId = LyMetrics_CreateEvent(EDITOR_OPERATION_METRIC_EVENT_NAME);
-        LyMetrics_AddAttribute(metricId, EDITOR_OPERATION_ATTRIBUTE_NAME, eventMetricName);
-        LyMetrics_SubmitEvent(metricId);
-    }
 
     if (event == eNotify_OnEndGameMode)
     {
@@ -2250,32 +2320,6 @@ bool CEditorImpl::IsSourceControlConnected()
     }
 
     return false;
-}
-
-IAssetTagging* CEditorImpl::GetAssetTagging()
-{
-    CryAutoLock<CryMutex> lock(m_pluginMutex);
-
-    if (m_pAssetTagging)
-    {
-        return m_pAssetTagging;
-    }
-
-    std::vector<IClassDesc*> classes;
-    GetIEditor()->GetClassFactory()->GetClassesBySystemID(ESYSTEM_CLASS_ASSET_TAGGING, classes);
-    for (int i = 0; i < classes.size(); i++)
-    {
-        IClassDesc* pClass = classes[i];
-        IAssetTagging* pAssetTagging = NULL;
-        HRESULT hRes = pClass->QueryInterface(__uuidof(IAssetTagging), (void**)&pAssetTagging);
-        if (!FAILED(hRes) && pAssetTagging)
-        {
-            m_pAssetTagging = pAssetTagging;
-            return m_pAssetTagging;
-        }
-    }
-
-    return 0;
 }
 
 void CEditorImpl::SetMatEditMode(bool bIsMatEditMode)
@@ -2429,7 +2473,7 @@ void CEditorImpl::CmdPy(IConsoleCmdArgs* pArgs)
     scriptCmd = scriptCmd.right(scriptCmd.length() - 2); // The part of the text after the 'py'
     scriptCmd = scriptCmd.trimmed();
     PyScript::AcquirePythonLock();
-    PyRun_SimpleString(scriptCmd.toLatin1().data());
+    PyRun_SimpleString(scriptCmd.toUtf8().data());
     PyErr_Print();
     PyScript::ReleasePythonLock();
 }
@@ -2521,6 +2565,11 @@ void CEditorImpl::SetLegacyUIEnabled(bool enabled)
     m_isLegacyUIEnabled = enabled;
 }
 
+bool CEditorImpl::IsNewViewportInteractionModelEnabled() const
+{
+    return m_isNewViewportInteractionModelEnabled;
+}
+
 void CEditorImpl::OnStartPlayInEditor()
 {
     if (SelectionContainsComponentEntities())
@@ -2532,7 +2581,7 @@ void CEditorImpl::OnStartPlayInEditor()
 
 void CEditorImpl::InitializeCrashLog()
 {
-    LyMetrics_InitializeCurrentProcessStatus(m_crashLogFileName);
+    LyMetrics_InitializeCurrentProcessStatus(m_crashLogFileName, LY_METRICS_BUILD_TIME);
 
 #if defined(WIN32) || defined(WIN64)
     if (::IsDebuggerPresent())

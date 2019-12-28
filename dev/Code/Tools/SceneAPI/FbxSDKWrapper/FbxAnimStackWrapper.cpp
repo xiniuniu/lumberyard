@@ -10,11 +10,11 @@
 *
 */
 
-#include <AzCore/std/smart_ptr/make_shared.h>
 #include <AzCore/Debug/Trace.h>
-#include "FbxAnimStackWrapper.h"
-#include "FbxAnimLayerWrapper.h"
-#include "FbxTimeSpanWrapper.h"
+#include <AzCore/std/smart_ptr/make_shared.h>
+#include <SceneAPI/FbxSDKWrapper/FbxAnimStackWrapper.h>
+#include <SceneAPI/FbxSDKWrapper/FbxAnimLayerWrapper.h>
+#include <SceneAPI/FbxSDKWrapper/FbxTimeSpanWrapper.h>
 
 namespace AZ
 {
@@ -29,6 +29,11 @@ namespace AZ
         FbxAnimStackWrapper::~FbxAnimStackWrapper()
         {
             m_fbxAnimStack = nullptr;
+        }
+
+        const char* FbxAnimStackWrapper::GetName() const
+        {
+            return m_fbxAnimStack->GetName();
         }
 
         int FbxAnimStackWrapper::GetAnimationLayerCount() const
@@ -46,5 +51,5 @@ namespace AZ
         {
             return FbxTimeSpanWrapper(m_fbxAnimStack->GetLocalTimeSpan());
         }
-    }
-}
+    } // namespace FbxSDKWrapper
+} // namespace AZ

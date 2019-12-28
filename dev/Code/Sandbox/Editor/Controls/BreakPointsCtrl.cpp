@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "BreakPointsCtrl.h"
 
 #include "../HyperGraph/FlowGraph.h"
@@ -346,7 +346,6 @@ void CBreakpointsTreeCtrl::OnBreakpointInvalidated(const SBreakPoint& breakpoint
             if (pPort)
             {
                 CFlowGraph* pFlowgraph = GetIEditor()->GetFlowGraphManager()->FindGraph(pFlowGraph);
-                CFlowNode* pNode = pFlowgraph->FindFlowNode(breakpoint.addr.node);
                 hPortItem->setText(0, pPort->GetHumanName());
             }
         }

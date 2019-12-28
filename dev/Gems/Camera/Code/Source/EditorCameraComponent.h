@@ -18,6 +18,7 @@
 #include <AzToolsFramework/ToolsComponents/EditorComponentBase.h>
 #include <AzToolsFramework/API/ToolsApplicationAPI.h>
 #include <AzToolsFramework/API/EditorCameraBus.h>
+#include <AzFramework/Viewport/ViewportColors.h>
 #include <AzFramework/Components/CameraBus.h>
 
 #include <AzFramework/Components/EditorEntityEvents.h>
@@ -57,12 +58,14 @@ namespace Camera
 
         //////////////////////////////////////////////////////////////////////////
         // CameraRequestBus::Handler
-        float GetFov() override;
+        float GetFovDegrees() override;
+        float GetFovRadians() override;
         float GetNearClipDistance() override;
         float GetFarClipDistance() override;
         float GetFrustumWidth() override;
         float GetFrustumHeight() override;
-        void SetFov(float fov) override;
+        void SetFovDegrees(float fov) override;
+        void SetFovRadians(float fov) override;
         void SetNearClipDistance(float nearClipDistance) override;
         void SetFarClipDistance(float farClipDistance) override;
         void SetFrustumWidth(float width) override;
@@ -82,8 +85,10 @@ namespace Camera
 
 
         //////////////////////////////////////////////////////////////////////////
-        // AzFramework::EntityDebugDisplayRequestBus::Handler
-        void DisplayEntity(bool& handled) override;
+        // AzFramework::DebugDisplayRequestBus::Handler
+        void DisplayEntityViewport(
+            const AzFramework::ViewportInfo& viewportInfo,
+            AzFramework::DebugDisplayRequests& debugDisplay) override;
         //////////////////////////////////////////////////////////////////////////
 
         //////////////////////////////////////////////////////////////////////////
@@ -103,7 +108,7 @@ namespace Camera
         //////////////////////////////////////////////////////////////////////////
     protected:
         void UpdateCamera();
-        void EditorDisplay(AzFramework::EntityDebugDisplayRequests& displayInterface, const AZ::Transform& world, bool& handled);
+        void EditorDisplay(AzFramework::DebugDisplayRequests& displayInterface, const AZ::Transform& world);
         AZ::Crc32 OnPossessCameraButtonClicked();
         AZStd::string GetCameraViewButtonText() const;
 
@@ -126,6 +131,6 @@ namespace Camera
         float m_frustumHeight = s_defaultFrustumDimension;
         bool m_viewButton = false;
         float m_frustumViewPercentLength = 1.f;
-        AZ::Color m_frustumDrawColor = AZ::Color{1.0f, 0.f, 0.f, 1.f};
+        AZ::Color m_frustumDrawColor = AzFramework::ViewportColors::HoverColor;
     };
 } // Camera

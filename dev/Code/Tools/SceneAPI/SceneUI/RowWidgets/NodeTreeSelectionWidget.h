@@ -12,13 +12,13 @@
 *
 */
 
-#include <QWidget.h>
+#include <QWidget>
 #include <AzCore/Math/Uuid.h>
 #include <AzCore/std/string/string.h>
 #include <AzCore/std/smart_ptr/unique_ptr.h>
 #include <AzCore/std/containers/set.h>
 #include <AzCore/Memory/SystemAllocator.h>
-#include <AzToolsFramework/UI/PropertyEditor/PropertyEditorApi.h>
+#include <AzToolsFramework/UI/PropertyEditor/PropertyEditorAPI.h>
 #include <SceneAPI/SceneUI/SceneUIConfiguration.h>
 #include <SceneAPI/SceneUI/SceneWidgets/SceneGraphWidget.h>
 
@@ -38,13 +38,15 @@ namespace AZ
             {
                 class NodeTreeSelectionWidget;
             }
-            class NodeTreeSelectionWidget : public QWidget
+
+            class SCENE_UI_API NodeTreeSelectionWidget : public QWidget
             {
                 Q_OBJECT
             public:
                 AZ_CLASS_ALLOCATOR_DECL
 
                 explicit NodeTreeSelectionWidget(QWidget* parent);
+                ~NodeTreeSelectionWidget() override;
 
                 void SetList(const DataTypes::ISceneNodeSelectionList& list);
                 void CopyListTo(DataTypes::ISceneNodeSelectionList& target);
@@ -55,6 +57,7 @@ namespace AZ
                 void AddFilterType(const Uuid& idProperty);
                 void AddFilterVirtualType(Crc32 name);
                 void UseNarrowSelection(bool enable);
+                void UpdateSelectionLabel();
 
             signals:
                 void valueChanged();
@@ -63,8 +66,7 @@ namespace AZ
                 void SelectButtonClicked();
                 void ListChangesAccepted();
                 void ListChangesCanceled();
-                void UpdateSelectionLabel();
-
+                virtual void ResetNewTreeWidget(const Containers::Scene& scene);
                 size_t CalculateSelectedCount();
                 size_t CalculateTotalCount();
 

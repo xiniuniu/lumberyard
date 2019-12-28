@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "StdAfx.h"
+#include "stdafx.h"
 #include "BatchFileDialog.h"
 #include "QPropertyTree/QPropertyDialog.h"
 #include "Serialization/StringList.h"
@@ -92,7 +92,8 @@ struct CBatchFileDialog::SContent
 
 static bool ReadFile(std::vector<char>* buffer, const char* path)
 {
-    FILE* f = fopen(path, "rb");
+    FILE* f = nullptr;
+    azfopen(&f, path, "rb");
     if (!f)
     {
         return false;
@@ -259,7 +260,7 @@ bool EDITOR_COMMON_API ShowBatchFileDialog(Serialization::StringList* result, co
             int modIndex = 0;
             do
             {
-                string modPrefix = GetIEditor()->GetMasterCDFolder().toLatin1().data();
+                string modPrefix = GetIEditor()->GetMasterCDFolder().toUtf8().data();
                 if (!modPrefix.empty() && modPrefix[modPrefix.size() - 1] != '\\')
                 {
                     modPrefix += "\\";
@@ -277,7 +278,7 @@ bool EDITOR_COMMON_API ShowBatchFileDialog(Serialization::StringList* result, co
                 {
                     SBatchFileItem item;
                     item.selected = true;
-                    QByteArray array = dirIterator.next().toLatin1();
+                    QByteArray array = dirIterator.next().toUtf8();
                     item.path = string(array);
                     item.path.replace('/', '\\');
                     content.items.push_back(item);

@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "stdafx.h"
+#include "StarterGameGem_precompiled.h"
 #include "PlayFromHereComponent.h"
 
 #include <AzCore/Serialization/EditContext.h>
@@ -30,7 +30,6 @@ namespace StarterGameGem
         {
             serializeContext->Class<PlayFromHereComponent, AZ::Component>()
                 ->Version(1)
-                ->SerializerForEmptyClass()
             ;
 
             AZ::EditContext* editContext = serializeContext->GetEditContext();

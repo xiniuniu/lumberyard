@@ -9,124 +9,79 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#ifndef AZCORE_PLATFORM_DEF_H
-#define AZCORE_PLATFORM_DEF_H 1
+#pragma once
 
 //////////////////////////////////////////////////////////////////////////
 // Platforms
 
 #if defined(AZ_MONOLITHIC_BUILD)
-#define ENABLE_TYPE_INFO_NAMES 1
+    #define ENABLE_TYPE_INFO_NAMES 1
 #endif
 
-#if   defined(_WIN32)
-
-#define AZ_PLATFORM_WINDOWS
-
 #if defined(__clang__)
-#   define AZ_COMPILER_CLANG    __clang_major__
+    #define AZ_COMPILER_CLANG   __clang_major__
 #elif defined(_MSC_VER)
-#   define AZ_COMPILER_MSVC     _MSC_VER
-#endif
-
-//#ifndef _CRT_SECURE_NO_WARNINGS
-//# define _CRT_SECURE_NO_WARNINGS
-//#endif // _CRT_SECURE_NO_WARNINGS
-//#ifndef _CRT_SECURE_NO_DEPRECATE
-//# define _CRT_SECURE_NO_DEPRECATE
-//#endif // _CRT_SECURE_NO_DEPRECATE
-//#ifndef _CRT_NONSTDC_NO_DEPRECATE
-//# define _CRT_NONSTDC_NO_DEPRECATE
-//#endif // _CRT_NONSTDC_NO_DEPRECATE
-
-#if defined(_WIN64)
-    #define AZ_PLATFORM_WINDOWS_X64
-// There is a bug, where the compiler will report C4324 for every struct class with a virtual func and a aligned memeber.
-// Remove this ASAP
-    #pragma warning(disable:4324)
-#endif
-
-
-#elif defined(__ANDROID__)
-
-#define AZ_PLATFORM_ANDROID
-
-#if defined(__aarch64__)
-    #define AZ_PLATFORM_ANDROID_X64
-#elif defined(__ARM_ARCH_7A__)
-    #define AZ_PLATFORM_ANDROID_X32
-#else
-    #error This plaform is not supported
-#endif
-
-#if defined(__clang__)
-#   define AZ_COMPILER_CLANG    __clang_major__
-#elif defined(__GNUC__)
-#   define AZ_COMPILER_GCC    __GNUC__
+    #define AZ_COMPILER_MSVC    _MSC_VER
 #else
 #   error This compiler is not supported
-#endif //
-
-#elif defined(__linux__)
-
-#define AZ_PLATFORM_LINUX
-
-#if defined(__x86_64__)
-    #define AZ_PLATFORM_LINUX_X64
-    #define AZ_COMPILER_CLANG   __clang_major__
-#else
-    #error This plaform is not supported
 #endif
 
-#elif defined(__MWERKS__)
+#include <AzCore/AzCore_Traits_Platform.h>
 
-#define AZ_PLATFORM_WII
-#define AZ_COMPILER_MWERKS
-
-#elif defined(__APPLE__)
-    #include <TargetConditionals.h>
-    #if (TARGET_OS_TV)
-        #define AZ_PLATFORM_APPLE_TV
-    #elif (TARGET_OS_IPHONE)
-        #define AZ_PLATFORM_APPLE_IOS
-    #elif (TARGET_OS_MAC)
-        #define AZ_PLATFORM_APPLE_OSX
-    #else
-        #error Unknown Apple platform
-    #endif
-
-    #define AZ_PLATFORM_APPLE
-
-    #if defined(__clang__)
-        #define AZ_COMPILER_CLANG __clang_major__
-    #elif defined(__GNUC__)
-        #define AZ_COMPILER_GCC __GNUC__
-    #else
-        #error This compiler is not supported
-    #endif
-
-#else
-#error This plaform is not supported
-#endif //
 //////////////////////////////////////////////////////////////////////////
 
-#define AZ_INLINE       inline
+#define AZ_INLINE                       inline
+#define AZ_THREAD_LOCAL                 AZ_TRAIT_COMPILER_THREAD_LOCAL
+#define AZ_DYNAMIC_LIBRARY_PREFIX       AZ_TRAIT_OS_DYNAMIC_LIBRARY_PREFIX
+#define AZ_DYNAMIC_LIBRARY_EXTENSION    AZ_TRAIT_OS_DYNAMIC_LIBRARY_EXTENSION
 
-/// DLL import/export macros
-#if defined(AZ_PLATFORM_WINDOWS) || defined(AZ_PLATFORM_XBONE)
-#   if defined(AZ_COMPILER_CLANG)
-#       define AZ_DLL_EXPORT __attribute__ ((dllexport))
-#       define AZ_DLL_IMPORT __attribute__ ((dllimport))
-#   elif defined(AZ_COMPILER_MSVC)
-#       define AZ_DLL_EXPORT __declspec(dllexport)
-#       define AZ_DLL_IMPORT __declspec(dllimport)
-#   endif
-#else
-#   define AZ_DLL_EXPORT __attribute__ ((visibility ("default")))
-#   define AZ_DLL_IMPORT __attribute__ ((visibility ("default")))
+#if defined(AZ_COMPILER_CLANG)
+    #define AZ_DLL_EXPORT               AZ_TRAIT_OS_DLL_EXPORT_CLANG
+    #define AZ_DLL_IMPORT               AZ_TRAIT_OS_DLL_IMPORT_CLANG
+#elif defined(AZ_COMPILER_MSVC)
+    #define AZ_DLL_EXPORT               __declspec(dllexport)
+    #define AZ_DLL_IMPORT               __declspec(dllimport)
 #endif
 
+// These defines will be deprecated in the future with LY-99152
+#if defined(AZ_PLATFORM_MAC)
+    #define AZ_PLATFORM_APPLE_OSX
+#endif
+#if defined(AZ_PLATFORM_IOS)
+    #define AZ_PLATFORM_APPLE_IOS
+#endif
+#if AZ_TRAIT_OS_PLATFORM_APPLE
+    #define AZ_PLATFORM_APPLE
+#endif
+
+#if AZ_TRAIT_OS_HAS_DLL_SUPPORT
+    #define AZ_HAS_DLL_SUPPORT
+#endif
+
+/// Deprecated macro
+#define AZ_DEPRECATED(_decl, _message) [[deprecated(_message)]] _decl
+
+
+#define AZ_STRINGIZE_I(text) #text
+
 #if defined(AZ_COMPILER_MSVC)
+#    define AZ_STRINGIZE(text) AZ_STRINGIZE_A((text))
+#    define AZ_STRINGIZE_A(arg) AZ_STRINGIZE_I arg
+#else
+#    define AZ_STRINGIZE(text) AZ_STRINGIZE_I(text)
+#endif
+
+
+#if defined(AZ_COMPILER_MSVC)
+
+/// Disables a warning using push style. For use matched with an AZ_POP_WARNING
+#define AZ_PUSH_DISABLE_WARNING(_msvcOption, __)    \
+    __pragma(warning(push))                         \
+    __pragma(warning(disable : _msvcOption))
+
+/// Pops the warning stack. For use matched with an AZ_PUSH_DISABLE_WARNING
+#define AZ_POP_DISABLE_WARNING                      \
+    __pragma(warning(pop))
 
 #   define AZ_FORCE_INLINE  __forceinline
 #if !defined(_DEBUG)
@@ -141,76 +96,13 @@
 #   define AZ_RESTRICT  __restrict
 /// Pointer will be aliased.
 #   define AZ_MAY_ALIAS
-/// Deprecated macro
-#   define AZ_DEPRECATED(_decl, _message)    __declspec(deprecated(_message)) _decl
 /// Function signature macro
 #   define AZ_FUNCTION_SIGNATURE    __FUNCSIG__
 
-#   if AZ_COMPILER_MSVC >= 1700
-#       define AZ_HAS_RVALUE_REFS
-#       define AZ_HAS_NULLPTR_T
-#   else
-#       define nullptr NULL
-#   endif // _MSC_VER < 1700
+#   define AZ_HAS_NULLPTR_T
 
-#   if AZ_COMPILER_MSVC >= 1800
-#       define AZ_HAS_VARIADIC_TEMPLATES
-// std::underlying_type for enums
-#       define AZSTD_UNDERLAYING_TYPE
-/// Enabled if we have initializers list support
-#       define AZ_HAS_INITIALIZERS_LIST
-/// Enabled if we can alias templates with the using keyword
-#       define AZ_HAS_TEMPLATE_ALIAS
-/// Used to delete a method from a class
-#       define AZ_DELETE_METHOD = delete
-/// Use the default implementation of a class method
-#       define AZ_DEFAULT_METHOD = default
-#   else
-/// Delete a method from a class, not implemented
-#       define AZ_DELETE_METHOD
-/// Default implementation of a class method, not implemented
-#       define AZ_DEFAULT_METHOD
-#   endif
-
-//////////////////////////////////////////////////////////////////////////
-#elif defined(AZ_COMPILER_GCC) || defined(AZ_COMPILER_SNC)
-/// Forces a function to be inlined. \todo check __attribute__( ( always_inline ) )
-
-#   define AZ_FORCE_INLINE  inline
-#ifdef  AZ_COMPILER_SNC
-#   define AZ_INTERNAL_ALIGNMENT_OF(_type) __alignof__(_type)
-#   if __option(cpp11)
-/// RValue ref, move constructors
-#       define AZ_HAS_RVALUE_REFS
-/// Variadic templates
-#       define AZ_HAS_VARIADIC_TEMPLATES
-/// nullptr_t
-#       define AZ_HAS_NULLPTR_T
-/// Enabled if we have initializers list support
-#       define AZ_HAS_INITIALIZERS_LIST
-/// Enabled if we can alias templates with the using keyword
-#       define AZ_HAS_TEMPLATE_ALIAS
-/// Used to delete a method from a class
-#       define AZ_DELETE_METHOD = delete
-/// Use the default implementation of a class method
-#       define AZ_DEFAULT_METHOD = default
-#   else
-/// Delete a method from a class, not implemented
-#       define AZ_DELETE_METHOD
-/// Default implementation of a class method, not implemented
-#       define AZ_DEFAULT_METHOD
-#   endif // __option(cpp11)
-#else
-// GCC we support version above 4.4
-#   define AZ_HAS_RVALUE_REFS
-/// Variadic templates
-#   define AZ_HAS_VARIADIC_TEMPLATES
 // std::underlying_type for enums
 #   define AZSTD_UNDERLAYING_TYPE
-/// Note this work properly with templates on older GCC.
-#   define AZ_INTERNAL_ALIGNMENT_OF(_type) __alignof__(_type)
-/// Compiler has AZStd::nullptr_t (std::nullptr_t)
-#   define AZ_HAS_NULLPTR_T
 /// Enabled if we have initializers list support
 #   define AZ_HAS_INITIALIZERS_LIST
 /// Enabled if we can alias templates with the using keyword
@@ -220,25 +112,18 @@
 /// Use the default implementation of a class method
 #   define AZ_DEFAULT_METHOD = default
 
-#endif
-// Aligns a declaration.
-#   define AZ_ALIGN(_decl, _alignment) _decl __attribute__((aligned(_alignment)))
-/// Pointer is not aliased. (ref __restrict)
-#   define AZ_RESTRICT  __restrict
-/// Pointer will be aliased.
-#   define AZ_MAY_ALIAS __attribute__((__may_alias__))
-
-/// Deprecated macro
-#   define AZ_DEPRECATED(_decl, _message) __attribute__((deprecated)) _decl
-/// Function signature macro
-#   define AZ_FUNCTION_SIGNATURE    __PRETTY_FUNCTION__
-
-
-#if !defined(AZ_HAS_NULLPTR_T)
-#   define nullptr __null
-#endif
-
+//////////////////////////////////////////////////////////////////////////
 #elif defined(AZ_COMPILER_CLANG)
+
+/// Disables a single warning using push style. For use matched with an AZ_POP_WARNING
+#define AZ_PUSH_DISABLE_WARNING(__, _clangOption)           \
+    _Pragma("clang diagnostic push")                        \
+    _Pragma(AZ_STRINGIZE(clang diagnostic ignored _clangOption))
+
+/// Pops the warning stack. For use matched with an AZ_PUSH_DISABLE_WARNING
+#define AZ_POP_DISABLE_WARNING                              \
+    _Pragma("clang diagnostic pop")
+
 #   define AZ_FORCE_INLINE  inline
 /// Aligns a declaration.
 #   define AZ_ALIGN(_decl, _alignment) _decl __attribute__((aligned(_alignment)))
@@ -248,12 +133,6 @@
 #   define AZ_RESTRICT  __restrict
 /// Pointer will be aliased.
 #   define AZ_MAY_ALIAS __attribute__((__may_alias__))
-/// Deprecated macro
-#   define AZ_DEPRECATED(_decl, _message) __attribute__((deprecated(_message))) _decl
-/// RValue ref, move constructors
-#   define AZ_HAS_RVALUE_REFS
-/// Variadic templates
-#   define AZ_HAS_VARIADIC_TEMPLATES
 /// Compiler has AZStd::nullptr_t (std::nullptr_t)
 #   define AZ_HAS_NULLPTR_T
 /// std::underlying_type for enums
@@ -269,53 +148,18 @@
 /// Use the default implementation of a class method
 #   define AZ_DEFAULT_METHOD = default
 
-#elif defined(AZ_COMPILER_MWERKS)
-/// Forces a function to be inlined.
-#   define AZ_FORCE_INLINE  inline
-/// Aligns a declaration.
-#   define AZ_ALIGN(_decl, _alignment) _decl __attribute__((aligned(_alignment)))
-/// Return the alignment of a type. This if for internal use only (use AZStd::alignment_of<>())
-#   define AZ_INTERNAL_ALIGNMENT_OF(_type) __alignof__(_type)
-/// Pointer is not aliased. (ref __restrict)
-#   define AZ_RESTRICT
-/// Pointer will be aliased.
-#   define AZ_MAY_ALIAS
-/// Deprecated macro (todo)
-#   define AZ_DEPRECATED(_decl, _message)
-/// Check which version will support that.
-#   define nullptr NULL
-/// Delete a method from a class, not implemented
-#   define AZ_DELETE_METHOD
-/// Default implementation of a class method, not implemented
-#   define AZ_DEFAULT_METHOD
-/// Function signature macro
-#   define AZ_FUNCTION_SIGNATURE    __PRETTY_FUNCTION__
-
 #else
     #error Compiler not supported
-#endif
-
-#if defined(AZ_PLATFORM_WINDOWS) || defined(AZ_PLATFORM_X360) || defined(AZ_PLATFORM_XBONE) // ACCEPTED_USE
-#   define AZ_THREAD_LOCAL  __declspec(thread)
-#elif defined(AZ_PLATFORM_PS3) || defined(AZ_PLATFORM_PS4) || defined(AZ_PLATFORM_LINUX) || defined(AZ_PLATFORM_ANDROID) || defined(AZ_PLATFORM_APPLE) // ACCEPTED_USE
-#   define AZ_THREAD_LOCAL  __thread
-#endif
-
-#if defined(AZ_PLATFORM_WINDOWS_X64) || defined(AZ_PLATFORM_XBONE) || defined(AZ_PLATFORM_PS4) || defined(AZ_PLATFORM_LINUX_X64) || defined(AZ_PLATFORM_APPLE) // ACCEPTED_USE
-#   define AZ_OS64
-#else
-#   define AZ_OS32
-#endif
-
-
-#if defined(AZ_PLATFORM_WINDOWS) || defined(AZ_PLATFORM_XBONE) || defined(AZ_PLATFORM_LINUX) || defined(AZ_PLATFORM_ANDROID) || defined (AZ_PLATFORM_APPLE_OSX) // ACCEPTED_USE
-#   define AZ_HAS_DLL_SUPPORT
 #endif
 
 // We need to define AZ_DEBUG_BUILD in debug mode. We can also define it in debug optimized mode (left up to the user).
 // note that _DEBUG is not in fact always defined on all platforms, and only AZ_DEBUG_BUILD should be relied on.
 #if !defined(AZ_DEBUG_BUILD) && defined(_DEBUG)
 #   define AZ_DEBUG_BUILD
+#endif
+
+#if !defined(AZ_PROFILE_BUILD) && defined(_PROFILE)
+#   define AZ_PROFILE_BUILD
 #endif
 
 // note that many include ONLY PlatformDef.h and not base.h, so flags such as below need to be here.
@@ -325,35 +169,14 @@
 #   define AZ_ENABLE_DEBUG_TOOLS
 #endif
 
+// AZ_ENABLE_TRACE_ASSERTS - toggles display of native UI assert dialogs with ignore/break options
+#define AZ_ENABLE_TRACE_ASSERTS 1
+
 // AZ_ENABLE_TRACING - turns on and off the availability of AZ_TracePrintf / AZ_Assert / AZ_Error / AZ_Warning
-#if defined(AZ_DEBUG_BUILD) && !defined(AZ_ENABLE_TRACING)
+#if (defined(AZ_DEBUG_BUILD) || defined(AZ_PROFILE_BUILD)) && !defined(AZ_ENABLE_TRACING)
 #   define AZ_ENABLE_TRACING
 #endif
 
 #if !defined(AZ_COMMAND_LINE_LEN)
 #   define AZ_COMMAND_LINE_LEN 2048
 #endif
-
-// Determine the dynamic library/module extension by platform
-#if defined(AZ_PLATFORM_WINDOWS) || defined(AZ_PLATFORM_XBONE)
-  #define AZ_DYNAMIC_LIBRARY_PREFIX
-  #define AZ_DYNAMIC_LIBRARY_EXTENSION  ".dll"
-#elif defined(AZ_PLATFORM_LINUX)
-  #define AZ_DYNAMIC_LIBRARY_PREFIX     "lib"
-  #define AZ_DYNAMIC_LIBRARY_EXTENSION  ".so"
-#elif defined(AZ_PLATFORM_ANDROID)
-  #define AZ_DYNAMIC_LIBRARY_PREFIX     "lib"
-  #define AZ_DYNAMIC_LIBRARY_EXTENSION  ".so"
-#elif defined(AZ_PLATFORM_APPLE)
-  #define AZ_DYNAMIC_LIBRARY_PREFIX     "lib"
-  #define AZ_DYNAMIC_LIBRARY_EXTENSION  ".dylib"
-#else 
-  #pragma error("Unrecognized platform for library extension")
-#endif
-
-
-#endif // AZCORE_PLATFORM_DEF_H
-#pragma once
-
-
-

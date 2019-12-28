@@ -296,12 +296,7 @@ namespace AZ
     AZ_MATH_FORCE_INLINE const Matrix3x3 operator*(const VectorFloat& lhs, const Matrix3x3& rhs);
 }
 
-#ifndef AZ_PLATFORM_WINDOWS // Remove this once all compilers support POD (MSVC already does)
-#   include <AzCore/std/typetraits/is_pod.h>
-AZSTD_DECLARE_POD_TYPE(AZ::Matrix3x3);
-#endif
-
-#if defined(AZ_SIMD_WINDOWS) || defined(AZ_SIMD_XBONE) || defined(AZ_SIMD_PS4) || defined(AZ_SIMD_LINUX) || defined(AZ_SIMD_APPLE_OSX)
+#if AZ_TRAIT_USE_PLATFORM_SIMD
     #include <AzCore/Math/Internal/Matrix3x3Win32.inl>
 #else
     #include <AzCore/Math/Internal/Matrix3x3Fpu.inl>

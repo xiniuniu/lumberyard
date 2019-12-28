@@ -54,7 +54,7 @@ public:
 
     bool OnPreAssert(const char* fileName, int line, const char* func, const char* message) override
     {
-#if defined(USE_CRY_ASSERT) && (defined(WIN32) || defined(DURANGO) || defined(APPLE) || defined(LINUX))
+#if defined(USE_CRY_ASSERT) && AZ_LEGACY_CRYSYSTEM_TRAIT_DO_PREASSERT
         AZ::Crc32 crc;
         crc.Add(&line, sizeof(line));
         if (fileName)
@@ -87,13 +87,21 @@ public:
             Trace::PrintCallstack(nullptr, 3);
             Trace::Output(nullptr, "\n==================================================================\n");
 
-            // Note - CryAssertTrace doesn't actually print any info to logging
-            // it just stores the message internally for the message box in CryAssert to use
-            CryAssertTrace("%s", message);
-            if (CryAssert("Assertion failed", fileName, line, ignore))
+            AZ::EnvironmentVariable<bool> inEditorBatchMode = AZ::Environment::FindVariable<bool>("InEditorBatchMode");
+            if (!inEditorBatchMode.IsConstructed() || !inEditorBatchMode.Get())
             {
-                Trace::Break();
+                // Note - CryAssertTrace doesn't actually print any info to logging
+                // it just stores the message internally for the message box in CryAssert to use
+                CryAssertTrace("%s", message);
+                if (CryAssert("Assertion failed", fileName, line, ignore) || Trace::IsDebuggerPresent())
+                {
+                    Trace::Break();
+                }
             }
+        }
+        else
+        {
+            CryLogAlways("%s", message);
         }
 
         return true; // suppress default AzCore behavior.
@@ -103,7 +111,7 @@ public:
         AZ_UNUSED(func);
         AZ_UNUSED(message);
         return false; // allow AZCore to do its default behavior.   This usually results in an application shutdown.
-#endif // defined(USE_CRY_ASSERT) && (defined(WIN32) || defined(DURANGO) || defined(APPLE) || defined(LINUX))
+#endif
     }
 
     bool OnPreError(const char* window, const char* fileName, int line, const char* func, const char* message) override

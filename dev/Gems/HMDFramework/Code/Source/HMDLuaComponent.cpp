@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "HMDFramework_precompiled.h"
 
 #include <HMDBus.h>
 #include <VRControllerBus.h>
@@ -34,7 +34,7 @@ namespace AZ
             SerializeContext* serializeContext = azrtti_cast<SerializeContext*>(context);
             if (serializeContext)
             {
-                serializeContext->Class<HMDLuaComponent>()
+                serializeContext->Class<HMDLuaComponent, AZ::Component>()
                     ->Version(1);
             }
 

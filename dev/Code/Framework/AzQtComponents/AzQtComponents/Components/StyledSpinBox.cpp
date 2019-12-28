@@ -22,7 +22,6 @@
 namespace AzQtComponents
 {
     // Slider parameters
-    const int sliderMarginToSpinBox = 4;
     const int sliderDefaultHeight = 35;
     const int sliderDefaultWidth = 192;
 
@@ -39,7 +38,7 @@ namespace AzQtComponents
             , m_spinBox(spinBox) {}
 
     protected:
-        bool eventFilter(QObject* obj, QEvent* event)
+        bool eventFilter(QObject* obj, QEvent* event) override
         {
             if (event->type() == QEvent::FocusIn)
             {
@@ -70,16 +69,23 @@ namespace AzQtComponents
         : public QObject
     {
     public:
-        ClickEventFilterPrivate(StyledDoubleSpinBox* spinBox)
+        explicit ClickEventFilterPrivate(StyledDoubleSpinBox* spinBox, QSlider* slider)
             : QObject(spinBox)
-            , m_spinBox(spinBox) {}
+            , m_spinBox(spinBox)
+        {
+            if (slider)
+            {
+                connect(slider, &QSlider::sliderPressed, this, [this] { m_dragging = true; });
+                connect(slider, &QSlider::sliderReleased, this, [this] { m_dragging = false; });
+            }
+        }
         ~ClickEventFilterPrivate() {}
     signals:
         void clickOnApplication(const QPoint& pos);
     protected:
         bool eventFilter(QObject* obj, QEvent* event)
         {
-            if (event->type() == QEvent::MouseButtonRelease)
+            if (event->type() == QEvent::MouseButtonRelease && !m_dragging)
             {
                 m_spinBox->handleClickOnApp(QCursor::pos());
             }
@@ -88,6 +94,7 @@ namespace AzQtComponents
         }
     private:
         StyledDoubleSpinBox* m_spinBox;
+        bool m_dragging = false;
     };
 
     StyledDoubleSpinBox::StyledDoubleSpinBox(QWidget* parent)
@@ -342,20 +349,20 @@ namespace AzQtComponents
             // use the same range for the slider as our spinbox
             if (m_hasCustomSliderRange)
             {
-                m_slider->setMinimum(m_customSliderMinValue);
-                m_slider->setMaximum(m_customSliderMaxValue);
+                m_slider->setMinimum(static_cast<int>(m_customSliderMinValue));
+                m_slider->setMaximum(static_cast<int>(m_customSliderMaxValue));
             }
             else
             {
-                m_slider->setMinimum(minimum());
-                m_slider->setMaximum(maximum());
+                m_slider->setMinimum(static_cast<int>(minimum()));
+                m_slider->setMaximum(static_cast<int>(maximum()));
             }
         }
         // Otherwise, we need to set a custom scale for our slider using 0 as the
         // minimum and a power of 10 based on our decimal precision as the maximum
         else
         {
-            int scaledMax = pow(10, (int)log10(GetSliderRange()) + decimals());
+            int scaledMax = static_cast<int>(pow(10, (int)log10(GetSliderRange()) + decimals()));
             m_slider->setMinimum(0);
             m_slider->setMaximum(scaledMax);
         }
@@ -393,8 +400,8 @@ namespace AzQtComponents
             return;
         }
 
-        m_slider = new StyledSliderPrivate;
-        m_slider->setWindowFlags(Qt::WindowFlags(Qt::Window) | Qt::WindowFlags(Qt::FramelessWindowHint) | Qt::WindowFlags(Qt::ToolTip));
+        m_slider = new StyledSliderPrivate(this);
+        m_slider->setWindowFlags(Qt::WindowFlags(Qt::Window) | Qt::WindowFlags(Qt::FramelessWindowHint));
 
         QObject::connect(this, static_cast<void(StyledDoubleSpinBox::*)(double)>(&StyledDoubleSpinBox::valueChanged),
             this, &StyledDoubleSpinBox::updateSliderValue);
@@ -404,7 +411,7 @@ namespace AzQtComponents
 
         // These event filters will be automatically removed when our spin box is deleted
         // since they are parented to it
-        qApp->installEventFilter(new ClickEventFilterPrivate(this));
+        qApp->installEventFilter(new ClickEventFilterPrivate(this, m_slider));
         installEventFilter(new FocusInEventFilterPrivate(this));
     }
 
@@ -516,7 +523,7 @@ namespace AzQtComponents
         // appropriate integer value for our custom slider scale
         else
         {
-            newVal = ((spinBoxValue - GetSliderMinimum()) / GetSliderRange()) * m_slider->maximum();
+            newVal = static_cast<int>((spinBoxValue - GetSliderMinimum()) / GetSliderRange()) * m_slider->maximum();
         }
 
         return newVal;
@@ -541,8 +548,8 @@ namespace AzQtComponents
         return newVal;
     }
 
-    StyledSliderPrivate::StyledSliderPrivate()
-        : QSlider()
+    StyledSliderPrivate::StyledSliderPrivate(QWidget* parent /*= nullptr*/)
+        : QSlider(parent)
     {
         setAttribute(Qt::WA_TranslucentBackground);
         setOrientation(Qt::Horizontal);
@@ -569,7 +576,7 @@ namespace AzQtComponents
 
         // Added a valueChanged signal with an int parameter to mirror the behavior
         // of the QSpinBox
-        QObject::connect(this, static_cast<void(StyledDoubleSpinBox::*)(double)>(&StyledDoubleSpinBox::valueChanged), [this](double val) {
+        QObject::connect(this, static_cast<void(StyledDoubleSpinBox::*)(double)>(&StyledDoubleSpinBox::valueChanged), this, [this](double val) {
             emit valueChanged((int)val);
         });
     }

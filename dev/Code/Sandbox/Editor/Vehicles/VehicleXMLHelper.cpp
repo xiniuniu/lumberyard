@@ -48,7 +48,7 @@ bool VehicleXml::PropertyValueEquals(const char* a, const char* b)
         return false;
     }
 
-    return (strcmpi(a, b) == 0);
+    return (azstricmp(a, b) == 0);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -83,7 +83,7 @@ bool VehicleXml::IsNodeTypeEqual(const XmlNodeRef& node, const char* nodeType)
         return false;
     }
 
-    bool isNodeTypeEqual = (_stricmp(node->getTag(), nodeType) == 0);
+    bool isNodeTypeEqual = (azstricmp(node->getTag(), nodeType) == 0);
     return isNodeTypeEqual;
 }
 
@@ -446,7 +446,7 @@ XmlNodeRef VehicleXml::GetXmlNodeDefinitionByVariable(const XmlNodeRef& definiti
         IVariable* pCurrentVar = varHirerarchy[ i ];
         QString nameToSearch = pCurrentVar->GetName();
 
-        currentNode = FindChildDefinitionByName(currentNode, nameToSearch.toLatin1().data());
+        currentNode = FindChildDefinitionByName(currentNode, nameToSearch.toUtf8().data());
         if (!currentNode)
         {
             return XmlNodeRef();
@@ -488,7 +488,7 @@ void VehicleXml::GetXmlNodeChildDefinitionsByVariable(const XmlNodeRef& definiti
     {
         // Array parent properties cannot have child property definitions but they store the definitions of the
         // elements they can have so we have to check if we're looking at the elementNode or the parent...
-        bool isArrayParent = HasNodeNameEqualTo(varDefinitionNode, pVar->GetName().toLatin1().data());
+        bool isArrayParent = HasNodeNameEqualTo(varDefinitionNode, pVar->GetName().toUtf8().data());
         if (isArrayParent)
         {
             return;
@@ -552,7 +552,7 @@ void VehicleXml::GetXmlNodeFromVariable(IVariable* pVar, XmlNodeRef& xmlNode)
         for (int i = 0; i < pVar->GetNumVariables(); ++i)
         {
             IVariable* pTempVar = pVar->GetVariable(i);
-            XmlNodeRef pTempNode = GetISystem()->CreateXmlNode(pTempVar->GetName().toLatin1().data());
+            XmlNodeRef pTempNode = GetISystem()->CreateXmlNode(pTempVar->GetName().toUtf8().data());
 
             if (pTempVar->GetType() == IVariable::ARRAY)
             {
@@ -563,14 +563,14 @@ void VehicleXml::GetXmlNodeFromVariable(IVariable* pVar, XmlNodeRef& xmlNode)
             }
             else
             {
-                pTempNode->setAttr(pTempVar->GetName().toLatin1().data(), pTempVar->GetDisplayValue().toLatin1().data());
+                pTempNode->setAttr(pTempVar->GetName().toUtf8().data(), pTempVar->GetDisplayValue().toUtf8().data());
             }
             xmlNode->addChild(pTempNode);
         }
     }
     else
     {
-        xmlNode->setAttr(pVar->GetName().toLatin1().data(), pVar->GetDisplayValue().toLatin1().data());
+        xmlNode->setAttr(pVar->GetName().toUtf8().data(), pVar->GetDisplayValue().toUtf8().data());
     }
 }
 
@@ -602,15 +602,15 @@ IVariable* VehicleXml::CreateVar(const char* value, const XmlNodeRef& definition
         pVarEnum->AddEnumItem(value, value);
 
         const char* listType = definition->getAttr("list");
-        if (strcmpi(listType, "Helper") == 0)
+        if (azstricmp(listType, "Helper") == 0)
         {
             pVarEnum->SetDataType(IVariable::DT_VEEDHELPER);
         }
-        else if (strcmpi(listType, "Part") == 0)
+        else if (azstricmp(listType, "Part") == 0)
         {
             pVarEnum->SetDataType(IVariable::DT_VEEDPART);
         }
-        else if (strcmpi(listType, "Component") == 0)
+        else if (azstricmp(listType, "Component") == 0)
         {
             pVarEnum->SetDataType(IVariable::DT_VEEDCOMP);
         }
@@ -626,19 +626,19 @@ IVariable* VehicleXml::CreateSimpleVar(const XmlNodeRef& definition)
     const char* type = "";
     if (type = definition->getAttr("type"))
     {
-        if (strcmpi(type, "float") == 0)
+        if (azstricmp(type, "float") == 0)
         {
             return CreateVar< float >(0.f, definition);
         }
-        else if (strcmpi(type, "bool") == 0)
+        else if (azstricmp(type, "bool") == 0)
         {
             return CreateVar< bool >(true, definition);
         }
-        else if (strcmpi(type, "Vec3") == 0)
+        else if (azstricmp(type, "Vec3") == 0)
         {
             return CreateVar< Vec3 >(Vec3(0, 0, 0), definition);
         }
-        else if (strcmpi(type, "int") == 0)
+        else if (azstricmp(type, "int") == 0)
         {
             return CreateVar< int >(0, definition);
         }
@@ -795,7 +795,7 @@ void VehicleXml::SetExtendedVarProperties(IVariable* pVar, const XmlNodeRef& nod
         QString description;
         if (node->getAttr("desc", description))
         {
-            pVar->SetDescription(description.toLatin1().data());
+            pVar->SetDescription(description);
         }
     }
 
@@ -809,7 +809,7 @@ void VehicleXml::SetExtendedVarProperties(IVariable* pVar, const XmlNodeRef& nod
     }
 
     QString varName = pVar->GetName();
-    if (IsArrayParentNode(node, varName.toLatin1().data()))
+    if (IsArrayParentNode(node, varName.toUtf8().data()))
     {
         int extendable = 0;
         node->getAttr("extendable", extendable);
@@ -890,7 +890,7 @@ void DefinitionTable::GetUseReferenceTables(XmlNodeRef definition)
     {
         XmlNodeRef propertyDef = definition->getChild(i);
         const char* propertyType = propertyDef->getTag();
-        bool isUseReference = _stricmp(propertyType, "Use") == 0;
+        bool isUseReference = azstricmp(propertyType, "Use") == 0;
 
         if (propertyDef->haveAttr("id") && !isUseReference)
         {
@@ -921,7 +921,7 @@ void DefinitionTable::Create(XmlNodeRef definition)
     {
         XmlNodeRef propertyDef = definition->getChild(i);
         const char* propertyType = propertyDef->getTag();
-        bool isUseReference = _stricmp(propertyType, "Use") == 0;
+        bool isUseReference = azstricmp(propertyType, "Use") == 0;
         if (isUseReference)
         {
             TXmlNodeMap::iterator iter = g_useDefinitionMap.find(propertyDef->getAttr("id"));
@@ -956,7 +956,7 @@ XmlNodeRef DefinitionTable::GetPropertyDefinition(const char* attributeName)
 {
     if (XmlNodeRef def = GetDefinition(attributeName))
     {
-        if (_stricmp(def->getTag(), "Property") == 0)
+        if (azstricmp(def->getTag(), "Property") == 0)
         {
             return def;
         }
@@ -966,12 +966,12 @@ XmlNodeRef DefinitionTable::GetPropertyDefinition(const char* attributeName)
 
 bool DefinitionTable::IsArray(XmlNodeRef def)
 {
-    return (_stricmp(def->getTag(), "Array") == 0) && def->haveAttr("elementName");
+    return (azstricmp(def->getTag(), "Array") == 0) && def->haveAttr("elementName");
 }
 
 bool DefinitionTable::IsTable(XmlNodeRef def)
 {
-    return (_stricmp(def->getTag(), "Table") == 0);
+    return (azstricmp(def->getTag(), "Table") == 0);
 }
 
 void DefinitionTable::Dump()

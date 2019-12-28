@@ -9,8 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#ifndef AZSTD_BASE_H
-#define AZSTD_BASE_H 1
+#pragma once
 
 #include <AzCore/base.h>
 #include <AzCore/std/config.h>
@@ -29,16 +28,7 @@ namespace AZStd
 
     using std::initializer_list;
 
-#if defined(AZ_HAS_NULLPTR_T)
     using std::nullptr_t;
-#else
-    typedef int nullptr_t;
-#endif
 
-    typedef AZ::u64 sys_time_t;
+    using sys_time_t = AZ::s64;
 }
-
-#endif // AZSTD_BASE_H
-
-
-

@@ -9,10 +9,11 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "Maestro_precompiled.h"
 #include <IMovieSystem.h>
 #include <Range.h>
 #include <AnimKey.h>
+#include <Maestro/Types/AssetBlendKey.h>
 
 #include "AnimSerializer.h"
 
@@ -32,6 +33,12 @@ void AnimSerializer::ReflectAnimTypes(AZ::SerializeContext* context)
     context->Class<IKey>()
         ->Field("Time", &IKey::time)
         ->Field("Flags", &IKey::flags);
+
+    context->Class<AZ::IAssetBlendKey, ITimeRangeKey>()
+        ->Field("AssetId", &AZ::IAssetBlendKey::m_assetId)
+        ->Field("Description", &AZ::IAssetBlendKey::m_description)
+        ->Field("BlendInTime", &AZ::IAssetBlendKey::m_blendInTime)
+        ->Field("BlendOutTime", &AZ::IAssetBlendKey::m_blendOutTime);
 
     context->Class<IBoolKey, IKey>();
 

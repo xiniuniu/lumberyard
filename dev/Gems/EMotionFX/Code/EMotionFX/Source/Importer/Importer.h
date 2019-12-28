@@ -17,6 +17,7 @@
 #include <EMotionFX/Source/BaseObject.h>
 #include <AzCore/std/string/string.h>
 
+
 MCORE_FORWARD_DECLARE(File);
 MCORE_FORWARD_DECLARE(Attribute);
 
@@ -51,7 +52,7 @@ namespace EMotionFX
      */
     class EMFX_API Importer : public BaseObject
     {
-        MCORE_MEMORYOBJECTCATEGORY(Importer, EMFX_DEFAULT_ALIGNMENT, EMFX_MEMCATEGORY_IMPORTER);
+        AZ_CLASS_ALLOCATOR_DECL
         friend class Initializer;
         friend class EMotionFXManager;
 
@@ -149,7 +150,6 @@ namespace EMotionFX
         {
             bool mForceLoading;         /**< Set to true in case you want to load the motion even if a motion with the given filename is already inside the motion manager. */
             bool mLoadMotionEvents;     /**< Set to false if you wish to disable loading of motion events. */
-            bool mAutoRegisterEvents;   /**< Set to true if you want to automatically register new motion event types. */
             bool mUnitTypeConvert;      /**< Set to false to disable automatic unit type conversion (between cm, meters, etc). On default this is enabled. */
             MCore::Array<uint32>    mChunkIDsToIgnore;  /**< Add the ID's of the chunks you wish to ignore. */
 
@@ -160,7 +160,6 @@ namespace EMotionFX
             {
                 mForceLoading       = false;
                 mLoadMotionEvents   = true;
-                mAutoRegisterEvents = true;
                 mUnitTypeConvert    = true;
                 mChunkIDsToIgnore.SetMemoryCategory(EMFX_MEMCATEGORY_IMPORTER);
             }
@@ -174,13 +173,14 @@ namespace EMotionFX
         struct EMFX_API MotionSetSettings
         {
             bool mForceLoading;         /**< Set to true in case you want to load the motion set even if a motion set with the given filename is already inside the motion manager. */
-
+            bool m_isOwnedByRuntime;
             /**
              * The constructor.
              */
             MotionSetSettings()
             {
                 mForceLoading       = false;
+                m_isOwnedByRuntime  = false;
             }
         };
 
@@ -212,7 +212,6 @@ namespace EMotionFX
         {
             bool                    mForceLoading;              /**< Set to true in case you want to load the anim graph even if an anim graph with the given filename is already inside the anim graph manager. */
             bool                    mDisableNodeVisualization;  /**< Force disabling of node visualization code execution inside the anim graph nodes? */
-            bool                    mUnitTypeConvert;           /**< Set to false to disable automatic unit type conversion (between cm, meters, etc). On default this is enabled. */
 
             /**
              * The constructor, which uses the standard endian conversion routine on default.
@@ -221,7 +220,6 @@ namespace EMotionFX
             {
                 mForceLoading                   = false;
                 mDisableNodeVisualization       = true;
-                mUnitTypeConvert                = true;
             }
         };
 
@@ -236,11 +234,12 @@ namespace EMotionFX
             MCore::Array<SharedData*>*          mSharedData;
             MCore::Endian::EEndianType          mEndianType;
 
-            AnimGraph*                         mAnimGraph;
-            Importer::AnimGraphSettings*       mAnimGraphSettings;
+            AnimGraph*                          mAnimGraph;
+            Importer::AnimGraphSettings*        mAnimGraphSettings;
 
             NodeMap*                            mNodeMap;
             Importer::NodeMapSettings*          mNodeMapSettings;
+            bool                                m_isOwnedByRuntime;
 
             ImportParameters()
             {
@@ -255,6 +254,7 @@ namespace EMotionFX
                 mNodeMap                = nullptr;
                 mNodeMapSettings        = nullptr;
                 mEndianType             = MCore::Endian::ENDIAN_LITTLE;
+                m_isOwnedByRuntime      = false;
             }
         };
 

@@ -1,4 +1,14 @@
 {
-    "DisabledResourceGroups": [],
-    "FrameworkVersion": "1.1.1"
+    "default": {
+        "DisabledResourceGroups": [
+            "CloudGemLeaderboard", 
+            "CloudGemMessageOfTheDay", 
+            "CloudGemPlayerAccount", 
+            "CloudGemInGameSurvey", 
+            "CloudGemDynamicContent",
+            "CloudGemAWSScriptBehaviors"
+        ],
+        "Set": "default",
+        "FrameworkVersion": "1.1.4"
+    }
 }

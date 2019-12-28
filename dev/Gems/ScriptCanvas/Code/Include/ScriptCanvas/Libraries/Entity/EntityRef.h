@@ -43,7 +43,6 @@ namespace ScriptCanvas
                             editContext->Class<EntityRef>("EntityID", "Stores a reference to an entity")
                                 ->ClassElement(AZ::Edit::ClassElements::EditorData, "")
                                 ->Attribute(AZ::Edit::Attributes::Icon, "Editor/Icons/ScriptCanvas/EntityRef.png")
-                                ->Attribute(AZ::Edit::Attributes::Visibility, AZ::Edit::PropertyVisibility::ShowChildrenOnly)
                                 ->Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::List)
                                 ;
                         }
@@ -59,11 +58,23 @@ namespace ScriptCanvas
                         OnOutputChanged(*input);
                     }
                 }
-                                
-                void Visit(NodeVisitor& visitor) const override
+
+                AZ_INLINE AZ::EntityId GetEntityRef() const
                 {
-                    visitor.Visit(*this);
+                    AZ::EntityId retVal;
+                    if (auto input = GetInput(GetSlotId(k_setThis)))
+                    {
+                        const AZ::EntityId* inputId = input->GetAs<AZ::EntityId>();
+
+                        if (inputId)
+                        {
+                            retVal = (*inputId);
+                        }
+                    }
+
+                    return retVal;
                 }
+                
             };
         }
     }

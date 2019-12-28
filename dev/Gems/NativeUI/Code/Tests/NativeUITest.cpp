@@ -10,8 +10,6 @@
  *
  */
 
-#include "StdAfx.h"
-
 #include <AzTest/AzTest.h>
 
 class MobileNativeUITest

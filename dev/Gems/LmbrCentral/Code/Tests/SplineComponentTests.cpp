@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 #include <AzTest/AzTest.h>
 
 #include <AzCore/Component/ComponentApplication.h>
@@ -21,7 +21,7 @@
 #include <AzFramework/Application/Application.h>
 #include <AzFramework/Components/TransformComponent.h>
 
-#include <Tests/TestTypes.h>
+#include <AzCore/UnitTest/TestTypes.h>
 #include <Shape/SplineComponent.h>
 
 using namespace AZ;
@@ -49,6 +49,8 @@ namespace UnitTest
 
         void TearDown() override
         {
+            m_transformComponentDescriptor.reset();
+            m_splineComponentDescriptor.reset();
             m_serializeContext.reset();
             AllocatorsFixture::TearDown();
         }

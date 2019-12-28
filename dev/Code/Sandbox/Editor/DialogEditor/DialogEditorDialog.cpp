@@ -158,7 +158,7 @@ bool CDialogEditorDialog::DoSourceControlOp(CEditorDialogScript* script, ESource
     QString gamePath = m_dialogManager->ScriptToFilename(scriptId);
     QString path = gamePath;
 
-    CryLogAlways("[DialogEditor] Doing SC-Op: %s for %s", SCToName(scOp), path);
+    CryLogAlways("[DialogEditor] Doing SC-Op: %s for %s", SCToName(scOp), path.toUtf8().constData());
 
 #ifdef  DE_USE_SOURCE_CONTROL
     switch (scOp)
@@ -172,7 +172,7 @@ bool CDialogEditorDialog::DoSourceControlOp(CEditorDialogScript* script, ESource
         needsLoad = true;
         break;
     case ESCM_GETLATEST:
-        result = GetIEditor()->GetSourceControl()->GetLatestVersion(path.toLatin1().data());
+        result = CFileUtil::GetLatestFromSourceControl(path.toUtf8().data(), this);
         needsLoad = true;
         break;
     }
@@ -205,6 +205,10 @@ static QString GetSCStatusText(uint32 scStatus)
     if (scStatus & SCC_FILE_ATTRIBUTE_INPAK)
     {
         return QObject::tr("[In PAK]");
+    }
+    else if (scStatus & SCC_FILE_ATTRIBUTE_ADD)
+    {
+        return QObject::tr("[Marked For Add]");
     }
     else if (scStatus & SCC_FILE_ATTRIBUTE_CHECKEDOUT)
     {
@@ -387,7 +391,7 @@ void CDialogEditorDialog::CreateScript()
         QRegularExpression regex(QStringLiteral(R"([:./])"));
         if (groupName.contains(regex) || itemName.contains(regex))
         {
-            Error(tr("Group/Name may not contain characters :./").toLatin1().data());
+            Error(tr("Group/Name may not contain characters :./").toUtf8().data());
         }
         else
         {
@@ -402,7 +406,7 @@ void CDialogEditorDialog::CreateScript()
             CEditorDialogScript* newScript = m_dialogManager->GetScript(id, false);
             if (newScript != nullptr)
             {
-                Error(tr("Dialog with ID '%1' already exists.").arg(id).toLatin1().data());
+                Error(tr("Dialog with ID '%1' already exists.").arg(id).toUtf8().data());
             }
             else
             {
@@ -523,9 +527,9 @@ void CDialogEditorDialog::RenameScript()
                 QString newPath = m_dialogManager->ScriptToFilename(newId);
                 CryLogAlways("[DialogEditor] Renaming file in SourceControl:"
                     "\nOld: %s"
-                    "\nNew: %s", oldPath, newPath);
+                    "\nNew: %s", oldPath.toUtf8().constData(), newPath.toUtf8().constData());
 
-                if (!GetIEditor()->GetSourceControl()->Rename(oldPath.toLatin1().data(), newPath.toLatin1().data(), "Lumberyard - DialogEditor Rename", (RENAME_WITHOUT_REVERT | RENAME_WITHOUT_SUBMIT)))
+                if (!CFileUtil::RenameFile(oldPath.toUtf8().data(), newPath.toUtf8().data()))
                 {
                     QMessageBox box(this);
                     box.setText(tr("Could not rename file in Source Control."));
@@ -840,7 +844,7 @@ ScriptTreeView::ScriptTreeView(CDialogEditorDialog* editor, QWidget* parent)
     layout->addWidget(m_label);
     layout->setMargin(4);
     m_label->setAlignment(Qt::AlignTop | Qt::AlignHCenter);
-    m_label->setText(tr("No Dialogs yet.\nUse[Add Dialog] to create new one."));
+    m_label->setText(tr("No Dialogs yet.\nUse [Add Dialog] to create new one."));
     updateLabel();
 }
 
@@ -970,7 +974,7 @@ void ScriptTreeView::contextMenuEvent(QContextMenuEvent* ev)
         {
             // If not managed.
             action = m_menu->addAction(tr("Add To Source Control"));
-            connect(action, &QAction::triggered, [this, script]() { m_editor->DoSourceControlOp(script, CDialogEditorDialog::ESCM_IMPORT); });
+            connect(action, &QAction::triggered, this, [this, script]() { m_editor->DoSourceControlOp(script, CDialogEditorDialog::ESCM_IMPORT); });
         }
         else
         {
@@ -978,17 +982,17 @@ void ScriptTreeView::contextMenuEvent(QContextMenuEvent* ev)
             if (nFileAttr & SCC_FILE_ATTRIBUTE_READONLY)
             {
                 action = m_menu->addAction(tr("Check Out"));
-                connect(action, &QAction::triggered, [this, script]() { m_editor->DoSourceControlOp(script, CDialogEditorDialog::ESCM_CHECKOUT); });
+                connect(action, &QAction::triggered, this, [this, script]() { m_editor->DoSourceControlOp(script, CDialogEditorDialog::ESCM_CHECKOUT); });
             }
             if (nFileAttr & SCC_FILE_ATTRIBUTE_CHECKEDOUT)
             {
                 action = m_menu->addAction(tr("Undo Check Out"));
-                connect(action, &QAction::triggered, [this, script]() { m_editor->DoSourceControlOp(script, CDialogEditorDialog::ESCM_UNDO_CHECKOUT); });
+                connect(action, &QAction::triggered, this, [this, script]() { m_editor->DoSourceControlOp(script, CDialogEditorDialog::ESCM_UNDO_CHECKOUT); });
             }
             if (nFileAttr & SCC_FILE_ATTRIBUTE_MANAGED)
             {
                 action = m_menu->addAction(tr("Get Latest Version"));
-                connect(action, &QAction::triggered, [this, script]() { m_editor->DoSourceControlOp(script, CDialogEditorDialog::ESCM_GETLATEST); });
+                connect(action, &QAction::triggered, this, [this, script]() { m_editor->DoSourceControlOp(script, CDialogEditorDialog::ESCM_GETLATEST); });
             }
         }
     }

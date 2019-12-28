@@ -13,11 +13,9 @@
 #ifndef __EMSTUDIO_PLUGINMANAGER_H
 #define __EMSTUDIO_PLUGINMANAGER_H
 
-// include MCore
-#include <MCore/Source/Array.h>
-#include <MCore/Source/UnicodeString.h>
 #include "EMStudioConfig.h"
 #include "EMStudioPlugin.h"
+#include <AzCore/PlatformIncl.h>
 
 namespace EMStudio
 {
@@ -30,24 +28,24 @@ namespace EMStudio
         MCORE_MEMORYOBJECTCATEGORY(PluginManager, MCore::MCORE_DEFAULT_ALIGNMENT, MEMCATEGORY_EMSTUDIOSDK)
 
     public:
+        typedef AZStd::vector<EMStudioPlugin*> PluginVector;
+
         PluginManager();
         ~PluginManager();
 
-        // overloaded
-        bool LoadPlugins(const char* filename);
         void RegisterPlugin(EMStudioPlugin* plugin);
-        void LoadPluginsFromDirectory(const char* directory);
         EMStudioPlugin* CreateWindowOfType(const char* pluginType, const char* objectName = nullptr);
         uint32 FindPluginByTypeString(const char* pluginType) const;
         EMStudioPlugin* GetActivePluginByTypeString(const char* pluginType) const;
 
         EMStudioPlugin* FindActivePlugin(uint32 classID);   // find first active plugin, or nullptr when not found
 
-        MCORE_INLINE uint32 GetNumPlugins() const                           { return mPlugins.GetLength(); }
+        MCORE_INLINE uint32 GetNumPlugins() const                           { return static_cast<uint32>(mPlugins.size()); }
         MCORE_INLINE EMStudioPlugin* GetPlugin(const uint32 index)          { return mPlugins[index]; }
 
-        MCORE_INLINE uint32 GetNumActivePlugins() const                     { return mActivePlugins.GetLength(); }
+        MCORE_INLINE uint32 GetNumActivePlugins() const                     { return static_cast<uint32>(mActivePlugins.size()); }
         MCORE_INLINE EMStudioPlugin* GetActivePlugin(const uint32 index)    { return mActivePlugins[index]; }
+        MCORE_INLINE const PluginVector& GetActivePlugins() { return mActivePlugins; }
 
         uint32 GetNumActivePluginsOfType(const char* pluginType) const;
         uint32 GetNumActivePluginsOfType(uint32 classID) const;
@@ -55,20 +53,12 @@ namespace EMStudio
 
         QString GenerateObjectName() const;
 
-        void SortActivePlugins()                                            { mActivePlugins.Sort(); }
-
     private:
-        MCore::Array<EMStudioPlugin*>   mPlugins;
+        PluginVector mPlugins;
 
-        #if defined(MCORE_PLATFORM_WINDOWS)
-        MCore::Array<HMODULE>       mPluginLibs;
-        #else
-        MCore::Array<void*>         mPluginLibs;
-        #endif
+        PluginVector mActivePlugins;
 
-        MCore::Array<EMStudioPlugin*>   mActivePlugins;
-
-        void UnloadPluginLibs();
+        void UnloadPlugins();
     };
 }   // namespace EMStudio
 

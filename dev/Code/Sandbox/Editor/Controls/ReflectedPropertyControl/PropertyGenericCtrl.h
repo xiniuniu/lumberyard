@@ -15,8 +15,8 @@
 #pragma once
 
 #include <AzCore/base.h>
-#include <AzCore/Memory/systemallocator.h>
-#include <AzToolsFramework/Ui/PropertyEditor/PropertyEditorAPI.h>
+#include <AzCore/Memory/SystemAllocator.h>
+#include <AzToolsFramework/UI/PropertyEditor/PropertyEditorAPI.h>
 #include "ReflectedVar.h"
 #include "Util/VariablePropertyType.h"
 #include <QtWidgets/QWidget>
@@ -64,7 +64,7 @@ public:
     virtual QWidget* CreateGUI(QWidget* pParent) override
     {
         GenericPopupPropertyEditor* newCtrl = aznew T(pParent);
-        connect(newCtrl, &GenericPopupPropertyEditor::ValueChanged, [newCtrl]()
+        connect(newCtrl, &GenericPopupPropertyEditor::ValueChanged, newCtrl, [newCtrl]()
             {
                 EBUS_EVENT(AzToolsFramework::PropertyEditorGUIMessages::Bus, RequestWrite, newCtrl);
             });
@@ -83,7 +83,7 @@ public:
         Q_UNUSED(node);
         CReflectedVarGenericProperty val = instance;
         val.m_propertyType = GUI->GetPropertyType();
-        val.m_value = GUI->GetValue().toLatin1().data();
+        val.m_value = GUI->GetValue().toUtf8().data();
         instance = static_cast<property_t>(val);
     }
     virtual bool ReadValuesIntoGUI(size_t index, GenericPopupPropertyEditor* GUI, const property_t& instance, AzToolsFramework::InstanceDataNode* node)  override
@@ -406,7 +406,7 @@ public:
     virtual QWidget* CreateGUI(QWidget *pParent) override
     {
         ListEditWidget* newCtrl = aznew T(pParent);
-        connect(newCtrl, &ListEditWidget::ValueChanged, [newCtrl]()
+        connect(newCtrl, &ListEditWidget::ValueChanged, newCtrl, [newCtrl]()
         {
             EBUS_EVENT(AzToolsFramework::PropertyEditorGUIMessages::Bus, RequestWrite, newCtrl);
         });
@@ -420,7 +420,7 @@ public:
         Q_UNUSED(index);
         Q_UNUSED(node);
         CReflectedVarGenericProperty val = instance;
-        val.m_value = GUI->GetValue().toLatin1().data();
+        val.m_value = GUI->GetValue().toUtf8().data();
         instance = static_cast<property_t>(val);
     }
     virtual bool ReadValuesIntoGUI(size_t index, ListEditWidget* GUI, const property_t& instance, AzToolsFramework::InstanceDataNode* node)  override

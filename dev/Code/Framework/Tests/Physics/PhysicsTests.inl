@@ -15,118 +15,176 @@
 #include "PhysicsTests.h"
 #include <AzFramework/Physics/World.h>
 #include <AzFramework/Physics/RigidBody.h>
+#include <AzFramework/Physics/Shape.h>
 #include <AzFramework/Physics/SystemBus.h>
+#include <AzFramework/Physics/PhysicsComponentBus.h>
+#include <AzCore/Component/TransformBus.h>
 
 namespace Physics
 {
-    void PhysicsTestEnvironment::SetupEnvironment()
+    ErrorHandler::ErrorHandler(const char* errorPattern)
+        : m_errorCount(0)
+        , m_warningCount(0)
+        , m_errorPattern(errorPattern)
     {
-        AZ::AllocatorInstance<AZ::SystemAllocator>::Create();
+        AZ::Debug::TraceMessageBus::Handler::BusConnect();
     }
 
-    void PhysicsTestEnvironment::TeardownEnvironment()
+    ErrorHandler::~ErrorHandler()
     {
-        AZ::AllocatorInstance<AZ::SystemAllocator>::Destroy();
+        AZ::Debug::TraceMessageBus::Handler::BusDisconnect();
     }
 
-    TEST_F(GenericPhysicsInterfaceTest, World_CreateNewWorld_ReturnsNewWorld)
+    int ErrorHandler::GetErrorCount() const
     {
-        Physics::Ptr<Physics::World> world = nullptr;
-        Physics::Ptr<Physics::WorldSettings> worldSettings = aznew Physics::WorldSettings();
-        EBUS_EVENT_RESULT(world, Physics::SystemRequestBus, CreateWorldByName, "testWorld", worldSettings);
-        EXPECT_TRUE(world != nullptr);
+        return m_errorCount;
     }
 
-    TEST_F(GenericPhysicsInterfaceTest, RayCast_CastAgainstNothing_ReturnsNoHits)
+    int ErrorHandler::GetWarningCount() const
     {
-        Physics::RayCastRequest request;
-        request.m_start = AZ::Vector3(-100.0f, 0.0f, 0.0f);
-        request.m_dir = AZ::Vector3(1.0f, 0.0f, 0.0f);
-        request.m_time = 200.0f;
-
-        Physics::RayCastResult result;
-
-        // TODO: Change this to use a bus providing Raycast functionality
-        Physics::Ptr<Physics::World> defaultWorld = nullptr;
-        EBUS_EVENT_RESULT(defaultWorld, Physics::SystemRequestBus, GetDefaultWorld);
-        defaultWorld->RayCast(request, result);
-
-        EXPECT_TRUE(result.m_hits.size() == 0);
+        return m_warningCount;
     }
 
-    TEST_F(GenericPhysicsInterfaceTest, RayCast_CastAgainstSphere_ReturnsHits)
+    bool ErrorHandler::SuppressExpectedErrors(const char* window, const char* message)
     {
-        auto sphereEntity = AddTestSphere(AZ::Vector3(0.0f), 10.0f);
+        return AZStd::string(message).find(m_errorPattern) != AZStd::string::npos;
+    }
 
-        Physics::RayCastRequest request;
-        request.m_start = AZ::Vector3(-100.0f, 0.0f, 0.0f);
-        request.m_dir = AZ::Vector3(1.0f, 0.0f, 0.0f);
-        request.m_time = 200.0f;
+    bool ErrorHandler::OnPreError(const char* window, const char* fileName, int line, const char* func, const char* message)
+    {
+        m_errorCount++;
+        return SuppressExpectedErrors(window, message);
+    }
 
-        Physics::RayCastResult result;
+    bool ErrorHandler::OnPreWarning(const char* window, const char* fileName, int line, const char* func, const char* message)
+    {
+        m_warningCount++;
+        return SuppressExpectedErrors(window, message);
+    }
 
-        // TODO: Change this to use a bus providing Raycast functionality
-        Physics::Ptr<Physics::World> defaultWorld = nullptr;
-        EBUS_EVENT_RESULT(defaultWorld, Physics::SystemRequestBus, GetDefaultWorld);
-        defaultWorld->RayCast(request, result);
+    // helper functions
+    AZStd::shared_ptr<World> GenericPhysicsInterfaceTest::CreateTestWorld()
+    {
+        AZStd::shared_ptr<World> world;
+        WorldConfiguration worldConfiguration;
+        worldConfiguration.m_gravity = AZ::Vector3(0.0f, 0.0f, -10.0f);
+        SystemRequestBus::BroadcastResult(world, &SystemRequests::CreateWorldCustom,
+            AZ_CRC("testWorld"), worldConfiguration);
+        return world;
+    }
 
-        EXPECT_TRUE(result.m_hits.size() != 0);
+    AZStd::shared_ptr<RigidBodyStatic> AddStaticFloorToWorld(World* world, const AZ::Transform& transform)
+    {
+        WorldBodyConfiguration rigidBodySettings;
+        AZStd::shared_ptr<RigidBodyStatic> floor;
+        SystemRequestBus::BroadcastResult(floor, &SystemRequests::CreateStaticRigidBody, rigidBodySettings);
 
-        bool hitsIncludeSphereEntity = false;
-        for (auto hit : result.m_hits)
+        Physics::ColliderConfiguration colliderConfig;
+        Physics::BoxShapeConfiguration shapeConfiguration(AZ::Vector3(20.0f, 20.0f, 1.0f));
+        AZStd::shared_ptr<Shape> shape;
+        SystemRequestBus::BroadcastResult(shape, &SystemRequests::CreateShape, colliderConfig, shapeConfiguration);
+        floor->AddShape(shape);
+
+        world->AddBody(*floor);
+        floor->SetTransform(transform);
+        return floor;
+    }
+
+    AZStd::shared_ptr<RigidBodyStatic> AddStaticUnitBoxToWorld(World* world, const AZ::Vector3& position)
+    {
+        WorldBodyConfiguration rigidBodySettings;
+        rigidBodySettings.m_position = position;
+        AZStd::shared_ptr<RigidBodyStatic> box;
+        SystemRequestBus::BroadcastResult(box, &SystemRequests::CreateStaticRigidBody, rigidBodySettings);
+
+        Physics::ColliderConfiguration colliderConfig;
+        Physics::BoxShapeConfiguration shapeConfiguration;
+        AZStd::shared_ptr<Shape> shape;
+        SystemRequestBus::BroadcastResult(shape, &SystemRequests::CreateShape, colliderConfig, shapeConfiguration);
+        box->AddShape(shape);
+
+        world->AddBody(*box);
+        return box;
+    }
+
+    AZStd::shared_ptr<RigidBody> AddUnitBoxToWorld(World* world, const AZ::Vector3& position)
+    {
+        RigidBodyConfiguration rigidBodySettings;
+        rigidBodySettings.m_linearDamping = 0.0f;
+        AZStd::shared_ptr<RigidBody> box;
+        SystemRequestBus::BroadcastResult(box, &SystemRequests::CreateRigidBody, rigidBodySettings);
+
+        Physics::ColliderConfiguration colliderConfig;
+        Physics::BoxShapeConfiguration shapeConfiguration;
+        AZStd::shared_ptr<Shape> shape;
+        SystemRequestBus::BroadcastResult(shape, &SystemRequests::CreateShape, colliderConfig, shapeConfiguration);
+        box->AddShape(shape);
+
+        world->AddBody(*box.get());
+        box->SetTransform(AZ::Transform::CreateTranslation(position));
+        return box;
+    }
+
+    AZStd::shared_ptr<RigidBody> AddSphereToWorld(World* world, const AZ::Vector3& position)
+    {
+        RigidBodyConfiguration rigidBodySettings;
+        rigidBodySettings.m_linearDamping = 0.0f;
+        AZStd::shared_ptr<RigidBody> sphere;
+        SystemRequestBus::BroadcastResult(sphere, &SystemRequests::CreateRigidBody, rigidBodySettings);
+
+        Physics::ColliderConfiguration colliderConfig;
+        Physics::SphereShapeConfiguration shapeConfiguration;
+        AZStd::shared_ptr<Shape> shape;
+        SystemRequestBus::BroadcastResult(shape, &SystemRequests::CreateShape, colliderConfig, shapeConfiguration);
+        sphere->AddShape(shape);
+
+        world->AddBody(*sphere.get());
+        sphere->SetTransform(AZ::Transform::CreateTranslation(position));
+        return sphere;
+    }
+
+    AZStd::shared_ptr<RigidBody> AddCapsuleToWorld(World* world, const AZ::Vector3& position)
+    {
+        RigidBodyConfiguration rigidBodySettings;
+        AZStd::shared_ptr<RigidBody> capsule = nullptr;
+        SystemRequestBus::BroadcastResult(capsule, &SystemRequests::CreateRigidBody, rigidBodySettings);
+
+        Physics::ColliderConfiguration colliderConfig;
+        colliderConfig.m_rotation = AZ::Quaternion::CreateRotationX(AZ::Constants::HalfPi);
+        Physics::CapsuleShapeConfiguration shapeConfig(2.0f, 0.5f);
+        AZStd::shared_ptr<Shape> shape;
+        SystemRequestBus::BroadcastResult(shape, &SystemRequests::CreateShape, colliderConfig, shapeConfig);
+        capsule->AddShape(shape);
+
+        world->AddBody(*capsule.get());
+        capsule->SetTransform(AZ::Transform::CreateTranslation(position));
+        return capsule;
+    }
+
+    void UpdateWorld(World* world, float timeStep, AZ::u32 numSteps)
+    {
+        for (AZ::u32 i = 0; i < numSteps; i++)
         {
-            hitsIncludeSphereEntity |= (hit.m_entityId == sphereEntity->GetId());
+            world->Update(timeStep);
         }
-        EXPECT_TRUE(hitsIncludeSphereEntity);
-
-        // clear up scene
-        delete sphereEntity;
     }
 
-    TEST_F(GenericPhysicsInterfaceTest, ShapeCast_CastAgainstNothing_ReturnsNoHits)
+    void UpdateDefaultWorld(AZ::u32 numSteps, float timeStep)
     {
-        Physics::ShapeCastRequest request;
-        request.m_start = AZ::Transform::CreateTranslation(AZ::Vector3(-20.0f, 0.0f, 0.0f));
-        request.m_end = AZ::Transform::CreateTranslation(request.m_start.GetPosition() + AZ::Vector3(1.0f, 0.0f, 0.0f) * 20.0f);
-        request.m_shapeConfiguration = Physics::SphereShapeConfiguration::Create(1.0f);
+        AZStd::shared_ptr<World> defaultWorld;
+        DefaultWorldBus::BroadcastResult(defaultWorld, &DefaultWorldRequests::GetDefaultWorld);
 
-        Physics::ShapeCastResult result;
-
-        // TODO: Change this to use a bus providing Shapecast functionality
-        Physics::Ptr<Physics::World> defaultWorld = nullptr;
-        EBUS_EVENT_RESULT(defaultWorld, Physics::SystemRequestBus, GetDefaultWorld);
-        defaultWorld->ShapeCast(request, result);
-
-        EXPECT_TRUE(result.m_hits.size() == 0);
-    }
-
-    TEST_F(GenericPhysicsInterfaceTest, ShapeCast_CastAgainstSphere_ReturnsHits)
-    {
-        auto sphereEntity = AddTestSphere(AZ::Vector3(0.0f), 10.0f);
-
-        Physics::ShapeCastRequest request;
-        request.m_start = AZ::Transform::CreateTranslation(AZ::Vector3(-20.0f, 0.0f, 0.0f));
-        request.m_end = AZ::Transform::CreateTranslation(request.m_start.GetPosition() + AZ::Vector3(1.0f, 0.0f, 0.0f) * 20.0f);
-        request.m_shapeConfiguration = Physics::SphereShapeConfiguration::Create(1.0f);
-
-        Physics::ShapeCastResult result;
-
-        // TODO: Change this to use a bus providing Shapecast functionality
-        Physics::Ptr<Physics::World> defaultWorld = nullptr;
-        EBUS_EVENT_RESULT(defaultWorld, Physics::SystemRequestBus, GetDefaultWorld);
-        defaultWorld->ShapeCast(request, result);
-
-        EXPECT_TRUE(result.m_hits.size() != 0);
-
-        bool hitsIncludeSphereEntity = false;
-        for (auto hit : result.m_hits)
+        for (AZ::u32 i = 0; i < numSteps; i++)
         {
-            hitsIncludeSphereEntity |= (hit.m_entityId == sphereEntity->GetId());
+            defaultWorld->Update(timeStep);
         }
-        EXPECT_TRUE(hitsIncludeSphereEntity);
+    }
 
-        // clear up scene
-        delete sphereEntity;
+    float GetPositionElement(AZ::Entity* entity, int element)
+    {
+        AZ::Transform transform = AZ::Transform::CreateIdentity();
+        AZ::TransformBus::EventResult(transform, entity->GetId(), &AZ::TransformInterface::GetWorldTM);
+        return transform.GetPosition().GetElement(element);
     }
 } // namespace Physics
 #endif // AZ_TESTS_ENABLED

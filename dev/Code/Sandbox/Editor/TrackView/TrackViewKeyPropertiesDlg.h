@@ -130,9 +130,6 @@ public:
     bool OnKeySelectionChange(CTrackViewKeyBundle& keys);
     void ReloadKey();
 
-protected:
-    void SetCurrKey(CTrackViewKeyHandle& keyHandle);
-
 protected slots:
     void OnUpdateTime();
 
@@ -160,7 +157,7 @@ public:
         }
     }
 
-    void OnSequenceChanged();
+    void OnSequenceChanged(CTrackViewSequence* sequence);
 
     void PopulateVariables();
     void PopulateVariables(ReflectedPropertyControl* propCtrl);
@@ -187,6 +184,7 @@ protected:
     CTrackViewDopeSheetBase* m_keysCtrl;
 
     CTrackViewTrack* m_pLastTrackSelected;
+    CTrackViewSequence* m_sequence;
 };
 
 #endif // CRYINCLUDE_EDITOR_TRACKVIEW_TRACKVIEWKEYPROPERTIESDLG_H

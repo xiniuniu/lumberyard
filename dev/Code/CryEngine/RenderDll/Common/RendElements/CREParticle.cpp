@@ -23,11 +23,8 @@
 #include "CREParticleGPU.h"
 #include <ParticleParams.h>
 // Confetti END:
-#include <IJobManager_JobDelegator.h>
 #include "../RenderView.h"
 #include "../Textures/TextureManager.h"
-
-DECLARE_JOB("ComputeVertices", TComputeVerticesJob, CREParticle::ComputeVertices);
 
 //////////////////////////////////////////////////////////////////////////
 // CFillRateManager implementation
@@ -283,7 +280,7 @@ CRenderer::EF_CleanupParticles()
 {
     for (int t = 0; t < RT_COMMAND_BUF_COUNT; ++t)
     {
-        gEnv->pJobManager->WaitForJob(m_ComputeVerticesJobState[t]);
+        m_ComputeVerticesJobExecutors[t].WaitForCompletion();
 
         for (int i = m_arrCREParticle[t].size() - 1; i >= 0; i--)
         {
@@ -298,7 +295,7 @@ CRenderer::SyncComputeVerticesJobs()
 {
     for (int t = 0; t < RT_COMMAND_BUF_COUNT; ++t)
     {
-        gEnv->pJobManager->WaitForJob(m_ComputeVerticesJobState[t]);
+        m_ComputeVerticesJobExecutors[t].WaitForCompletion();
     }
     m_nCREParticleCount[m_pRT->m_nCurThreadFill] = 0;
 }
@@ -378,7 +375,7 @@ void CRenderer::PrepareParticleRenderObjects(Array<const SAddParticlesToSceneJob
     // == now create the render elements and start processing those == //
     if (passInfo.IsGeneralPass())
     {
-        m_ComputeVerticesJobState[threadList].SetRunning();
+        m_ComputeVerticesJobExecutors[threadList].PushCompletionFence();
     }
 
     SRendItemSorter rendItemSorter = SRendItemSorter::CreateParticleRendItemSorter(passInfo);
@@ -424,11 +421,11 @@ void CRenderer::PrepareParticleRenderObjects(Array<const SAddParticlesToSceneJob
         if (passInfo.IsGeneralPass())
         {
             // Start new job to compute the vertices
-            TComputeVerticesJob cvjob(camInfo, pRenderObject->m_ObjFlags);
-            cvjob.SetClassInstance(pRE);
-            cvjob.SetPriorityLevel(JobManager::eLowPriority);
-            cvjob.RegisterJobState(&m_ComputeVerticesJobState[threadList]);
-            cvjob.Run();
+            const uint64 renderFlags = pRenderObject->m_ObjFlags;
+            m_ComputeVerticesJobExecutors[threadList].StartJob([pRE, camInfo, renderFlags]()
+            {
+                pRE->ComputeVertices(camInfo, renderFlags);
+            }); // Legacy JobManager priority: eLowPriority
         }
         else
         {
@@ -443,7 +440,7 @@ void CRenderer::PrepareParticleRenderObjects(Array<const SAddParticlesToSceneJob
 
     if (passInfo.IsGeneralPass())
     {
-        m_ComputeVerticesJobState[threadList].SetStopped();
+        m_ComputeVerticesJobExecutors[threadList].PopCompletionFence();
     }
 #endif
 }
@@ -502,7 +499,20 @@ bool CRenderer::EF_GetParticleListAndBatchFlags(uint32& nBatchFlags, int& nList,
      */
     if (!(pRO->m_ObjFlags & FOB_ALLOW_TESSELLATION))
     {
+#if defined(AZ_RESTRICTED_PLATFORM)
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/CREParticle_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/CREParticle_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/CREParticle_cpp_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#else
         if (!CV_r_ParticlesInstanceVertices)
+#endif
         {
             pRO->m_ObjFlags &= ~FOB_POINT_SPRITE;
         }
@@ -554,10 +564,4 @@ bool CRenderer::EF_GetParticleListAndBatchFlags(uint32& nBatchFlags, int& nList,
     nList = bVolumeFog ? EFSLIST_FOG_VOLUME : nList;
 
     return true;
-}
-
-void CRenderer::SyncParticleRenderObjectPrepare(int nThreadID)
-{
-    FUNCTION_PROFILER_SYS(PARTICLE)
-    m_ParticlePrepareRenderObjectsState[nThreadID].Wait();
 }

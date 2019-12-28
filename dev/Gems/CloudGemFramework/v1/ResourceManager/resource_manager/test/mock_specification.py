@@ -51,6 +51,9 @@ def ok_project_stack(permissions = {}):
             'ConfigurationBucketPolicy': {
                 'ResourceType': 'AWS::S3::BucketPolicy'
             },
+            'CoreResourceTypes': {
+                'ResourceType': 'Custom::ResourceTypes'
+            },
             'Logs': {
                 'ResourceType': 'AWS::S3::Bucket'
             },
@@ -123,11 +126,11 @@ def ok_deployment_access_stack(permissions = {}):
             'Player': {
                 'ResourceType': 'AWS::IAM::Role'
             },
-            'Server': {
+            'AuthenticatedPlayer': {
                 'ResourceType': 'AWS::IAM::Role'
             },
-            'AccessControl': {
-                'ResourceType': 'Custom::AccessControl'
+            'Server': {
+                'ResourceType': 'AWS::IAM::Role'
             },
             'PlayerAccessIdentityPool': {
                 'ResourceType': 'Custom::CognitoIdentityPool'

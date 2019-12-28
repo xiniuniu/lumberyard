@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "StdAfx.h"
+#include "stdafx.h"
 #include "UiAnimViewNewSequenceDialog.h"
 #include "Animation/UiAnimViewSequenceManager.h"
 #include <Animation/ui_UiAnimViewNewSequenceDialog.h>
@@ -25,7 +25,7 @@ CUiAVNewSequenceDialog::CUiAVNewSequenceDialog(QWidget* parent)
     , ui(new Ui::CUiAVNewSequenceDialog)
 {
     ui->setupUi(this);
-    connect(ui->BTNOK, &QPushButton::clicked, this, &CUiAVNewSequenceDialog::OnOK);
+    connect(ui->buttonBox, &QDialogButtonBox::accepted, this, &CUiAVNewSequenceDialog::OnOK);
     setWindowTitle("Add New Sequence");
 }
 

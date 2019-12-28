@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "LyShine_precompiled.h"
 #include "UiNavigationSettings.h"
 
 #include <AzCore/Serialization/SerializeContext.h>
@@ -164,7 +164,6 @@ void UiNavigationSettings::Reflect(AZ::ReflectContext* context)
             ->Enum<(int)UiNavigationInterface::NavigationMode::None>("eUiNavigationMode_None");
 
         behaviorContext->EBus<UiNavigationBus>("UiNavigationBus")
-            ->Attribute(AZ::Script::Attributes::ExcludeFrom, AZ::Script::Attributes::ExcludeFlags::Preview)
             ->Event("GetNavigationMode", &UiNavigationBus::Events::GetNavigationMode)
             ->Event("SetNavigationMode", &UiNavigationBus::Events::SetNavigationMode)
             ->Event("GetOnUpEntity", &UiNavigationBus::Events::GetOnUpEntity)

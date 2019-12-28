@@ -15,10 +15,11 @@ import subprocess
 import sys
 import multiprocessing
 
-from waflib import Logs, Utils, Options
+from waflib import Logs, Utils, Options, Errors
 from waflib.Configure import conf
 from cry_utils import WAF_EXECUTABLE
-from lumberyard import NON_BUILD_COMMANDS, CURRENT_WAF_EXECUTABLE
+from lumberyard import multi_conf, NON_BUILD_COMMANDS, CURRENT_WAF_EXECUTABLE
+import utils
 
 # Attempt to import the winregistry module.
 try:
@@ -112,6 +113,7 @@ def internal_validate_incredibuild_registry_settings(ctx):
     Logs.info('[INFO] Registry values updated for incredibuild')
     return True
 
+INTERNAL_INCREDIBUILD_LICENSE_CHECK = None
 
 ########################################################################################################
 def internal_use_incredibuild(ctx, section_name, option_name, value, verification_fn):
@@ -127,16 +129,20 @@ def internal_use_incredibuild(ctx, section_name, option_name, value, verificatio
         return value
 
     _incredibuild_disclaimer(ctx)
-    ctx.start_msg('Incredibuild Licence Check')
+
+    if Logs.verbose > 1:
+        ctx.start_msg('Incredibuild Licence Check')
     (res, warning, error) = verification_fn(ctx, option_name, value)
     if not res:
         if warning:
             Logs.warn(warning)
         if error:
-            ctx.end_msg(error, color='YELLOW')
+            if Logs.verbose > 1:
+                ctx.end_msg(error, color='YELLOW')
         return 'False'
 
-    ctx.end_msg('ok')
+    if Logs.verbose > 1:
+        ctx.end_msg('ok')
     return value
 
 
@@ -145,13 +151,11 @@ def _incredibuild_disclaimer(ctx):
     """ Helper function to show a disclaimer over incredibuild before asking for settings """
     if getattr(ctx, 'incredibuild_disclaimer_shown', False):
         return
-    Logs.info('\nWAF is using Incredibuild for distributed Builds')
-    Logs.info('To be able to compile with WAF, various licenses are required:')
-    Logs.info('The "IncrediBuild for Make && Build Tools Package"   is always needed')
-    Logs.info('The "IncrediBuild for PlayStation Package"          is needed for PS4 Builds') # ACCEPTED_USE
-    Logs.info('The "IncrediBuild for Xbox One Package"             is needed for Xbox One Builds') # ACCEPTED_USE
-    Logs.info('If some packages are missing, please ask IT')
-    Logs.info('to assign the needed ones to your machine')
+    Logs.debug('incredibuild:\nWAF is using Incredibuild for distributed Builds')
+    Logs.debug('incredibuild:To be able to compile with WAF, various licenses are required:')
+    Logs.debug('incredibuild:The "IncrediBuild for Make && Build Tools Package"   is always needed')
+    Logs.debug('incredibuild:If some packages are missing, please ask IT')
+    Logs.debug('incredibuild:to assign the needed ones to your machine')
 
     ctx.incredibuild_disclaimer_shown = True
 
@@ -228,10 +232,11 @@ def invoke_waf_recursively(bld, build_metrics_supported=False, metrics_namespace
         ib_profile_xml = ib_profile_xml_check
     else:
         # If the profile doesnt exist, then attempt to use the engine as the base
-        ib_profile_xml = bld.engine_node.make_node(ib_profile_xml_check).abspath()
-        if not os.path.exists(ib_profile_xml):
-            # If the entry doesnt exist, then set to the profile.xml that comes with the engine
-            ib_profile_xml = bld.engine_node.make_node("Tools/build/waf-1.7.13/profile.xml").abspath()
+        ib_profile_xml = os.path.join(bld.get_bintemp_folder_node().abspath(), 'profile.xml')
+        if not os.path.isfile(ib_profile_xml):
+            Logs.warn('[WARN] Unable to locate default incredibuild profile ({}). Run configure to regenerate.')
+            Logs.warn('[WARN] Incredibuild will be disabled.')
+            return False
 
     result = subprocess.check_output([str(ib_folder) + '/xgconsole.exe', '/QUERYLICENSE'])
 
@@ -242,12 +247,10 @@ def invoke_waf_recursively(bld, build_metrics_supported=False, metrics_namespace
 
     # Determine if the Dev Tool Acceleration package is available.  This package is required for consoles
     dev_tool_accelerated = 'IncrediBuild for Dev Tool Acceleration' in result
-
-    # Android builds need the Dev Tools Acceleration Package in order to use the profile.xml to specify how tasks are distributed
-    if 'android' in bld.cmd:
-        if not dev_tool_accelerated:
-            Logs.warn('Dev Tool Acceleration Package not found! This is required in order to use Incredibuild for Android.  Build will not be accelerated through Incredibuild.')
-            return False
+    
+    ib_flag_check_results = bld.check_ib_flag(bld.cmd, result, dev_tool_accelerated)
+    if not all(ib_flag_check_results):
+        return False
 
     # Windows builds can be run without the Dev Tools Acceleration Package, but won't distribute Qt tasks.
     if not dev_tool_accelerated:
@@ -343,3 +346,69 @@ def invoke_waf_recursively(bld, build_metrics_supported=False, metrics_namespace
         bld.fatal("[ERROR] Build Failed")
 
     return True
+
+
+@conf
+def generate_ib_profile_xml(ctx):
+    """
+    Make sure that we have a generated profile.xml for the incredibuild commands
+    
+    :param ctx: Context
+    """
+    
+    tab2_fmt = '\t{}'
+    tab4_fmt = '\t' * 2 + '{}'
+
+    profile_lines = ['<?xml version="1.0" encoding="UTF-8" standalone="no" ?>',
+                     '<!-- This file is automatically generated. Do not modify directly -->',
+                     '<Profile FormatVersion="1">',
+                     tab2_fmt.format('<Tools>')]
+    
+    tools_list_list = ctx.generate_ib_profile_tool_elements()
+    for tool_element_list in tools_list_list:
+        for tool_element in tool_element_list:
+            profile_lines.append(tab4_fmt.format(tool_element))
+
+    profile_lines.append(tab2_fmt.format('</Tools>'))
+    profile_lines.append('</Profile>')
+    
+    profile_content = '\n'.join(profile_lines) + '\n'
+
+    profile_xml_target = os.path.join(ctx.get_bintemp_folder_node().abspath(), 'profile.xml')
+
+    if not os.path.isfile(profile_xml_target):
+        write_profile = True
+    else:
+        current_content_hash = utils.calculate_string_hash(profile_content)
+        existing_file_hash = utils.calculate_file_hash(profile_xml_target)
+        write_profile = current_content_hash != existing_file_hash
+        
+    if write_profile:
+        try:
+            Logs.debug('lumberyard: Updating incredibuild profile file: {}'.format(profile_xml_target))
+            with open(profile_xml_target, "w") as profile_file:
+                profile_file.write(profile_content)
+        except Exception as e:
+            Logs.warn("[WARN] Unable to write to incredibuild profile file '{}':{}".format(profile_xml_target, e))
+
+
+@multi_conf
+def generate_ib_profile_tool_elements(ctx):
+    """
+    Generate a list of Tool XML Elements to inject into the incredibuild profile.xml configuration for when we invoke through IB
+
+    <?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+    <Profile FormatVersion="1">
+    <Tools>
+        <Tool ...>
+    </Tools>
+
+    :param ctx: Context
+    :return: List of tool elements
+    """
+    bullseye_tool_elements = [
+        '<Tool Filename="covc" AllowRemote="true" AllowIntercept="true" DeriveCaptionFrom="lastparam" AllowRestartOnLocal="false" VCCompiler="false"/>',
+        '<Tool Filename="covlink" AllowRemote="false" AllowIntercept="false" DeriveCaptionFrom="lastparam" AllowRestartOnLocal="false" VCCompiler="false"/>'
+    ]
+    
+    return bullseye_tool_elements

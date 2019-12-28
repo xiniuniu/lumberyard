@@ -12,7 +12,7 @@
 #pragma once
 
 #include <QGraphicsLinearLayout>
-#include <qtimer.h>
+#include <QTimer>
 
 #include <Components/Slots/SlotLayoutComponent.h>
 #include <GraphCanvas/Components/SceneBus.h>
@@ -22,7 +22,7 @@
 #include <GraphCanvas/Components/VisualBus.h>
 #include <Widgets/GraphCanvasLabel.h>
 #include <Widgets/NodePropertyDisplayWidget.h>
-#include <Styling/StyleHelper.h>
+#include <GraphCanvas/Styling/StyleHelper.h>
 
 namespace GraphCanvas
 {

@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 
 #include <AzCore/Math/Quaternion.h>
 #include <MathConversion.h>
@@ -79,7 +79,7 @@ namespace
 
         lightParams.m_nEntityId = CreateLightId(entityId);
 
-        UpdateLightFlag(configuration.m_ignoreVisAreas, DLF_IGNORES_VISAREAS, lightParams.m_Flags);
+        UpdateLightFlag(!configuration.m_useVisAreas, DLF_IGNORES_VISAREAS, lightParams.m_Flags);
         UpdateLightFlag(configuration.m_indoorOnly, DLF_INDOOR_ONLY, lightParams.m_Flags);
         UpdateLightFlag(configuration.m_affectsThisAreaOnly, DLF_THIS_AREA_ONLY, lightParams.m_Flags);
         UpdateLightFlag(ambient, DLF_AMBIENT, lightParams.m_Flags);
@@ -152,6 +152,7 @@ namespace
             lightParams.m_ProbeExtents.x = configuration.m_probeArea.GetX() / 2.0f;
             lightParams.m_ProbeExtents.y = configuration.m_probeArea.GetY() / 2.0f;
             lightParams.m_ProbeExtents.z = configuration.m_probeArea.GetZ() / 2.0f;
+            lightParams.m_fRadius = lightParams.m_ProbeExtents.len();
             lightParams.m_nSortPriority = configuration.m_probeSortPriority;
             lightParams.m_fProbeAttenuation = configuration.m_probeFade;
 
@@ -168,7 +169,7 @@ namespace
 
             lightParams.ReleaseCubemaps();
 
-            const AZStd::string& specularMap = configuration.m_probeCubemap;
+            const AZStd::string& specularMap = configuration.m_probeCubemap.GetAssetPath();
 
             if (!specularMap.empty())
             {
@@ -231,13 +232,19 @@ namespace
 
         if (configuration.m_syncAnimWithLight)
         {
-            lightParams.m_nLightStyle = configuration.m_syncAnimIndex; // This is really a light animation curve ID
+            lightParams.m_nLightStyle = static_cast<AZ::u8>(configuration.m_syncAnimIndex); // This is really a light animation curve ID
             lightParams.SetAnimSpeed(configuration.m_syncAnimSpeed); // maps [0, 4] to [0, 255]
             lightParams.m_nLightPhase = static_cast<AZ::u8>(configuration.m_syncAnimPhase * 255.f); // maps [0, 1] to [0, 255]
         }
+        else if (configuration.m_attachToSun)
+        {
+            gEnv->p3DEngine->SetSunAnimIndex(static_cast<AZ::u8>(configuration.m_animIndex)); // This is really a light animation curve ID
+            gEnv->p3DEngine->SetSunAnimSpeed(configuration.m_animSpeed); // maps [0, 4] to [0, 255]
+            gEnv->p3DEngine->SetSunAnimPhase(static_cast<AZ::u8>(configuration.m_animPhase * 255.f)); // maps [0, 1] to [0, 255]
+        }
         else
         {
-            lightParams.m_nLightStyle = configuration.m_animIndex; // This is really a light animation curve ID
+            lightParams.m_nLightStyle = static_cast<AZ::u8>(configuration.m_animIndex); // This is really a light animation curve ID
             lightParams.SetAnimSpeed(configuration.m_animSpeed); // maps [0, 4] to [0, 255]
             lightParams.m_nLightPhase = static_cast<AZ::u8>(configuration.m_animPhase * 255.f); // maps [0, 1] to [0, 255]
         }
@@ -245,7 +252,7 @@ namespace
         lightParams.m_LensOpticsFrustumAngle = static_cast<AZ::u8>(configuration.m_lensFlareFrustumAngle / 360.f * 255.f);
 
         UpdateLightFlag(configuration.m_affectsThisAreaOnly, DLF_THIS_AREA_ONLY, lightParams.m_Flags);
-        UpdateLightFlag(configuration.m_ignoreVisAreas, DLF_IGNORES_VISAREAS, lightParams.m_Flags);
+        UpdateLightFlag(!configuration.m_useVisAreas, DLF_IGNORES_VISAREAS, lightParams.m_Flags);
         UpdateLightFlag(configuration.m_indoorOnly, DLF_INDOOR_ONLY, lightParams.m_Flags);
         UpdateLightFlag(configuration.m_attachToSun, DLF_ATTACH_TO_SUN, lightParams.m_Flags);
 
@@ -256,7 +263,7 @@ namespace
             {
                 IOpticsElementBase* flare = gEnv->pOpticsManager->GetOptics(lensOpticsID);
                 lightParams.SetLensOpticsElement(flare);
-                lightParams.SetOpticsParams({ configuration.m_brightness, configuration.m_size, { color.r, color.g, color.b }, true });
+                lightParams.SetOpticsParams({ configuration.m_brightness, configuration.m_size, { color.r, color.g, color.b, color.a }, true });
             }
             else
             {
@@ -401,7 +408,7 @@ namespace LmbrCentral
             return;
         }
 
-        ICVar* cvarSysSpecLight = gEnv->pConsole->GetCVar("sys_spec_light");
+        ICVar* cvarSysSpecLight = gEnv->pConsole->GetCVar("e_LightQuality");
         const int configSpec = cvarSysSpecLight ? cvarSysSpecLight->GetIVal() : gEnv->pSystem->GetConfigSpec(true);
 
         if (static_cast<AZ::u32>(configSpec) < static_cast<AZ::u32>(configuration.m_minSpec))

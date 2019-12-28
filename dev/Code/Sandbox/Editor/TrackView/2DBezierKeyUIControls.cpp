@@ -11,12 +11,12 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "TrackViewKeyPropertiesDlg.h"
 #include "TrackViewTrack.h"
-#include "TrackViewUndo.h"
 
 #include "Controls/ReflectedPropertyControl/ReflectedPropertyItem.h"
+#include <Maestro/Types/SequenceType.h>
 
 //////////////////////////////////////////////////////////////////////////
 class C2DBezierKeyUIControls
@@ -24,6 +24,7 @@ class C2DBezierKeyUIControls
 {
 public:
     C2DBezierKeyUIControls()
+    : m_skipOnUIChange(false)
     {}
 
     CSmartVariableArray mv_table;
@@ -52,6 +53,8 @@ public:
         };
         return guid;
     }
+
+    bool m_skipOnUIChange;
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -96,7 +99,9 @@ bool C2DBezierKeyUIControls::OnKeySelectionChange(CTrackViewKeyBundle& selectedK
             I2DBezierKey bezierKey;
             keyHandle.GetKey(&bezierKey);
 
+            m_skipOnUIChange = true;
             SyncValue(mv_value, bezierKey.value.y, true);
+            m_skipOnUIChange = false;
 
             bAssigned = true;
         }
@@ -107,9 +112,9 @@ bool C2DBezierKeyUIControls::OnKeySelectionChange(CTrackViewKeyBundle& selectedK
 // Called when UI variable changes.
 void C2DBezierKeyUIControls::OnUIChange(IVariable* pVar, CTrackViewKeyBundle& selectedKeys)
 {
-    CTrackViewSequence* pSequence = GetIEditor()->GetAnimation()->GetSequence();
+    CTrackViewSequence* sequence = GetIEditor()->GetAnimation()->GetSequence();
 
-    if (!pSequence || !selectedKeys.AreAllKeysOfSameType())
+    if (!sequence || !selectedKeys.AreAllKeysOfSameType() || m_skipOnUIChange)
     {
         return;
     }
@@ -126,8 +131,19 @@ void C2DBezierKeyUIControls::OnUIChange(IVariable* pVar, CTrackViewKeyBundle& se
 
             SyncValue(mv_value, bezierKey.value.y, false, pVar);
 
-            CUndo::Record(new CUndoTrackObject(keyHandle.GetTrack()));
-            keyHandle.SetKey(&bezierKey);
+            bool isDuringUndo = false;
+            AzToolsFramework::ToolsApplicationRequests::Bus::BroadcastResult(isDuringUndo, &AzToolsFramework::ToolsApplicationRequests::Bus::Events::IsDuringUndoRedo);
+
+            if (isDuringUndo)
+            {
+                keyHandle.SetKey(&bezierKey);
+            }
+            else
+            {
+                AzToolsFramework::ScopedUndoBatch undoBatch("Set Key Value");
+                keyHandle.SetKey(&bezierKey);
+                undoBatch.MarkEntityDirty(sequence->GetSequenceComponentEntityId());
+            }
         }
     }
 }

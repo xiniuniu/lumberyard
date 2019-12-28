@@ -14,7 +14,6 @@
 #include <AzCore/std/smart_ptr/make_shared.h>
 #include <AzFramework/StringFunc/StringFunc.h>
 #include <AzToolsFramework/Debug/TraceContext.h>
-#include <AzToolsFramework/API/EditorAssetSystemAPI.h>
 #include <SceneAPI/SceneCore/Components/LoadingComponent.h>
 #include <SceneAPI/SceneCore/Components/SceneSystemComponent.h>
 #include <SceneAPI/SceneCore/Components/Utilities/EntityConstructor.h>
@@ -102,18 +101,10 @@ namespace AZ
                 return ProcessingResult::Ignored;
             }
 
-            AZStd::shared_ptr<Containers::Scene> AssetImportRequest::LoadScene(const AZStd::string& assetFilePath, RequestingApplication requester)
+            void AssetImportRequest::AreCustomNormalsUsed(bool &value)
             {
-                AZStd::shared_ptr<Containers::Scene> result;
-                SceneSerializationBus::BroadcastResult(result, &SceneSerializationBus::Events::LoadScene, assetFilePath, Uuid::CreateNull());
-                return result;
-            }
-
-            AZStd::shared_ptr<Containers::Scene> AssetImportRequest::LoadScene(const AZStd::string& assetFilePath, const Uuid& sourceGuid, RequestingApplication /*requester*/)
-            {
-                AZStd::shared_ptr<Containers::Scene> result;
-                SceneSerializationBus::BroadcastResult(result, &SceneSerializationBus::Events::LoadScene, assetFilePath, sourceGuid);
-                return result;
+                // Leave the SceneProcessingConfigSystemComponent do the job
+                AZ_UNUSED(value);
             }
 
             AZStd::shared_ptr<Containers::Scene> AssetImportRequest::LoadSceneFromVerifiedPath(const AZStd::string& assetFilePath, const Uuid& sourceGuid,

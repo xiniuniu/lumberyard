@@ -47,7 +47,6 @@
 #include <VariableWidgets/ui_QFileSelectWidget.h>
 
 //to disable shortcuts while in line edit
-#include <Include/IAssetTagging.h>
 #include <QMessageBox>
 
 #include <AzToolsFramework/API/ToolsApplicationAPI.h>
@@ -76,10 +75,7 @@ QFileSelectResourceWidget::QFileSelectResourceWidget(CAttributeItem* parent, CAt
 
         // Open texture file in editor
         btn = addButton("Open Input Bindings Editor", tr("Open File"), 1, 0, 1, 6);
-        connect(btn, &QPushButton::clicked, [this]()
-            {
-                OpenSourceFile();
-            });
+        connect(btn, &QPushButton::clicked, this, &QFileSelectResourceWidget::OpenSourceFile);
         m_btns.push_back(btn);
         m_btns.back()->installEventFilter(this);
 
@@ -99,10 +95,7 @@ QFileSelectResourceWidget::QFileSelectResourceWidget(CAttributeItem* parent, CAt
 
          // Open material editor
         btn = addButton("Open Input Bindings Editor", tr("Open File"), 1, 0, 1, 6);
-        connect(btn, &QPushButton::clicked, [this]()
-            {
-                OpenSourceFile();
-            });
+        connect(btn, &QPushButton::clicked, this, &QFileSelectResourceWidget::OpenSourceFile);
         m_btns.push_back(btn);
         m_btns.back()->installEventFilter(this);
 
@@ -207,8 +200,17 @@ void QFileSelectResourceWidget::onOpenSelectDialog()
         break;
     }
     case ePropertyModel:
+    {
+        AssetSelectionModel selection = AssetSelectionModel::AssetGroupSelection("Geometry");
+        AzToolsFramework::EditorRequests::Bus::Broadcast(&AzToolsFramework::EditorRequests::BrowseForAssets, selection);
+        if (selection.IsValid())
+        {
+            newPath = selection.GetResult()->GetRelativePath().c_str();
+        }
+        break;
+    }
     case ePropertyAudioTrigger:
-        newPath = GetIEditor()->GetResourceSelectorHost()->SelectResource(x, currPath.toStdString().c_str()).c_str();
+        newPath = GetIEditor()->GetResourceSelectorHost()->SelectResource(x, currPath);
         break;
     default:
         break;
@@ -392,7 +394,7 @@ void QFileSelectResourceWidget::OpenSourceFile()
         QDir dir(folderPath);
         if (!dir.exists())
         {
-            folderPath = GetIEditor()->GetAssetTagging()->GetProjectName() + "/" + folderPath;
+            folderPath = GetIEditor()->GetProjectName() + "/" + folderPath;
             dir.setPath(folderPath);
         }
 

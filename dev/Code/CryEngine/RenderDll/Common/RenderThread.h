@@ -14,12 +14,21 @@
 // Description : Render thread commands processing.
 
 
-#ifndef CRYINCLUDE_CRYENGINE_RENDERDLL_COMMON_RENDERTHREAD_H
-#define CRYINCLUDE_CRYENGINE_RENDERDLL_COMMON_RENDERTHREAD_H
 #pragma once
 
 #include <AzCore/std/parallel/mutex.h>
 #include "UnalignedBlit.h"
+
+// Remove this include once the restricted platform separation process is complete
+#include "RendererDefs.h"
+
+
+#if defined(AZ_RESTRICTED_PLATFORM)
+#undef AZ_RESTRICTED_SECTION
+#define RENDERTHREAD_H_SECTION_1 1
+#define RENDERTHREAD_H_SECTION_2 2
+#define RENDERTHREAD_H_SECTION_3 3
+#endif
 
 #if defined(ANDROID)
 #include <sched.h>
@@ -27,7 +36,21 @@
 #endif
 
 #define RENDER_THREAD_NAME "RenderThread"
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERTHREAD_H_SECTION_1
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RenderThread_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RenderThread_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RenderThread_h_salem.inl"
+    #endif
+#endif
+#if defined(AZ_RESTRICTED_SECTION_IMPLEMENTED)
+#undef AZ_RESTRICTED_SECTION_IMPLEMENTED
+#else
     #define RENDER_THREAD_PRIORITY THREAD_PRIORITY_NORMAL
+#endif
 
 #define RENDER_LOADING_THREAD_NAME "RenderLoadingThread"
 
@@ -44,7 +67,7 @@ struct SDynTexture;
 struct STexStreamInState;
 struct SDepthTexture;
 
-#if defined(ORBIS) || defined(DURANGO) || defined(MOBILE)
+#if RENDERTHREAD_H_TRAIT_USE_LOCKS_FOR_FLUSH_SYNC
 #define USE_LOCKS_FOR_FLUSH_SYNC
 #elif defined(WIN32)
 #define USE_LOCKS_FOR_FLUSH_SYNC
@@ -109,7 +132,6 @@ enum ERenderCommand
     eRC_PushProfileMarker,
     eRC_PopProfileMarker,
 
-    eRC_PrepareLevelTexStreaming,
     eRC_PostLevelLoading,
     eRC_SetState,
     eRC_PushWireframeMode,
@@ -119,6 +141,7 @@ enum ERenderCommand
     eRC_SetStencilState,
     eRC_SelectGPU,
     eRC_DrawDynVB,
+    eRC_DrawDynVBUI,
     eRC_Draw2dImage,
     eRC_Draw2dImageStretchMode,
     eRC_Push2dImage,
@@ -217,7 +240,7 @@ struct SRenderThread
     CRenderThread* m_pThread;
     CRenderThreadLoading* m_pThreadLoading;
     ILoadtimeCallback* m_pLoadtimeCallback;
-    CryMutex m_rdldLock;
+    CryMutex m_lockRenderLoading;
     AZStd::mutex m_CommandsMutex;
     bool m_bQuit;
     bool m_bQuitLoading;
@@ -243,13 +266,21 @@ struct SRenderThread
     threadID m_nRenderThread;
     threadID m_nRenderThreadLoading;
     threadID m_nMainThread;
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERTHREAD_H_SECTION_2
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RenderThread_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RenderThread_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RenderThread_h_salem.inl"
+    #endif
+#endif
     HRESULT m_hResult;
-    //  Confetti BEGIN: Igor Lobanchikov
 #if defined(OPENGL) && !DXGL_FULL_EMULATION && !defined(CRY_USE_METAL)
     SDXGLContextThreadLocalHandle m_kDXGLContextHandle;
     SDXGLDeviceContextThreadLocalHandle m_kDXGLDeviceContextHandle;
 #endif //defined(OPENGL) && !DXGL_FULL_EMULATION
-    //  Confetti End: Igor Lobanchikov
     float m_fTimeIdleDuringLoading;
     float m_fTimeBusyDuringLoading;
     TArray<byte> m_Commands[RT_COMMAND_BUF_COUNT]; // m_nCurThreadFill shows which commands are filled by main thread
@@ -347,11 +378,21 @@ struct SRenderThread
     {
         if (m_pThread != NULL)
         {
+            int32 renderThreadPriority = RENDER_THREAD_PRIORITY;
+#if defined(AZ_PLATFORM_IOS) || defined(AZ_PLATFORM_MAC)
+            //Apple recommends to never use 0 as a render thread priority.
+            //In this case we are getting the max thread priority and going 2 levels below for ideal performance.
+            int thread_policy;
+            sched_param thread_sched_param;
+            pthread_getschedparam(pthread_self(), &thread_policy, &thread_sched_param);
+            renderThreadPriority = sched_get_priority_max(thread_policy) - 2;
+#endif
+            
 #if defined(_DEBUG) || !defined(__OPTIMIZE__) || !defined(__OPTIMIZE_SIZE__)
             // Note that we need bigger stack for debug routines
-            m_pThread->Start(BIT(1), RENDER_THREAD_NAME, RENDER_THREAD_PRIORITY, 128 * 1024);
+            m_pThread->Start(AFFINITY_MASK_RENDERTHREAD, RENDER_THREAD_NAME, renderThreadPriority, 128 * 1024);
 #else
-            m_pThread->Start(BIT(1), RENDER_THREAD_NAME, RENDER_THREAD_PRIORITY, 72 * 1024);
+            m_pThread->Start(AFFINITY_MASK_RENDERTHREAD, RENDER_THREAD_NAME, renderThreadPriority, 72 * 1024);
 #endif
             m_pThread->m_started.Wait();
         }
@@ -361,7 +402,7 @@ struct SRenderThread
     {
         if (m_pThreadLoading != NULL)
         {
-            m_pThreadLoading->Start(BIT(0), RENDER_THREAD_NAME, RENDER_THREAD_PRIORITY + 1, 72 * 1024);
+            m_pThreadLoading->Start(AFFINITY_MASK_USERTHREADS, RENDER_THREAD_NAME, RENDER_THREAD_PRIORITY + 1, 72 * 1024);
             m_pThreadLoading->m_started.Wait();
         }
     }
@@ -544,7 +585,7 @@ struct SRenderThread
     void QuitRenderLoadingThread();
     void SyncMainWithRender();
     void FlushAndWait();
-    void ProcessCommands();
+    void ProcessCommands(bool loadTimeProcessing);
     void Process();         // Render thread
     void ProcessLoading();  // Loading thread
     int  GetThreadList();
@@ -562,6 +603,16 @@ struct SRenderThread
     void    RC_ShutDown(uint32 nFlags);
     bool    RC_CreateDevice();
     void    RC_ResetDevice();
+#if defined(AZ_RESTRICTED_PLATFORM)
+#define AZ_RESTRICTED_SECTION RENDERTHREAD_H_SECTION_3
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/RenderThread_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/RenderThread_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/RenderThread_h_salem.inl"
+    #endif
+#endif
     void    RC_PreloadTextures();
     void    RC_ReadFrameBuffer(unsigned char* pRGB, int nImageX, int nSizeX, int nSizeY, ERB_Type eRBType, bool bRGBA, int nScaledX, int nScaledY);
     bool    RC_CreateDeviceTexture(CTexture* pTex, const byte* pData[6]);
@@ -586,6 +637,7 @@ struct SRenderThread
     void    RC_ReleaseVB(buffer_handle_t nID);
     void    RC_ReleaseIB(buffer_handle_t nID);
     void    RC_DrawDynVB(SVF_P3F_C4B_T2F* pBuf, uint16* pInds, int nVerts, int nInds, const PublicRenderPrimitiveType nPrimType);
+    void    RC_DrawDynUiPrimitiveList(IRenderer::DynUiPrimitiveList& primitives, int totalNumVertices, int totalNumIndices);
     void    RC_Draw2dImage(float xpos, float ypos, float w, float h, CTexture* pTexture, float s0, float t0, float s1, float t1, float angle, float r, float g, float b, float a, float z);
     void    RC_Draw2dImageStretchMode(bool bStretch);
     void    RC_Push2dImage(float xpos, float ypos, float w, float h, CTexture* pTexture, float s0, float t0, float s1, float t1, float angle, float r, float g, float b, float a, float z, float stereoDepth);
@@ -638,7 +690,6 @@ struct SRenderThread
     void    RT_StartVideoThread();
     void    RT_StopVideoThread();
 
-    void        RC_PrepareLevelTexStreaming();
     void    RC_PostLoadLevel();
     void    RC_SetEnvTexRT(SEnvTexture* pEnvTex, int nWidth, int nHeight, bool bPush);
     void    RC_SetEnvTexMatrix(SEnvTexture* pEnvTex);
@@ -755,6 +806,3 @@ _inline void SRenderThread::FlushAndWait()
     return;
 }
 #endif
-
-#endif // CRYINCLUDE_CRYENGINE_RENDERDLL_COMMON_RENDERTHREAD_H
-

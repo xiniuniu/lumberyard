@@ -9,16 +9,22 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "HttpRequestor_precompiled.h"
 
+// The AWS Native SDK AWSAllocator triggers a warning due to accessing members of std::allocator directly.
+// AWSAllocator.h(70): warning C4996: 'std::allocator<T>::pointer': warning STL4010: Various members of std::allocator are deprecated in C++17.
+// Use std::allocator_traits instead of accessing these members directly.
+// You can define _SILENCE_CXX17_OLD_ALLOCATOR_MEMBERS_DEPRECATION_WARNING or _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS to acknowledge that you have received this warning.
+AZ_PUSH_DISABLE_WARNING(4251 4996, "-Wunknown-warning-option")
 #include <aws/core/http/HttpClient.h>
 #include <aws/core/http/HttpClientFactory.h>
 #include <aws/core/http/HttpRequest.h>
 #include <aws/core/http/HttpResponse.h>
 #include <aws/core/client/ClientConfiguration.h>
+AZ_POP_DISABLE_WARNING
 
 #include <AWSNativeSDKInit/AWSNativeSDKInit.h>
-
+#include <AzCore/std/string/conversions.h>
 #include "HttpRequestManager.h"
 
 namespace HttpRequestor
@@ -29,6 +35,7 @@ namespace HttpRequestor
     {
         AZStd::thread_desc desc;
         desc.m_name = s_loggingName;
+        desc.m_cpuId = AFFINITY_MASK_USERTHREADS;
         m_runThread = true;
         // Shutdown will be handled by the InitializationManager - no need to call in the destructor
         AWSNativeSDKInit::InitializationManager::InitAwsApi();
@@ -46,7 +53,6 @@ namespace HttpRequestor
             m_thread.join();
         }
 
-        m_thread.detach();
     }
 
     void Manager::AddRequest(Parameters && httpRequestParameters)
@@ -60,11 +66,11 @@ namespace HttpRequestor
 
     void Manager::AddTextRequest(TextParameters && httpTextRequestParameters)
     {
-	    {
-		    AZStd::lock_guard<AZStd::mutex> lock(m_requestMutex);
-		    m_textRequestsToHandle.push(AZStd::move(httpTextRequestParameters));
-	    }
-	    m_requestConditionVar.notify_all();
+        {
+            AZStd::lock_guard<AZStd::mutex> lock(m_requestMutex);
+            m_textRequestsToHandle.push(AZStd::move(httpTextRequestParameters));
+        }
+        m_requestConditionVar.notify_all();
     }
 
     void Manager::ThreadFunction()
@@ -80,14 +86,14 @@ namespace HttpRequestor
     {
         // Lock mutex and wait for work to be signalled via the condition variable
         AZStd::unique_lock<AZStd::mutex> lock(m_requestMutex);
-        m_requestConditionVar.wait(lock);
+        m_requestConditionVar.wait(lock, [&] { return !m_runThread || !m_requestsToHandle.empty() || !m_textRequestsToHandle.empty(); });
 
         // Swap queues
         AZStd::queue<Parameters> requestsToHandle;
         requestsToHandle.swap(m_requestsToHandle);
 
-	    AZStd::queue<TextParameters> textRequestsToHandle;
-	    textRequestsToHandle.swap(m_textRequestsToHandle);
+        AZStd::queue<TextParameters> textRequestsToHandle;
+        textRequestsToHandle.swap(m_textRequestsToHandle);
 
         // Release lock
         lock.unlock();
@@ -99,11 +105,11 @@ namespace HttpRequestor
             requestsToHandle.pop();
         }
 
-	    while (!textRequestsToHandle.empty())
-	    {
-		    HandleTextRequest(textRequestsToHandle.front());
-		    textRequestsToHandle.pop();
-	    }
+        while (!textRequestsToHandle.empty())
+        {
+            HandleTextRequest(textRequestsToHandle.front());
+            textRequestsToHandle.pop();
+        }
     }
 
     void Manager::HandleRequest(const Parameters& httpRequestParameters)
@@ -120,9 +126,10 @@ namespace HttpRequestor
         if( httpRequestParameters.GetBodyStream() != nullptr)
         {
             httpRequest->AddContentBody(httpRequestParameters.GetBodyStream());
+            httpRequest->SetContentLength(AZStd::to_string(httpRequestParameters.GetBodyStream()->str().length()).c_str());
         }
         
-        auto httpResponse = httpClient->MakeRequest(*httpRequest);
+        auto httpResponse = httpClient->MakeRequest(httpRequest);
 
         if (!httpResponse)
         {
@@ -163,7 +170,7 @@ namespace HttpRequestor
             httpRequest->AddContentBody(httpRequestParameters.GetBodyStream());
         }
 
-        auto httpResponse = httpClient->MakeRequest(*httpRequest);
+        auto httpResponse = httpClient->MakeRequest(httpRequest);
 
         if (!httpResponse)
         {
@@ -179,8 +186,8 @@ namespace HttpRequestor
 
         // load up the raw output into a string
         // TODO(aaj): it feels like there should be some limit maybe 1 MB?
-	    std::istreambuf_iterator<char> eos;
+        std::istreambuf_iterator<char> eos;
         AZStd::string data(std::istreambuf_iterator<char>(httpResponse->GetResponseBody()), eos);
-	    httpRequestParameters.GetCallback()(AZStd::move(data), httpResponse->GetResponseCode());
+        httpRequestParameters.GetCallback()(AZStd::move(data), httpResponse->GetResponseCode());
     }
 }

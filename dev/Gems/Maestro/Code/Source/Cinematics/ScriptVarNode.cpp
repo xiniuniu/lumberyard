@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "StdAfx.h"
+#include "Maestro_precompiled.h"
 #include <AzCore/Serialization/SerializeContext.h>
 #include "ScriptVarNode.h"
 #include "AnimTrack.h"
@@ -128,9 +128,9 @@ void CAnimScriptVarNode::SetScriptValue()
     {
         char sTable[256];
         char sName[256];
-        strcpy(sTable, sVarName);
+        azstrcpy(sTable, AZ_ARRAY_SIZE(sTable), sVarName);
         sTable[sPnt - sVarName] = 0;
-        strcpy(sName, sPnt + 1);
+        azstrcpy(sName, AZ_ARRAY_SIZE(sName), sPnt + 1);
 
         // In Table value.
         SmartScriptTable pTable;

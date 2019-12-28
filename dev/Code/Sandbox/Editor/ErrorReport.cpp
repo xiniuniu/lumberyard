@@ -144,14 +144,18 @@ void CErrorReport::ReportError(CErrorRecord& err)
     {
         if (err.module == VALIDATOR_MODULE_EDITOR && err.severity == static_cast<int>(VALIDATOR_ERROR))
         {
-            Warning(err.error.toLatin1().data());
+            Warning(err.error.toUtf8().data());
         }
         else
         {
             // Show dialog if first character of warning is !.
             if (!err.error.isEmpty() && err.error[0] == '!')
             {
-                Warning(err.error.toLatin1().data());
+                Warning(err.error.toUtf8().data());
+            }
+            else
+            {
+                m_errors.push_back(err);
             }
         }
     }
@@ -196,7 +200,7 @@ inline bool SortErrorsByModule(const CErrorRecord& e1, const CErrorRecord& e2)
 //////////////////////////////////////////////////////////////////////////
 void CErrorReport::Display()
 {
-    if (m_errors.empty() || !GetIEditor()->GetGame() || !m_bShowErrors)
+    if (m_errors.empty() || !m_bShowErrors)
     {
         SetImmidiateMode(true);
         return;
@@ -234,7 +238,7 @@ void CErrorReport::Display()
     {
         CErrorRecord& err = m_errors[i];
         QString str = err.GetErrorText();
-        CryLogAlways("%3d) %s", i, str.toLatin1().data());
+        CryLogAlways("%3d) %s", i, str.toUtf8().data());
     }
     CryLogAlways("========================= End Errors =========================");
 

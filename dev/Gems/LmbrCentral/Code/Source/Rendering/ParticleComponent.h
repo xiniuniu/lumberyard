@@ -82,6 +82,9 @@ namespace LmbrCentral
         //! True if the emitter has been created.
         bool IsCreated() const;
 
+        //! Restarts the emitter.
+        void Restart();
+
         IRenderNode* GetRenderNode();
         
     protected:
@@ -156,6 +159,7 @@ namespace LmbrCentral
         void SetGlobalSizeScale(float scale) override;
         void SetParticleSizeScaleX(float scale) override;
         void SetParticleSizeScaleY(float scale) override;
+        void SetParticleSizeScaleZ(float scale) override;
         void SetPulsePeriod(float pulse) override;
         bool GetVisibility() override;
         bool GetEnable() override;
@@ -166,6 +170,7 @@ namespace LmbrCentral
         float GetGlobalSizeScale() override;
         float GetParticleSizeScaleX() override;
         float GetParticleSizeScaleY() override;
+        float GetParticleSizeScaleZ() override;
         float GetPulsePeriod() override;
         void SetLifetimeStrength(float strenth) override;
         void EnableAudio(bool enable) override;
@@ -173,6 +178,7 @@ namespace LmbrCentral
         void SetViewDistMultiplier(float multiplier) override;
         void SetUseVisArea(bool enable) override;
         ParticleEmitterSettings GetEmitterSettings() override;
+        void Restart() override;
         //////////////////////////////////////////////////////////////////////////
 
         //////////////////////////////////////////////////////////////////////////

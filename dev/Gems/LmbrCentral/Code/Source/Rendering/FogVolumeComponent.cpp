@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 
 #include <AzCore/Serialization/SerializeContext.h>
 #include <AzCore/RTTI/BehaviorContext.h>
@@ -82,6 +82,7 @@ namespace LmbrCentral
     void FogVolumeComponent::RefreshFog()
     {
         m_fogVolume.UpdateFogVolumeProperties(m_configuration);
+        m_fogVolume.UpdateRenderingFlags(m_configuration);
         m_fogVolume.UpdateFogVolumeTransform();
     }
 

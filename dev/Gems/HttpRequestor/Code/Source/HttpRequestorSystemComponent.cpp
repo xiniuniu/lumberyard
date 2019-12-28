@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "HttpRequestor_precompiled.h"
 
 #include <AzCore/Serialization/SerializeContext.h>
 #include <AzCore/Serialization/EditContext.h>
@@ -70,9 +70,8 @@ namespace HttpRequestor
     {
         if (AZ::SerializeContext* serialize = azrtti_cast<AZ::SerializeContext*>(context))
         {
-            serialize->Class<HttpRequestorSystemComponent>()
-                ->Version(1)
-                ->SerializerForEmptyClass()
+            serialize->Class<HttpRequestorSystemComponent, AZ::Component>()
+                ->Version(1);
                 ;
             
             if (AZ::EditContext* ec = serialize->GetEditContext())

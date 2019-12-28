@@ -10,12 +10,12 @@
 *
 */
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "Crates.h"
 
 #include <QAbstractButton>
 #include <QMessageBox>
-#include <Qdir>
+#include <QDir>
 #include <QTemporaryDir>
 #include <QDropEvent>
 #include <QPushButton>

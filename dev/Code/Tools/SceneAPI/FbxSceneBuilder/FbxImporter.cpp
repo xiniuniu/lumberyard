@@ -10,7 +10,6 @@
 *
 */
 
-#include <queue>
 #include <AzCore/Casting/numeric_cast.h>
 #include <AzCore/Debug/Trace.h>
 #include <AzCore/Math/Transform.h>
@@ -41,7 +40,7 @@ namespace AZ
                 std::shared_ptr<FbxSDKWrapper::FbxNodeWrapper> m_node;
                 Containers::SceneGraph::NodeIndex m_parent;
 
-                QueueNode() = default;
+                QueueNode() = delete;
                 QueueNode(std::shared_ptr<FbxSDKWrapper::FbxNodeWrapper>&& node, Containers::SceneGraph::NodeIndex parent)
                     : m_node(std::move(node))
                     , m_parent(parent)

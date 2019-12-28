@@ -3,7 +3,7 @@
 
     "Metadata": {
         "CloudCanvas": {
-            "Id": "$Revision: #1 $"
+            "Id": "$Revision: #4 $"
         }
     },
 
@@ -33,7 +33,7 @@
         "PlayerAccessTokenExchange": {
             "Type": "String",
             "Description": "ARN for the lambda that the login cognito-identity pool needs access to."
-        },       
+        },
 
         "ProjectStack": {
             "Type": "String",
@@ -55,8 +55,8 @@
             "Description": "The ARN of the deployment stack."
         }
 
-    },    
-  
+    },
+
     "Resources": {
 
         "DeploymentAccess": {
@@ -87,14 +87,37 @@
                             ],
                             "Resource": [
                                 { "Fn::Join": [ "", [ "arn:aws:s3:::", { "Ref": "ConfigurationBucket" }, "/project-settings.json" ]] },
-                                { "Fn::Join": [ "", [ "arn:aws:s3:::", { "Ref": "ConfigurationBucket" }, "/project-settings/*" ]] }
+                                { "Fn::Join": [ "", [ "arn:aws:s3:::", { "Ref": "ConfigurationBucket" }, "/project-settings/*" ]] },
+                                { "Fn::Join": [ "", [ "arn:aws:s3:::", { "Ref": "ConfigurationBucket" }, "/dstack*" ]] }
+                            ]
+                        },
+                        {
+                            "Sid": "ReadResourceDefinitions",
+                            "Effect": "Allow",
+                            "Action": [
+                                "s3:GetObject",
+                                "s3:ListBucket"
+                            ],
+                            "Resource": [
+                                { "Fn::Join": [ "", [ "arn:aws:s3:::", { "Ref": "ConfigurationBucket" } ]] },
+                                { "Fn::Join": [ "", [ "arn:aws:s3:::", { "Ref": "ConfigurationBucket" }, "/resource-definitions/*" ]] }
+                            ]
+                        },
+                        {
+                            "Sid": "InvokeArnLambdas",
+                            "Effect": "Allow",
+                            "Action": [
+                                "lambda:InvokeFunction"
+                            ],
+                            "Resource": [
+                                { "Fn::Join": [ "", [ "arn:aws:lambda:", { "Ref": "AWS::Region" }, ":", { "Ref": "AWS::AccountId" }, ":function:", { "Ref": "ProjectStack" }, "-AH-*" ]] }
                             ]
                         }
                     ]
                 }
             }
         },
-        
+
         "DeploymentAdmin": {
             "Type": "AWS::IAM::Role",
             "Properties": {
@@ -127,7 +150,7 @@
                 }
             }
         },
-        
+
         "DeploymentAdminRestrictions": {
             "Type": "AWS::IAM::ManagedPolicy",
             "Properties": {
@@ -150,7 +173,7 @@
                 }
             }
         },
-        
+
         "DeploymentOwnerAccess": {
             "Type": "AWS::IAM::ManagedPolicy",
             "Properties": {
@@ -252,17 +275,13 @@
                             "Effect": "Deny",
                             "Action": [
                                 "dynamodb:*",
-                                "s3:*",
                                 "sqs:*",
-                                "sns:*",
-                                "lambda:*"
+                                "sns:*"
                             ],
                             "Resource": [
                                 { "Fn::Join": [ "", [ "arn:aws:dynamodb:", { "Ref": "AWS::Region" }, ":", { "Ref": "AWS::AccountId" }, ":table/", { "Ref": "AWS::StackName" }, "-*" ]] },
-                                { "Fn::Join": [ "", [ "arn:aws:s3:::", { "Fn::GetAtt": [ "Helper", "LowerCaseStackName" ] }, "-*" ] ] },
                                 { "Fn::Join": [ "", [ "arn:aws:sqs:", { "Ref": "AWS::Region" }, ":", { "Ref": "AWS::AccountId" }, ":", { "Ref": "AWS::StackName" }, "-*" ]] },
-                                { "Fn::Join": [ "", [ "arn:aws:sns:*:", { "Ref": "AWS::AccountId" }, ":", { "Ref": "AWS::StackName" }, "-*" ] ] },
-                                { "Fn::Join": [ "", [ "arn:aws:lambda:", { "Ref": "AWS::Region" }, ":", { "Ref": "AWS::AccountId" }, ":function:", { "Ref": "AWS::StackName" }, "-*" ]] }
+                                { "Fn::Join": [ "", [ "arn:aws:sns:*:", { "Ref": "AWS::AccountId" }, ":", { "Ref": "AWS::StackName" }, "-*" ] ] }
                             ]
                         },
                         {
@@ -278,6 +297,16 @@
                             ]
                         },
                         {
+                            "Sid": "InvokeArnLambdas",
+                            "Effect": "Allow",
+                            "Action": [
+                                "lambda:InvokeFunction"
+                            ],
+                            "Resource": [
+                                { "Fn::Join": [ "", [ "arn:aws:lambda:", { "Ref": "AWS::Region" }, ":", { "Ref": "AWS::AccountId" }, ":function:", { "Ref": "ProjectStack" }, "-AH-*" ]] }
+                            ]
+                        },
+                        {
                             "Sid": "UpdateDeploymentAndResourceGroupStacks",
                             "Effect": "Allow",
                             "Action": [
@@ -290,12 +319,23 @@
                                 { "Fn::Join": [ "", [ "arn:aws:cloudformation:", { "Ref": "AWS::Region" }, ":", { "Ref": "AWS::AccountId" }, ":stack/", { "Ref": "DeploymentStack" }, "/*" ]] },
                                 { "Fn::Join": [ "", [ "arn:aws:cloudformation:", { "Ref": "AWS::Region" }, ":", { "Ref": "AWS::AccountId" }, ":stack/", { "Ref": "DeploymentStack" }, "-*" ]] }
                             ]
+                        },
+                        {
+                            "Sid": "GetAndPutResourceGroupSettings",
+                            "Effect": "Allow",
+                            "Action": [
+                                "s3:PutObject",
+                                "s3:GetObject"
+                            ],
+                            "Resource": [
+                                { "Fn::Join": [ "", [ "arn:aws:s3:::", { "Ref": "ConfigurationBucket" }, "/resource-settings/", { "Ref": "DeploymentName" }, "/*" ]] }
+                            ]
                         }
                     ]
                 }
             }
         },
-        
+
         "DeploymentOwner": {
             "Type": "AWS::IAM::Role",
             "Properties": {
@@ -327,7 +367,7 @@
                 }
             }
         },
-        
+
         "Helper": {
             "Type": "Custom::Helper",
             "Properties": {
@@ -338,7 +378,7 @@
                 "ServiceToken": { "Ref": "ProjectResourceHandler" }
             }
         },
-        
+
         "Player": {
             "Type": "AWS::IAM::Role",
             "Properties": {
@@ -373,8 +413,7 @@
                 }
             }
         },
-		
-		"Server": {
+        "AuthenticatedPlayer": {
             "Type": "AWS::IAM::Role",
             "Properties": {
                 "Path": { "Fn::Join": [ "", [ "/", { "Ref": "ProjectStack" }, "/", { "Ref": "DeploymentName" }, "/" ]] },
@@ -401,6 +440,43 @@
                 "CloudCanvas": {
                     "RoleMappings": [
                         {
+                            "AbstractRole": [ "*.Player" ],
+                            "Effect": "Allow"
+                        },
+                        {
+                            "AbstractRole": [ "*.AuthenticatedPlayer" ],
+                            "Effect": "Allow"
+                        }
+                    ]
+                }
+            }
+        },
+        "Server": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "Path": { "Fn::Join": [ "", [ "/", { "Ref": "ProjectStack" }, "/", { "Ref": "DeploymentName" }, "/" ]] },
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Sid": "AccountUserAssumeRole",
+                            "Effect": "Allow",
+                            "Action": "sts:AssumeRole",
+                            "Principal": { "AWS": {"Ref": "AWS::AccountId"} }
+                        },
+                        {
+                            "Sid": "EC2AssumeRole",
+                            "Effect": "Allow",
+                            "Principal": {"Service": "ec2.amazonaws.com"},
+                            "Action": "sts:AssumeRole"
+                        }
+                    ]
+                }
+            },
+            "Metadata": {
+                "CloudCanvas": {
+                    "RoleMappings": [
+                        {
                             "AbstractRole": [ "*.Server" ],
                             "Effect": "Allow"
                         }
@@ -408,17 +484,6 @@
                 }
             }
         },
-
-        "AccessControl": {
-            "Type": "Custom::AccessControl",
-            "Properties": {
-                "ServiceToken": { "Ref": "ProjectResourceHandler" },
-                "ConfigurationBucket": { "Ref": "ConfigurationBucket" },
-                "ConfigurationKey": { "Ref": "ConfigurationKey" }
-            },
-            "DependsOn": [ "Player", "Server", "DeploymentOwner", "DeploymentAdmin" ]
-        },
-
         "PlayerLoginRole": {
             "Type": "AWS::IAM::Role",
             "Properties": {
@@ -452,7 +517,7 @@
                     }
                 ]
             }
-        },       
+        },
 
         "PlayerLoginIdentityPool": {
             "Type": "Custom::CognitoIdentityPool",
@@ -480,7 +545,7 @@
                 "IdentityPoolName": "PlayerAccess",
                 "Roles": {
                     "unauthenticated":  { "Fn::GetAtt":  [ "Player", "Arn"] },
-                    "authenticated": { "Fn::GetAtt": [ "Player", "Arn" ] }
+                    "authenticated": { "Fn::GetAtt": [ "AuthenticatedPlayer", "Arn" ] }
                 }
             }
         }

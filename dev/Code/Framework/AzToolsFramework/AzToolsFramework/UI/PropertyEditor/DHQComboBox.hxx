@@ -15,7 +15,10 @@
 
 #include <AzCore/base.h>
 #include <AzCore/Memory/SystemAllocator.h>
+
+AZ_PUSH_DISABLE_WARNING(4244 4251, "-Wunknown-warning-option")
 #include <QComboBox>
+AZ_POP_DISABLE_WARNING
 
 #pragma once
 
@@ -27,10 +30,12 @@ namespace AzToolsFramework
     public:
         AZ_CLASS_ALLOCATOR(DHQComboBox, AZ::SystemAllocator, 0);
 
-        explicit DHQComboBox(QWidget* parent = 0)
-            : QComboBox(parent) {}
+        explicit DHQComboBox(QWidget* parent = 0);
 
-        void wheelEvent(QWheelEvent* e);
+        void showPopup() override;
+
+    protected:
+        void wheelEvent(QWheelEvent* e) override;
     };
 }
 

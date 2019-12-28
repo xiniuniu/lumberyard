@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "Rain_precompiled.h"
 #include "Rain.h"
 
 #include "IActorSystem.h"
@@ -22,6 +22,7 @@ namespace LYGame
     DECLARE_DEFAULT_COMPONENT_FACTORY(CRain, CRain)
 
     CRain::CRain()
+        : m_bEnabled(false)
     {
     }
 
@@ -124,8 +125,12 @@ namespace LYGame
     //------------------------------------------------------------------------
     void CRain::Update(SEntityUpdateContext& ctx, int updateSlot)
     {
-        const IActor* pClient = gEnv->pGame->GetIGameFramework()->GetClientActor();
-        if (pClient && Reset())
+        if (GetISystem()->GetIGame()->GetIGameFramework()->IsEditing())
+        {
+            return;
+        }
+
+        if (Reset())
         {
             const Vec3 vCamPos = gEnv->pRenderer->GetCamera().GetPosition();
             const Vec3 worldPos = GetEntity()->GetWorldPos();

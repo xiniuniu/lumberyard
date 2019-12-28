@@ -19,14 +19,17 @@
 #include <AzCore/std/smart_ptr/shared_ptr.h>
 #include <AzCore/std/string/string.h>
 
-namespace Gems
+namespace AzFramework
 {
     // Version struct forward declaration
     template <size_t N>
     struct Version;
+}
 
+namespace Gems
+{
     // Forward declaring EngineVersion
-    using EngineVersion = Gems::Version<4>;
+    using EngineVersion = AzFramework::Version<4>;
 }
 
 namespace Engines
@@ -56,12 +59,6 @@ namespace Engines
         virtual const AZStd::string& GetPath() = 0;
         /// Get the version of the engine instance.
         virtual const Gems::EngineVersion& GetEngineVersion() = 0;
-        /// Resolve the path to an engine tool
-        ///
-        /// \param toolName                 The name of the tool to search for
-        /// \param searchCurrentPathFirst   If true, consider the current application's exe path first and continue from there
-        /// \return The resolved path if successful, and error if the path cannot be found
-        virtual AZ::Outcome<AZStd::string, AZStd::string> ResolveEngineToolPath(const AZStd::string& toolName, bool searchCurrentPathFirst) const = 0;
     };
     using EngineRequestBus = AZ::EBus<EngineRequests>;
 

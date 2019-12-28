@@ -117,6 +117,8 @@ public:
     void RequestEditProjectSettings() override;
     void RequestEditDeploymentTemplate() override;
     void RequestEditGemsFile() override;
+    void RequestAddFile(const QString& path) override;
+    void RequestDeleteFile(const QString& path) override;
 
     static void RequestUpdateSourceModel(QSharedPointer<IFileSourceControlModel> sourceModel, QSharedPointer<IFileContentModel> contentModel);
     static void RequestEditSourceModel(QSharedPointer<IFileSourceControlModel> sourceModel, QSharedPointer<IFileContentModel> contentModel);
@@ -158,6 +160,8 @@ public:
     void RefreshMappingsList();
     void RefreshMappings();
 
+    AZStd::string GetIdentityId();
+
 signals:
 
     void ProcessOutputResourceList(RequestId requestId, const QVariant& value);
@@ -185,6 +189,7 @@ private:
     void ProcessOutputMessage(RequestId requestId, const QVariant& value);
     void ProcessOutputError(RequestId requestId, const QVariant& value, bool log = true);
     void ProcessOutputErrorWithLogging(RequestId requestId, const QVariant& value);
+    void ProcessProjectStackExists(RequestId requestId, const QVariant& value);
     void ProcessFrameworkNotEnabledError(RequestId requestId, const QVariant& value);
     void ProcessOutputSuccess(RequestId requestId, const QVariant& value);
     void ProcessOutputProjectDescription(RequestId requestId, const QVariant& value);
@@ -198,7 +203,7 @@ private:
     void ProcessOutputResourceGroupStackDescription(RequestId requestId, const QVariant& value);
     void ProcessOutputStackEventErrors(RequestId requestId, const QVariant& value);
     void ProcessOutputSupportedRegionList(RequestId requestId, const QVariant& value);
-    void ProcessOutputCreateAdmin(const QVariant& value);
+    void ProcessOutputCreateAdmin(RequestId requestId, const QVariant& value);
 
     QVariant m_lastProjectDescription;
     QVariant m_lastResourceGroupList;

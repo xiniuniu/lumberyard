@@ -26,12 +26,17 @@
 #include "CloudGemTextToSpeech/TextToSpeechPlaybackBus.h"
 #include "AWS/ServiceAPI/CloudGemTextToSpeechClientComponent.h"
 
-#pragma warning(disable: 4355) // <future> includes ppltasks.h which throws a C4355 warning: 'this' used in base member initializer list
+// The AWS Native SDK AWSAllocator triggers a warning due to accessing members of std::allocator directly.
+// AWSAllocator.h(70): warning C4996: 'std::allocator<T>::pointer': warning STL4010: Various members of std::allocator are deprecated in C++17.
+// Use std::allocator_traits instead of accessing these members directly.
+// You can define _SILENCE_CXX17_OLD_ALLOCATOR_MEMBERS_DEPRECATION_WARNING or _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS to acknowledge that you have received this warning.
+
+AZ_PUSH_DISABLE_WARNING(4251 4355 4996, "-Wunknown-warning-option")
 #include <aws/core/utils/Outcome.h>
 #include <aws/core/utils/memory/stl/AWSStringStream.h>
 #include <aws/core/utils/memory/stl/AWSString.h>
 #include <aws/core/utils/json/JsonSerializer.h>
-#pragma warning(default: 4355)
+AZ_POP_DISABLE_WARNING
 
 
 
@@ -74,7 +79,7 @@ namespace CloudGemTextToSpeech
             if (serializeContext)
             {
                 // we must include any fields we want to expose to the editor or lua in the serialize context
-                serializeContext->Class<TextToSpeech>()
+                serializeContext->Class<TextToSpeech, AZ::Component>()
                     ->Version(1);
 
                 AZ::EditContext* editContext = serializeContext->GetEditContext();
@@ -94,7 +99,10 @@ namespace CloudGemTextToSpeech
                     ->Event("ConvertTextToSpeechWithoutMarks", &TextToSpeechRequestBus::Events::ConvertTextToSpeechWithoutMarks)
                     ->Event("ConvertTextToSpeechWithMarks", &TextToSpeechRequestBus::Events::ConvertTextToSpeechWithMarks)
                     ->Event("GetVoiceFromCharacter", &TextToSpeechRequestBus::Events::GetVoiceFromCharacter)
+                    ->Event("GetSpeechMarksFromCharacter", &TextToSpeechRequestBus::Events::GetSpeechMarksFromCharacter)
                     ->Event("GetProsodyTagsFromCharacter", &TextToSpeechRequestBus::Events::GetProsodyTagsFromCharacter)
+                    ->Event("GetLanguageOverrideFromCharacter", &TextToSpeechRequestBus::Events::GetLanguageOverrideFromCharacter)
+                    ->Event("GetTimbreFromCharacter", &TextToSpeechRequestBus::Events::GetTimbreFromCharacter)
                     ;
                 behaviorContext->EBus<TextToSpeechPlaybackBus>("TextToSpeechPlaybackBus")
                     ->Event("PlaySpeech", &TextToSpeechPlaybackBus::Events::PlaySpeech)
@@ -119,7 +127,11 @@ namespace CloudGemTextToSpeech
         void ConvertTextToSpeechWithoutMarks(const AZStd::string& voice, const AZStd::string& text) override;
         void ConvertTextToSpeechWithMarks(const AZStd::string& voice, const AZStd::string& text, const AZStd::string& speechMarks) override;
         AZStd::string GetVoiceFromCharacter(const AZStd::string& character) override;
+        AZStd::string GetSpeechMarksFromCharacter(const AZStd::string& character) override;
+
         AZStd::vector<AZStd::string> GetProsodyTagsFromCharacter(const AZStd::string& character) override;
+        AZStd::string GetLanguageOverrideFromCharacter(const AZStd::string& character) override;
+        int GetTimbreFromCharacter(const AZStd::string& character) override;
 
         // ConversionNotificationBus::Handler
         void GotDownloadUrl(const AZStd::string& hash, const AZStd::string& url, const AZStd::string& speechMarks) override;
@@ -147,7 +159,7 @@ namespace CloudGemTextToSpeech
         AZStd::string GetAliasedUserCachePath(const AZStd::string& hash) const;
 
         void ConvertTextToSpeech(const AZStd::string& voice, const AZStd::string& text, const AZStd::string& speechMarks);
-        AZStd::string FindCachedVoiceFileExtension(const AZStd::string& dir, const AZStd::string& hash) const;
+        bool MainCacheFilesExist(const AZStd::string & hash, const AZStd::string & speechMarks, AZStd::string& voiceFile);
 
         class TTSConversionJob : public AZ::Job
         {

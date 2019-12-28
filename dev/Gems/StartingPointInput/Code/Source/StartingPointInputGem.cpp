@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "StartingPointInput_precompiled.h"
 #include <platform_impl.h>
 
 #include "Input.h"
@@ -47,6 +47,7 @@ namespace StartingPointInput
         {
             Input::InputLibrary::Reflect(context);
             Input::Input::Reflect(context);
+            Input::ThumbstickInput::Reflect(context);
 
             AZ::SerializeContext* serializeContext = azrtti_cast<AZ::SerializeContext*>(context);
             if (serializeContext)

@@ -38,13 +38,13 @@ namespace UnitTest {
 #define GM_REPLICA_TEST_SESSION_CHANNEL 1
 
 // Example: DataSet<int> Data1 = { "Data1", 1 };
-#define MAKE_DATASET(N) DataSet<int> Data ## N = { "Data" ## #N, N };
+#define MAKE_DATASET(N) DataSet<int> Data ## N = { "Data" #N, N };
 
 // Example: DataSet<bool> Data1 = { "Data1", false };
-#define MAKE_BOOLDATASET(N) DataSet<bool> Data ## N = { "Data" ## #N, false }
+#define MAKE_BOOLDATASET(N) DataSet<bool> Data ## N = { "Data" #N, false }
 
 // Example: DataSet<bool> Data1 = { "Data1", false };
-#define MAKE_U8DATASET(N) DataSet<AZ::u8> Data ## N = { "Data" ## #N, 0 }
+#define MAKE_U8DATASET(N) DataSet<AZ::u8> Data ## N = { "Data" #N, 0 }
 
 template<typename T1>
 class IntrospectableRPC
@@ -2747,7 +2747,7 @@ TEST_F(Integ_BasicHostChunkDescriptorTest, BasicHostChunkDescriptorTest)
             AZ_TEST_ASSERT(HostChunk::nProxyActivations == 1);
             AZ_TEST_ASSERT(nodes[Client].GetReplicaMgr().FindReplica(hostReplica->GetRepId())->FindReplicaChunk<HostChunk>());
 
-            AZ_TEST_START_ASSERTTEST;
+            AZ_TEST_START_TRACE_SUPPRESSION;
             clientReplica = Replica::CreateReplica("ClientReplica");
             clientReplica->AttachReplicaChunk(CreateReplicaChunk<HostChunk>());
             nodes[Client].GetReplicaMgr().AddMaster(clientReplica);
@@ -2755,7 +2755,7 @@ TEST_F(Integ_BasicHostChunkDescriptorTest, BasicHostChunkDescriptorTest)
 
         if (tick == 400)
         {
-            AZ_TEST_STOP_ASSERTTEST(1);
+            AZ_TEST_STOP_TRACE_SUPPRESSION(1);
             AZ_TEST_ASSERT(HostChunk::nMasterActivations == 2);
             AZ_TEST_ASSERT(HostChunk::nProxyActivations == 1);
             AZ_TEST_ASSERT(!nodes[Host].GetReplicaMgr().FindReplica(clientReplica->GetRepId())->FindReplicaChunk<HostChunk>());

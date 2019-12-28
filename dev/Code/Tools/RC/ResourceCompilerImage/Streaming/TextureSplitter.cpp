@@ -15,7 +15,7 @@
 //               file from file with list of resources
 
 
-#include "StdAfx.h"
+#include "stdafx.h"
 #include <IConfig.h>
 #include "TextureSplitter.h"
 #include "IResCompiler.h"
@@ -23,16 +23,6 @@
 #include <ImageExtensionHelper.h>
 #include <IConsole.h>
 #include <platform.h>
-
-#if defined(AZ_PLATFORM_WINDOWS)
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>   // needed for DbgHelp.h
-#pragma warning(push)
-#pragma warning(disable : 4091) // Needed to bypass the "'typedef ': ignored on left of '' when no variable is declared" brought in by DbgHelp.h
-#include <DbgHelp.h>
-#pragma warning(pop)
-#endif
-
 #include "FileUtil.h"
 #include "IRCLog.h"
 #include "IResCompiler.h"
@@ -51,7 +41,7 @@
 
 #if defined(AZ_PLATFORM_WINDOWS)
 static const unsigned long MIN_TEX_SIZE = 1ul;
-#elif defined(AZ_PLATFORM_APPLE)
+#elif AZ_TRAIT_OS_PLATFORM_APPLE
 static const unsigned int MIN_TEX_SIZE = 1u;
 #endif
 
@@ -186,7 +176,8 @@ bool CTextureSplitter::SaveFile(const string& sFileName, const void* pBuffer, co
     }
 
     // create file
-    FILE* file = fopen(sFileName, "wb");
+    FILE* file = nullptr; 
+    azfopen(&file, sFileName, "wb");
     if (!file)
     {
         RCLogError("Error '%s': Failed to create file '%s'\n", strerror(errno), sFileName.c_str());
@@ -431,7 +422,8 @@ void CTextureSplitter::PostLoadProcessTexture(std::vector<uint8>& fileContent)
 bool CTextureSplitter::LoadTexture(const char* fileName, std::vector<uint8>& fileContent)
 {
     // try to open file
-    FILE* file = fopen(fileName, "rb");
+    FILE* file = nullptr; 
+    azfopen(&file, fileName, "rb");
     if (file == NULL)
     {
         RCLogError("Error: Cannot open texture file: '%s'\n", fileName);
@@ -768,23 +760,18 @@ void CTextureSplitter::Release()
 
 bool CTextureSplitter::Process()
 {
-    // Warning: this one is not multithread-safe (even if we
-    // return true in SupportsMultithreading()) if platforms
-    // specified for different CTextureSplitter compilers are
-    // different.
-
     const PlatformInfo* const pPlatformInfo = m_CC.pRC->GetPlatformInfo(m_CC.platform);
 
     m_currentEndian = pPlatformInfo->bBigEndian ? eBigEndian : eLittleEndian;
 
-    if (pPlatformInfo->HasName("orbis")) // ACCEPTED_USE
+    if (pPlatformInfo->HasName("orbis"))
     {
-        m_targetType = eTT_Orbis; // ACCEPTED_USE
+        m_targetType = eTT_Orbis;
         m_bTile = true;
     }
-    else if (pPlatformInfo->HasName("durango")) // ACCEPTED_USE
+    else if (pPlatformInfo->HasName("durango"))
     {
-        m_targetType = eTT_Durango; // ACCEPTED_USE
+        m_targetType = eTT_Durango;
         m_bTile = true;
     }
     else
@@ -896,11 +883,6 @@ ICompiler* CTextureSplitter::CreateCompiler()
     return pNewSplitter;
 }
 
-bool CTextureSplitter::SupportsMultithreading() const
-{
-    return true;
-}
-
 void CTextureSplitter::ProcessPlatformSpecificConversions(std::vector<STexture>& resourcesOut, byte* fileContent, const size_t fileSize)
 {
     assert(fileContent);
@@ -978,26 +960,27 @@ void CTextureSplitter::ProcessPlatformSpecificConversions(std::vector<STexture>&
 
     // check if this texture already native-converted
     // mark this texture as native for current platform
+#if defined(AZ_RESTRICTED_PLATFORM) || defined(AZ_TOOLS_EXPAND_FOR_RESTRICTED_PLATFORMS)
     switch (m_targetType)
     {
-    case eTT_Orbis: // ACCEPTED_USE
-        if (imageFlags & CImageExtensionHelper::EIF_OrbisNative) // ACCEPTED_USE
-        {
-            return;
-        }
-        imageFlags |= CImageExtensionHelper::EIF_OrbisNative; // ACCEPTED_USE
-        bNeedsProcess = true;
+#define AZ_RESTRICTED_PLATFORM_EXPANSION(CodeName, CODENAME, codename, PrivateName, PRIVATENAME, privatename, PublicName, PUBLICNAME, publicname, PublicAuxName1, PublicAuxName2, PublicAuxName3)\
+    case eTT_##PrivateName:\
+        if (imageFlags & CImageExtensionHelper::EIF_##PrivateName##Native)\
+        {\
+            return;\
+        }\
+        imageFlags |= CImageExtensionHelper::EIF_##PrivateName##Native;\
+        bNeedsProcess = true;\
         break;
-
-    case eTT_Durango: // ACCEPTED_USE
-        if (imageFlags & CImageExtensionHelper::EIF_DurangoNative) // ACCEPTED_USE
-        {
-            return;
-        }
-        imageFlags |= CImageExtensionHelper::EIF_DurangoNative; // ACCEPTED_USE
-        bNeedsProcess = true;
-        break;
+#if defined(AZ_EXPAND_FOR_RESTRICTED_PLATFORM)
+        AZ_EXPAND_FOR_RESTRICTED_PLATFORM
+#else
+        AZ_TOOLS_EXPAND_FOR_RESTRICTED_PLATFORMS
+#endif
     }
+#undef AZ_RESTRICTED_PLATFORM_EXPANSION
+#endif
+
 
     if (bNeedsProcess)
     {
@@ -1073,7 +1056,15 @@ void CTextureSplitter::ProcessPlatformSpecificConversions(std::vector<STexture>&
             }
         }
 
-
+#if defined(AZ_TOOLS_EXPAND_FOR_RESTRICTED_PLATFORMS)
+#define AZ_RESTRICTED_PLATFORM_EXPANSION(CodeName, CODENAME, codename, PrivateName, PRIVATENAME, privatename, PublicName, PUBLICNAME, publicname, PublicAuxName1, PublicAuxName2, PublicAuxName3)\
+        if (m_targetType == eTT_##PrivateName)\
+        {\
+            ProcessPlatformSpecificConversions_##PrivateName(resource, dwSides, dwWidth, dwHeight, dwDepth, dwMips, format, bBlockCompressed, nBitsPerPixel);\
+        }
+        AZ_TOOLS_EXPAND_FOR_RESTRICTED_PLATFORMS
+#undef AZ_RESTRICTED_PLATFORM_EXPANSION
+#endif
     }
 
     // apply to attached images recursively

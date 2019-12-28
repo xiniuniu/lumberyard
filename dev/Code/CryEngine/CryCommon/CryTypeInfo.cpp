@@ -13,14 +13,27 @@
 
 // Description : Implementation of TypeInfo classes and functions.
 
-
+#include <AzCore/base.h>
 #include "CryTypeInfo.h"
 #include "CryCustomTypes.h"
 #include "Cry_Math.h"
 #include "CrySizer.h"
 #include "CryEndian.h"
 
-#if defined(LINUX) || defined(APPLE) || defined(ORBIS)
+// Traits
+#if defined(AZ_RESTRICTED_PLATFORM)
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/CryTypeInfo_cpp_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/CryTypeInfo_cpp_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/CryTypeInfo_cpp_salem.inl"
+    #endif
+#elif defined(LINUX) || defined(APPLE)
+#define CRYTYPEINFO_CPP_TRAIT_DEFINE_LTOA_S 1
+#endif
+
+#if CRYTYPEINFO_CPP_TRAIT_DEFINE_LTOA_S
 
 char* _ltoa_s(long value, char* string, size_t size, int32 radix)
 {
@@ -274,7 +287,7 @@ float NumToFromString(float val, int digits, bool floating, char buffer[], int b
         sprintf_s(buffer, buf_size, "%.*f", digits, float(val));
     }
 
-    int readCount = sscanf_s(buffer, "%g", &val);
+    int readCount = azsscanf(buffer, "%g", &val);
     assert(readCount == 1);
     return val;
 }
@@ -288,7 +301,7 @@ string ToString(double const& val)
 }
 bool FromString(double& val, const char* s)
 {
-    return sscanf_s(s, "%lg", &val) == 1;
+    return azsscanf(s, "%lg", &val) == 1;
 }
 
 // float
@@ -307,7 +320,7 @@ string ToString(float const& val)
 
 bool FromString(float& val, const char* s)
 {
-    return sscanf_s(s, "%g", &val) == 1;
+    return azsscanf(s, "%g", &val) == 1;
 }
 
 
@@ -1373,5 +1386,5 @@ cstr CEnumDef::ToName(TValue value) const
     return 0;
 }
 
-DynArray<CEnumDef::SElem>* CEnumDef::SInit::s_pElems = 0;
+LegacyDynArray<CEnumDef::SElem>* CEnumDef::SInit::s_pElems = 0;
 

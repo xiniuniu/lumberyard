@@ -13,11 +13,13 @@
 
 // Description : Material support for Python
 
-
 #include "StdAfx.h"
 #include "Material/MaterialManager.h"
 #include "Util/BoostPythonHelpers.h"
 #include "ShaderEnum.h"
+
+#include "MaterialPythonFuncs.h"
+#include <AzCore/RTTI/BehaviorContext.h>
 
 namespace
 {
@@ -73,7 +75,7 @@ namespace
         GetIEditor()->GetMaterialManager()->Command_SelectFromObject();
     }
 
-    std::vector<std::string> PyGetSubMaterial(const char* pMaterialPath)
+    std::vector<std::string> PyLegacyGetSubMaterial(const char* pMaterialPath)
     {
         QString materialPath = pMaterialPath;
         CMaterial* pMaterial = GetIEditor()->GetMaterialManager()->LoadMaterial(pMaterialPath, false);
@@ -87,7 +89,27 @@ namespace
         {
             if (pMaterial->GetSubMaterial(i))
             {
-                result.push_back((materialPath + "\\" + pMaterial->GetSubMaterial(i)->GetName()).toLatin1().data());
+                result.push_back((materialPath + "\\" + pMaterial->GetSubMaterial(i)->GetName()).toUtf8().data());
+            }
+        }
+        return result;
+    }
+
+    AZStd::vector<AZStd::string> PyGetSubMaterial(const char* pMaterialPath)
+    {
+        QString materialPath = pMaterialPath;
+        CMaterial* pMaterial = GetIEditor()->GetMaterialManager()->LoadMaterial(pMaterialPath, false);
+        if (!pMaterial)
+        {
+            throw std::runtime_error("Invalid multi material.");
+        }
+
+        AZStd::vector<AZStd::string> result;
+        for (int i = 0; i < pMaterial->GetSubMaterialCount(); i++)
+        {
+            if (pMaterial->GetSubMaterial(i))
+            {
+                result.push_back((materialPath + "\\" + pMaterial->GetSubMaterial(i)->GetName()).toUtf8().data());
             }
         }
         return result;
@@ -128,7 +150,7 @@ namespace
 
             if (!pMaterial || !isSubMaterialExist)
             {
-                throw std::runtime_error((QString("\"") + subMaterialName + "\" is an invalid sub material.").toLatin1().data());
+                throw std::runtime_error((QString("\"") + subMaterialName + "\" is an invalid sub material.").toUtf8().data());
             }
         }
         GetIEditor()->GetMaterialManager()->SetCurrentMaterial(pMaterial);
@@ -803,7 +825,7 @@ namespace
                 subCategoryName != "[1] Custom"
                 )
             {
-                throw std::runtime_error((errorMsgInvalidPropertyPath + " (" + currentPath + ")").toLatin1().data());
+                throw std::runtime_error((errorMsgInvalidPropertyPath + " (" + currentPath + ")").toUtf8().data());
             }
         }
         else if (splittedPropertyPathSubCategory.size() == 4)
@@ -828,11 +850,11 @@ namespace
                 subSubCategoryName != "[1] Custom"
                 )
             {
-                throw std::runtime_error((errorMsgInvalidPropertyPath + " (" + currentPath + ")").toLatin1().data());
+                throw std::runtime_error((errorMsgInvalidPropertyPath + " (" + currentPath + ")").toUtf8().data());
             }
             else if (subCategoryName != "Tiling" && subCategoryName != "Rotator" && subCategoryName != "Oscillator")
             {
-                throw std::runtime_error((errorMsgInvalidPropertyPath + " (" + currentPath + ")").toLatin1().data());
+                throw std::runtime_error((errorMsgInvalidPropertyPath + " (" + currentPath + ")").toUtf8().data());
             }
         }
         else
@@ -854,12 +876,12 @@ namespace
                 // int: 0 < x < 100
                 if (value.type != SPyWrappedProperty::eType_Int)
                 {
-                    throw std::runtime_error(errorMsgInvalidDataType.toLatin1().data());
+                    throw std::runtime_error(errorMsgInvalidDataType.toUtf8().data());
                 }
 
                 if (value.property.intValue < 0 || value.property.intValue > 100)
                 {
-                    throw std::runtime_error(errorMsgInvalidValue.toLatin1().data());
+                    throw std::runtime_error(errorMsgInvalidValue.toUtf8().data());
                 }
                 return true;
             }
@@ -868,12 +890,12 @@ namespace
                 // int: 0 < x < 255
                 if (value.type != SPyWrappedProperty::eType_Int)
                 {
-                    throw std::runtime_error(errorMsgInvalidDataType.toLatin1().data());
+                    throw std::runtime_error(errorMsgInvalidDataType.toUtf8().data());
                 }
 
                 if (value.property.intValue < iMinColorValue || value.property.intValue > iMaxColorValue)
                 {
-                    throw std::runtime_error(errorMsgInvalidValue.toLatin1().data());
+                    throw std::runtime_error(errorMsgInvalidValue.toUtf8().data());
                 }
                 return true;
             }
@@ -882,12 +904,12 @@ namespace
                 // float: 0.0 < x < 4.0
                 if (value.type != SPyWrappedProperty::eType_Float)
                 {
-                    throw std::runtime_error(errorMsgInvalidDataType.toLatin1().data());
+                    throw std::runtime_error(errorMsgInvalidDataType.toUtf8().data());
                 }
 
                 if (value.property.floatValue < 0.0f || value.property.floatValue > 4.0f)
                 {
-                    throw std::runtime_error(errorMsgInvalidValue.toLatin1().data());
+                    throw std::runtime_error(errorMsgInvalidValue.toUtf8().data());
                 }
                 return true;
             }
@@ -922,12 +944,12 @@ namespace
                 // float: 0.0 < x < 100.0
                 if (value.type != SPyWrappedProperty::eType_Float)
                 {
-                    throw std::runtime_error(errorMsgInvalidDataType.toLatin1().data());
+                    throw std::runtime_error(errorMsgInvalidDataType.toUtf8().data());
                 }
 
                 if (value.property.floatValue < 0.0f || value.property.floatValue > 100.0f)
                 {
-                    throw std::runtime_error(errorMsgInvalidValue.toLatin1().data());
+                    throw std::runtime_error(errorMsgInvalidValue.toUtf8().data());
                 }
                 return true;
             }
@@ -936,20 +958,20 @@ namespace
                 // intVector(RGB): 0 < x < 255
                 if (value.type != SPyWrappedProperty::eType_Color)
                 {
-                    throw std::runtime_error(errorMsgInvalidDataType.toLatin1().data());
+                    throw std::runtime_error(errorMsgInvalidDataType.toUtf8().data());
                 }
 
                 if (value.property.colorValue.r < iMinColorValue || value.property.colorValue.r > iMaxColorValue)
                 {
-                    throw std::runtime_error((errorMsgInvalidValue + " (red)").toLatin1().data());
+                    throw std::runtime_error((errorMsgInvalidValue + " (red)").toUtf8().data());
                 }
                 else if (value.property.colorValue.g < iMinColorValue || value.property.colorValue.g > iMaxColorValue)
                 {
-                    throw std::runtime_error((errorMsgInvalidValue + " (green)").toLatin1().data());
+                    throw std::runtime_error((errorMsgInvalidValue + " (green)").toUtf8().data());
                 }
                 else if (value.property.colorValue.b < iMinColorValue || value.property.colorValue.b > iMaxColorValue)
                 {
-                    throw std::runtime_error((errorMsgInvalidValue + " (blue)").toLatin1().data());
+                    throw std::runtime_error((errorMsgInvalidValue + " (blue)").toUtf8().data());
                 }
                 return true;
             }
@@ -977,7 +999,7 @@ namespace
                 // string
                 if (value.type != SPyWrappedProperty::eType_String)
                 {
-                    throw std::runtime_error(errorMsgInvalidDataType.toLatin1().data());
+                    throw std::runtime_error(errorMsgInvalidDataType.toUtf8().data());
                 }
                 return true;
             }
@@ -988,6 +1010,8 @@ namespace
                 propertyName == "No Shadow" ||
                 propertyName == "Use Scattering" ||
                 propertyName == "Hide After Breaking" ||
+                propertyName == "Fog Volume Shading Quality High" ||
+                propertyName == "Blend Terrain Color" ||
                 propertyName == "Propagate Material Settings" ||
                 propertyName == "Propagate Opacity Settings" ||
                 propertyName == "Propagate Lighting Settings" ||
@@ -1005,7 +1029,7 @@ namespace
                 // bool
                 if (value.type != SPyWrappedProperty::eType_Bool)
                 {
-                    throw std::runtime_error(errorMsgInvalidDataType.toLatin1().data());
+                    throw std::runtime_error(errorMsgInvalidDataType.toUtf8().data());
                 }
                 return true;
             }
@@ -1014,7 +1038,7 @@ namespace
                 // string && valid shader
                 if (value.type != SPyWrappedProperty::eType_String)
                 {
-                    throw std::runtime_error(errorMsgInvalidDataType.toLatin1().data());
+                    throw std::runtime_error(errorMsgInvalidDataType.toUtf8().data());
                 }
 
                 CShaderEnum* pShaderEnum = GetIEditor()->GetShaderEnum();
@@ -1036,7 +1060,7 @@ namespace
                 // FloatVec: undefined < x < undefined
                 if (value.type != SPyWrappedProperty::eType_Vec3)
                 {
-                    throw std::runtime_error(errorMsgInvalidDataType.toLatin1().data());
+                    throw std::runtime_error(errorMsgInvalidDataType.toUtf8().data());
                 }
                 return true;
             }
@@ -1046,21 +1070,21 @@ namespace
             DynArray<SShaderParam>& shaderParams = pMaterial->GetShaderResources().m_ShaderParams;
             for (int i = 0; i < shaderParams.size(); i++)
             {
-                if (propertyName == ParseUINameFromPublicParamsScript(shaderParams[i].m_Script))
+                if (propertyName == ParseUINameFromPublicParamsScript(shaderParams[i].m_Script.c_str()))
                 {
                     if (shaderParams[i].m_Type == eType_FLOAT)
                     {
                         // float: valid range (from script)
                         if (value.type != SPyWrappedProperty::eType_Float)
                         {
-                            throw std::runtime_error(errorMsgInvalidDataType.toLatin1().data());
+                            throw std::runtime_error(errorMsgInvalidDataType.toUtf8().data());
                         }
-                        std::map<QString, float> range = ParseValidRangeFromPublicParamsScript(shaderParams[i].m_Script);
+                        std::map<QString, float> range = ParseValidRangeFromPublicParamsScript(shaderParams[i].m_Script.c_str());
                         if (value.property.floatValue < range["UIMin"] ||  value.property.floatValue > range["UIMax"])
                         {
                             QString errorMsg;
                             errorMsg = QStringLiteral("Invalid value for shader param \"%1\" (min: %2, max: %3)").arg(propertyName).arg(range["UIMin"]).arg(range["UIMax"]);
-                            throw std::runtime_error(errorMsg.toLatin1().data());
+                            throw std::runtime_error(errorMsg.toUtf8().data());
                         }
                         return true;
                     }
@@ -1069,20 +1093,20 @@ namespace
                         // intVector(RGB): 0 < x < 255
                         if (value.type != SPyWrappedProperty::eType_Color)
                         {
-                            throw std::runtime_error(errorMsgInvalidDataType.toLatin1().data());
+                            throw std::runtime_error(errorMsgInvalidDataType.toUtf8().data());
                         }
 
                         if (value.property.colorValue.r < iMinColorValue || value.property.colorValue.r > iMaxColorValue)
                         {
-                            throw std::runtime_error((errorMsgInvalidValue + " (red)").toLatin1().data());
+                            throw std::runtime_error((errorMsgInvalidValue + " (red)").toUtf8().data());
                         }
                         else if (value.property.colorValue.g < iMinColorValue || value.property.colorValue.g > iMaxColorValue)
                         {
-                            throw std::runtime_error((errorMsgInvalidValue + " (green)").toLatin1().data());
+                            throw std::runtime_error((errorMsgInvalidValue + " (green)").toUtf8().data());
                         }
                         else if (value.property.colorValue.b < iMinColorValue || value.property.colorValue.b > iMaxColorValue)
                         {
-                            throw std::runtime_error((errorMsgInvalidValue + " (blue)").toLatin1().data());
+                            throw std::runtime_error((errorMsgInvalidValue + " (blue)").toUtf8().data());
                         }
                         return true;
                     }
@@ -1097,7 +1121,7 @@ namespace
                 {
                     if (value.type != SPyWrappedProperty::eType_Bool)
                     {
-                        throw std::runtime_error(errorMsgInvalidDataType.toLatin1().data());
+                        throw std::runtime_error(errorMsgInvalidDataType.toUtf8().data());
                     }
                     return true;
                 }
@@ -1105,14 +1129,14 @@ namespace
         }
         else
         {
-            throw std::runtime_error((errorMsgInvalidPropertyPath + " (" + currentPath + ")").toLatin1().data());
+            throw std::runtime_error((errorMsgInvalidPropertyPath + " (" + currentPath + ")").toUtf8().data());
         }
         return false;
     }
 
     //////////////////////////////////////////////////////////////////////////
 
-    SPyWrappedProperty PyGetProperty(const char* pPathAndMaterialName, const char* pPathAndPropertyName)
+    SPyWrappedProperty PyLegacyGetProperty(const char* pPathAndMaterialName, const char* pPathAndPropertyName)
     {
         CMaterial* pMaterial = TryLoadingMaterial(pPathAndMaterialName);
         std::deque<QString> splittedPropertyPath = PreparePropertyPath(pPathAndPropertyName);
@@ -1156,7 +1180,7 @@ namespace
             }
             else
             {
-                throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid material setting.").toLatin1().data());
+                throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid material setting.").toUtf8().data());
             }
         }
         // ########## Opacity Settings ##########
@@ -1181,7 +1205,7 @@ namespace
             }
             else
             {
-                throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid opacity setting.").toLatin1().data());
+                throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid opacity setting.").toUtf8().data());
             }
         }
         // ########## Lighting Settings ##########
@@ -1211,9 +1235,8 @@ namespace
             }
             else if (propertyName == "Glossiness")
             {
-                value.type = SPyWrappedProperty::eType_Int;
+                value.type = SPyWrappedProperty::eType_Float;
                 value.property.floatValue = pMaterial->GetShaderResources().m_LMaterial.m_Smoothness;
-                value.property.intValue = (int)value.property.floatValue;
             }
             else if (propertyName == "Specular Level")
             {
@@ -1238,7 +1261,7 @@ namespace
             }
             else
             {
-                throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid lighting setting.").toLatin1().data());
+                throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid lighting setting.").toUtf8().data());
             }
         }
         // ########## Advanced ##########
@@ -1268,6 +1291,16 @@ namespace
             {
                 value.type = SPyWrappedProperty::eType_Bool;
                 value.property.boolValue = pMaterial->GetFlags() & MTL_FLAG_HIDEONBREAK;
+            }
+            else if (propertyName == "Fog Volume Shading Quality High")
+            {
+                value.type = SPyWrappedProperty::eType_Bool;
+                value.property.boolValue = pMaterial->GetFlags() & MTL_FLAG_FOG_VOLUME_SHADING_QUALITY_HIGH;
+            }
+            else if (propertyName == "Blend Terrain Color")
+            {
+                value.type = SPyWrappedProperty::eType_Bool;
+                value.property.boolValue = pMaterial->GetFlags() & MTL_FLAG_BLEND_TERRAIN;
             }
             else if (propertyName == "Voxel Coverage")
             {
@@ -1326,7 +1359,7 @@ namespace
             }
             else
             {
-                throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid advanced setting.").toLatin1().data());
+                throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid advanced setting.").toUtf8().data());
             }
         }
         // ########## Texture Maps ##########
@@ -1379,7 +1412,7 @@ namespace
                     }
                     else
                     {
-                        throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid property.").toLatin1().data());
+                        throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid property.").toUtf8().data());
                     }
                 }
                 else
@@ -1444,7 +1477,7 @@ namespace
                         }
                         else
                         {
-                            throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid property.").toLatin1().data());
+                            throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid property.").toUtf8().data());
                         }
                     }
                     else if (subCategoryName == "Rotator")
@@ -1481,7 +1514,7 @@ namespace
                         }
                         else
                         {
-                            throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid property.").toLatin1().data());
+                            throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid property.").toUtf8().data());
                         }
                     }
                     else if (subCategoryName == "Oscillator")
@@ -1528,12 +1561,12 @@ namespace
                         }
                         else
                         {
-                            throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid property.").toLatin1().data());
+                            throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid property.").toUtf8().data());
                         }
                     }
                     else
                     {
-                        throw std::runtime_error((QString("\"") + subCategoryName + "\" is an invalid sub category.").toLatin1().data());
+                        throw std::runtime_error((QString("\"") + subCategoryName + "\" is an invalid sub category.").toUtf8().data());
                     }
                 }
                 else
@@ -1545,7 +1578,7 @@ namespace
             }
             else
             {
-                throw std::runtime_error(errorMsgInvalidPropertyPath.toLatin1().data());
+                throw std::runtime_error(errorMsgInvalidPropertyPath.toUtf8().data());
             }
         }
         // ########## Shader Params ##########
@@ -1556,7 +1589,7 @@ namespace
 
             for (int i = 0; i < shaderParams.size(); i++)
             {
-                if (propertyName == ParseUINameFromPublicParamsScript(shaderParams[i].m_Script))
+                if (propertyName == ParseUINameFromPublicParamsScript(shaderParams[i].m_Script.c_str()))
                 {
                     if (shaderParams[i].m_Type == eType_FLOAT)
                     {
@@ -1583,7 +1616,7 @@ namespace
 
             if (!isPropertyFound)
             {
-                throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid shader param.").toLatin1().data());
+                throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid shader param.").toUtf8().data());
             }
         }
         // ########## Shader Generation Params ##########
@@ -1603,7 +1636,7 @@ namespace
 
             if (!isPropertyFound)
             {
-                throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid shader generation param.").toLatin1().data());
+                throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid shader generation param.").toUtf8().data());
             }
         }
         // ########## Vertex Deformation ##########
@@ -1622,21 +1655,6 @@ namespace
                     value.type = SPyWrappedProperty::eType_Float;
                     value.property.floatValue = pMaterial->GetShaderResources().m_DeformInfo.m_fDividerX;
                 }
-                else if (propertyName == "Wave Length Y")
-                {
-                    value.type = SPyWrappedProperty::eType_Float;
-                    value.property.floatValue = pMaterial->GetShaderResources().m_DeformInfo.m_fDividerY;
-                }
-                else if (propertyName == "Wave Length Z")
-                {
-                    value.type = SPyWrappedProperty::eType_Float;
-                    value.property.floatValue = pMaterial->GetShaderResources().m_DeformInfo.m_fDividerZ;
-                }
-                else if (propertyName == "Wave Length W")
-                {
-                    value.type = SPyWrappedProperty::eType_Float;
-                    value.property.floatValue = pMaterial->GetShaderResources().m_DeformInfo.m_fDividerW;
-                }
                 else if (propertyName == "Noise Scale")
                 {
                     value.type = SPyWrappedProperty::eType_Vec3;
@@ -1646,30 +1664,18 @@ namespace
                 }
                 else
                 {
-                    throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid property.").toLatin1().data());
+                    throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid property.").toUtf8().data());
                 }
             }
-            // ########## Vertex Deformation / [ Wave X | Wave Y | Wave Z | Wave W ] ##########
+            // ########## Vertex Deformation / [ Wave X ] ##########
             else if (splittedPropertyPath.size() == 3)
             {
-                if (subCategoryName == "Wave X" || subCategoryName == "Wave Y" || subCategoryName == "Wave Z" || subCategoryName == "Wave W")
+                if (subCategoryName == "Wave X")
                 {
                     SWaveForm2 currentWaveForm;
                     if (subCategoryName == "Wave X")
                     {
                         currentWaveForm = pMaterial->GetShaderResources().m_DeformInfo.m_WaveX;
-                    }
-                    else if (subCategoryName == "Wave Y")
-                    {
-                        currentWaveForm = pMaterial->GetShaderResources().m_DeformInfo.m_WaveY;
-                    }
-                    else if (subCategoryName == "Wave Z")
-                    {
-                        currentWaveForm = pMaterial->GetShaderResources().m_DeformInfo.m_WaveZ;
-                    }
-                    else if (subCategoryName == "Wave W")
-                    {
-                        currentWaveForm = pMaterial->GetShaderResources().m_DeformInfo.m_WaveW;
                     }
 
                     if (propertyName == "Type")
@@ -1699,17 +1705,17 @@ namespace
                     }
                     else
                     {
-                        throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid property.").toLatin1().data());
+                        throw std::runtime_error((QString("\"") + propertyName + "\" is an invalid property.").toUtf8().data());
                     }
                 }
                 else
                 {
-                    throw std::runtime_error((QString("\"") + categoryName + "\" is an invalid category.").toLatin1().data());
+                    throw std::runtime_error((QString("\"") + categoryName + "\" is an invalid category.").toUtf8().data());
                 }
             }
             else
             {
-                throw std::runtime_error(errorMsgInvalidPropertyPath.toLatin1().data());
+                throw std::runtime_error(errorMsgInvalidPropertyPath.toUtf8().data());
             }
         }
         // ########## Layer Presets ##########
@@ -1768,18 +1774,210 @@ namespace
             }
             else
             {
-                throw std::runtime_error(errorMsgInvalidPropertyPath.toLatin1().data());
+                throw std::runtime_error(errorMsgInvalidPropertyPath.toUtf8().data());
             }
         }
         else
         {
-            throw std::runtime_error(errorMsgInvalidPropertyPath.toLatin1().data());
+            throw std::runtime_error(errorMsgInvalidPropertyPath.toUtf8().data());
         }
 
         return value;
     }
 
-    void PySetProperty(const char* pPathAndMaterialName, const char* pPathAndPropertyName, const SPyWrappedProperty& value)
+    bool PyGetPropertyAsBool(const char* pPathAndMaterialName, const char* pPathAndPropertyName)
+    {
+        SPyWrappedProperty result = PyLegacyGetProperty(pPathAndMaterialName, pPathAndPropertyName);
+
+        switch (result.type)
+        {
+        case SPyWrappedProperty::eType_Bool:
+            return result.property.boolValue;
+        case SPyWrappedProperty::eType_Float:
+        case SPyWrappedProperty::eType_Int:
+        case SPyWrappedProperty::eType_Color:
+        case SPyWrappedProperty::eType_String:
+        case SPyWrappedProperty::eType_Time:
+        case SPyWrappedProperty::eType_Vec3:
+        case SPyWrappedProperty::eType_Vec4:
+        default:
+            AZ_Warning("PyGetPropertyAsBool", false, "Type mismatch while getting property '%s' of material '%s' as a bool.", pPathAndPropertyName, pPathAndPropertyName);
+            return bool();
+        }
+    }
+
+    AZ::Color PyGetPropertyAsColor(const char* pPathAndMaterialName, const char* pPathAndPropertyName)
+    {
+        SPyWrappedProperty result = PyLegacyGetProperty(pPathAndMaterialName, pPathAndPropertyName);
+
+        switch (result.type)
+        {
+        case SPyWrappedProperty::eType_Color:
+            return AZ::Color(
+                result.property.colorValue.r,
+                result.property.colorValue.g,
+                result.property.colorValue.b,
+                1.0f
+            );
+        case SPyWrappedProperty::eType_Bool:
+        case SPyWrappedProperty::eType_Float:
+        case SPyWrappedProperty::eType_Int:
+        case SPyWrappedProperty::eType_String:
+        case SPyWrappedProperty::eType_Time:
+        case SPyWrappedProperty::eType_Vec3:
+        case SPyWrappedProperty::eType_Vec4:
+        default:
+            AZ_Warning("PyGetPropertyAsColor", false, "Type mismatch while getting property '%s' of material '%s' as an AZ::Color.", pPathAndPropertyName, pPathAndPropertyName);
+            return AZ::Color();
+        }
+    }
+
+    float PyGetPropertyAsFloat(const char* pPathAndMaterialName, const char* pPathAndPropertyName)
+    {
+        SPyWrappedProperty result = PyLegacyGetProperty(pPathAndMaterialName, pPathAndPropertyName);
+
+        switch (result.type)
+        {
+        case SPyWrappedProperty::eType_Float:
+            return result.property.floatValue;
+        case SPyWrappedProperty::eType_Int:
+            return static_cast<float>(result.property.intValue);
+        case SPyWrappedProperty::eType_Bool:
+        case SPyWrappedProperty::eType_Color:
+        case SPyWrappedProperty::eType_String:
+        case SPyWrappedProperty::eType_Time:
+        case SPyWrappedProperty::eType_Vec3:
+        case SPyWrappedProperty::eType_Vec4:
+        default:
+            AZ_Warning("PyGetPropertyAsFloat", false, "Type mismatch while getting property '%s' of material '%s' as a float.", pPathAndPropertyName, pPathAndPropertyName);
+            return float();
+        }
+    }
+
+    int PyGetPropertyAsInt(const char* pPathAndMaterialName, const char* pPathAndPropertyName)
+    {
+        SPyWrappedProperty result = PyLegacyGetProperty(pPathAndMaterialName, pPathAndPropertyName);
+
+        switch (result.type)
+        {
+        case SPyWrappedProperty::eType_Float:
+            return static_cast<int>(result.property.floatValue);
+        case SPyWrappedProperty::eType_Int:
+            return result.property.intValue;
+        case SPyWrappedProperty::eType_Bool:
+        case SPyWrappedProperty::eType_Color:
+        case SPyWrappedProperty::eType_String:
+        case SPyWrappedProperty::eType_Time:
+        case SPyWrappedProperty::eType_Vec3:
+        case SPyWrappedProperty::eType_Vec4:
+        default:
+            AZ_Warning("PyGetPropertyAsInt", false, "Type mismatch while getting property '%s' of material '%s' as an int.", pPathAndPropertyName, pPathAndPropertyName);
+            return int();
+        }
+    }
+
+    AZStd::string PyGetPropertyAsString(const char* pPathAndMaterialName, const char* pPathAndPropertyName)
+    {
+        SPyWrappedProperty result = PyLegacyGetProperty(pPathAndMaterialName, pPathAndPropertyName);
+
+        switch (result.type)
+        {
+            case SPyWrappedProperty::eType_Bool:
+                return AZStd::to_string(result.property.boolValue);
+            case SPyWrappedProperty::eType_Color:
+                return "rgb(" +
+                    AZStd::to_string(result.property.colorValue.r) + ", " +
+                    AZStd::to_string(result.property.colorValue.g) + ", " +
+                    AZStd::to_string(result.property.colorValue.b) +
+                    ")";
+            case SPyWrappedProperty::eType_Float:
+                return AZStd::to_string(result.property.floatValue);
+            case SPyWrappedProperty::eType_Int:
+                return AZStd::to_string(result.property.intValue);
+            case SPyWrappedProperty::eType_String:
+                return AZStd::string(result.stringValue.toUtf8().data());
+            case SPyWrappedProperty::eType_Time:
+                return AZStd::to_string(result.property.timeValue.hour) + ":" + AZStd::to_string(result.property.timeValue.hour);
+            case SPyWrappedProperty::eType_Vec3:
+                return "vec3(" +
+                    AZStd::to_string(result.property.vecValue.x) + ", " +
+                    AZStd::to_string(result.property.vecValue.y) + ", " +
+                    AZStd::to_string(result.property.vecValue.z) +
+                    ")";
+            case SPyWrappedProperty::eType_Vec4:
+                return "vec4(" +
+                    AZStd::to_string(result.property.vecValue.x) + ", " +
+                    AZStd::to_string(result.property.vecValue.y) + ", " +
+                    AZStd::to_string(result.property.vecValue.z) + ", " +
+                    AZStd::to_string(result.property.vecValue.w) +
+                    ")";
+            default:
+            {
+                AZ_Warning("PyGetPropertyAsString", false, "Type mismatch while getting property '%s' of material '%s' as an AZStd::Vector3.", pPathAndPropertyName, pPathAndPropertyName);
+                break;
+            }
+        }
+        return AZStd::string();
+    }
+
+    AZ::Vector3 PyGetPropertyAsVector3(const char* pPathAndMaterialName, const char* pPathAndPropertyName)
+    {
+        SPyWrappedProperty result = PyLegacyGetProperty(pPathAndMaterialName, pPathAndPropertyName);
+
+        switch (result.type)
+        {
+        case SPyWrappedProperty::eType_Vec3:
+        case SPyWrappedProperty::eType_Vec4:
+            return AZ::Vector3(
+                result.property.vecValue.x,
+                result.property.vecValue.y,
+                result.property.vecValue.z
+            );
+        case SPyWrappedProperty::eType_Bool:
+        case SPyWrappedProperty::eType_Color:
+        case SPyWrappedProperty::eType_Float:
+        case SPyWrappedProperty::eType_Int:
+        case SPyWrappedProperty::eType_String:
+        case SPyWrappedProperty::eType_Time:
+        default:
+            AZ_Warning("PyGetPropertyAsVector3", false, "Type mismatch while getting property '%s' of material '%s' as an AZ::Vector3.", pPathAndPropertyName, pPathAndPropertyName);
+            return AZ::Vector3();
+        }
+    }
+
+    AZ::Vector4 PyGetPropertyAsVector4(const char* pPathAndMaterialName, const char* pPathAndPropertyName)
+    {
+        SPyWrappedProperty result = PyLegacyGetProperty(pPathAndMaterialName, pPathAndPropertyName);
+
+        switch (result.type)
+        {
+        case SPyWrappedProperty::eType_Vec3:
+            return AZ::Vector4(
+                result.property.vecValue.x,
+                result.property.vecValue.y,
+                result.property.vecValue.z,
+                0.0f
+            );
+        case SPyWrappedProperty::eType_Vec4:
+            return AZ::Vector4(
+                result.property.vecValue.x,
+                result.property.vecValue.y,
+                result.property.vecValue.z,
+                result.property.vecValue.w
+            );
+        case SPyWrappedProperty::eType_Bool:
+        case SPyWrappedProperty::eType_Color:
+        case SPyWrappedProperty::eType_Float:
+        case SPyWrappedProperty::eType_Int:
+        case SPyWrappedProperty::eType_String:
+        case SPyWrappedProperty::eType_Time:
+        default:
+            AZ_Warning("PyGetPropertyAsVector4", false, "Type mismatch while getting property '%s' of material '%s' as an AZ::Vector4.", pPathAndPropertyName, pPathAndPropertyName);
+            return AZ::Vector4();
+        }
+    }
+
+    void PyLegacySetProperty(const char* pPathAndMaterialName, const char* pPathAndPropertyName, const SPyWrappedProperty& value)
     {
         CMaterial* pMaterial = TryLoadingMaterial(pPathAndMaterialName);
         std::deque<QString> splittedPropertyPath = PreparePropertyPath(pPathAndPropertyName);
@@ -1796,8 +1994,8 @@ namespace
         }
 
         QString undoMsg = "Set Material Property";
-        CUndo undo(undoMsg.toLatin1().data());
-        pMaterial->RecordUndo(undoMsg.toLatin1().data(), true);
+        CUndo undo(undoMsg.toUtf8().data());
+        pMaterial->RecordUndo(undoMsg.toUtf8().data(), true);
 
         if (splittedPropertyPathCategory.size() == 3)
         {
@@ -1886,7 +2084,7 @@ namespace
                 colorFloat.b *= colorFloat.a;
                 pMaterial->GetShaderResources().m_LMaterial.m_Specular = colorFloat;
             }
-            else if (propertyName == "Glossiness")
+            else if (propertyName == "Glossiness" || propertyName == "Smoothness")
             {
                 pMaterial->GetShaderResources().m_LMaterial.m_Smoothness = static_cast<float>(value.property.intValue);
             }
@@ -1939,9 +2137,13 @@ namespace
             {
                 SetMaterialFlag(pMaterial, MTL_FLAG_HIDEONBREAK, value.property.boolValue);
             }
-            else if (propertyName == "Hide After Breaking")
+            else if (propertyName == "Fog Volume Shading Quality High")
             {
-                SetMaterialFlag(pMaterial, MTL_FLAG_HIDEONBREAK, value.property.boolValue);
+                SetMaterialFlag(pMaterial, MTL_FLAG_FOG_VOLUME_SHADING_QUALITY_HIGH, value.property.boolValue);
+            }
+            else if (propertyName == "Blend Terrain Color")
+            {
+                SetMaterialFlag(pMaterial, MTL_FLAG_BLEND_TERRAIN, value.property.boolValue);
             }
             else if (propertyName == "Voxel Coverage")
             {
@@ -1949,7 +2151,7 @@ namespace
             }
             else if (propertyName == "Link to Material")
             {
-                pMaterial->GetMatInfo()->SetMaterialLinkName(value.stringValue.toLatin1().data());
+                pMaterial->GetMatInfo()->SetMaterialLinkName(value.stringValue.toUtf8().data());
             }
             else if (propertyName == "Propagate Material Settings")
             {
@@ -2010,7 +2212,7 @@ namespace
                         nSlot, pMaterial->GetName().toStdString().c_str());
                 }
                 // notice that the following is an insertion operation if the index did not exist in the map
-                shaderResources.m_TexturesResourcesMap[nSlot].m_Name = value.stringValue.toLatin1().data();
+                shaderResources.m_TexturesResourcesMap[nSlot].m_Name = value.stringValue.toUtf8().data();
             }
             // ########## Texture Maps / [TexType | Filter | IsProjectedTexGen | TexGenType ] ##########
             else if (splittedPropertyPath.size() == 3)
@@ -2148,7 +2350,7 @@ namespace
 
             for (int i = 0; i < shaderParams.size(); i++)
             {
-                if (propertyName == ParseUINameFromPublicParamsScript(shaderParams[i].m_Script))
+                if (propertyName == ParseUINameFromPublicParamsScript(shaderParams[i].m_Script.c_str()))
                 {
                     if (shaderParams[i].m_Type == eType_FLOAT)
                     {
@@ -2204,18 +2406,6 @@ namespace
                 {
                     pMaterial->GetShaderResources().m_DeformInfo.m_fDividerX = value.property.floatValue;
                 }
-                else if (propertyName == "Wave Length Y")
-                {
-                    pMaterial->GetShaderResources().m_DeformInfo.m_fDividerY = value.property.floatValue;
-                }
-                else if (propertyName == "Wave Length Z")
-                {
-                    pMaterial->GetShaderResources().m_DeformInfo.m_fDividerZ = value.property.floatValue;
-                }
-                else if (propertyName == "Wave Length W")
-                {
-                    pMaterial->GetShaderResources().m_DeformInfo.m_fDividerW = value.property.floatValue;
-                }
                 else if (propertyName == "Noise Scale")
                 {
                     pMaterial->GetShaderResources().m_DeformInfo.m_vNoiseScale[0] = value.property.vecValue.x;
@@ -2223,87 +2413,12 @@ namespace
                     pMaterial->GetShaderResources().m_DeformInfo.m_vNoiseScale[2] = value.property.vecValue.z;
                 }
             }
-            // ########## Vertex Deformation / [ Wave X | Wave Y | Wave Z | Wave W ] ##########
+            // ########## Vertex Deformation / [ Wave X ] ##########
             else if (splittedPropertyPath.size() == 3)
             {
                 if (subCategoryName == "Wave X")
                 {
                     SWaveForm2& currentWaveForm = pMaterial->GetShaderResources().m_DeformInfo.m_WaveX;
-
-                    if (propertyName == "Type")
-                    {
-                        currentWaveForm.m_eWFType = TryConvertingCStringToEWaveForm(value.stringValue);
-                    }
-                    else if (propertyName == "Level")
-                    {
-                        currentWaveForm.m_Level = value.property.floatValue;
-                    }
-                    else if (propertyName == "Amplitude")
-                    {
-                        currentWaveForm.m_Amp = value.property.floatValue;
-                    }
-                    else if (propertyName == "Phase")
-                    {
-                        currentWaveForm.m_Phase = value.property.floatValue;
-                    }
-                    else if (propertyName == "Frequency")
-                    {
-                        currentWaveForm.m_Freq = value.property.floatValue;
-                    }
-                }
-                else if (subCategoryName == "Wave Y")
-                {
-                    SWaveForm2& currentWaveForm = pMaterial->GetShaderResources().m_DeformInfo.m_WaveY;
-
-                    if (propertyName == "Type")
-                    {
-                        currentWaveForm.m_eWFType = TryConvertingCStringToEWaveForm(value.stringValue);
-                    }
-                    else if (propertyName == "Level")
-                    {
-                        currentWaveForm.m_Level = value.property.floatValue;
-                    }
-                    else if (propertyName == "Amplitude")
-                    {
-                        currentWaveForm.m_Amp = value.property.floatValue;
-                    }
-                    else if (propertyName == "Phase")
-                    {
-                        currentWaveForm.m_Phase = value.property.floatValue;
-                    }
-                    else if (propertyName == "Frequency")
-                    {
-                        currentWaveForm.m_Freq = value.property.floatValue;
-                    }
-                }
-                else if (subCategoryName == "Wave Z")
-                {
-                    SWaveForm2& currentWaveForm = pMaterial->GetShaderResources().m_DeformInfo.m_WaveZ;
-
-                    if (propertyName == "Type")
-                    {
-                        currentWaveForm.m_eWFType = TryConvertingCStringToEWaveForm(value.stringValue);
-                    }
-                    else if (propertyName == "Level")
-                    {
-                        currentWaveForm.m_Level = value.property.floatValue;
-                    }
-                    else if (propertyName == "Amplitude")
-                    {
-                        currentWaveForm.m_Amp = value.property.floatValue;
-                    }
-                    else if (propertyName == "Phase")
-                    {
-                        currentWaveForm.m_Phase = value.property.floatValue;
-                    }
-                    else if (propertyName == "Frequency")
-                    {
-                        currentWaveForm.m_Freq = value.property.floatValue;
-                    }
-                }
-                else if (subCategoryName == "Wave W")
-                {
-                    SWaveForm2& currentWaveForm = pMaterial->GetShaderResources().m_DeformInfo.m_WaveW;
 
                     if (propertyName == "Type")
                     {
@@ -2384,6 +2499,117 @@ namespace
         pMaterial->Save();
         GetIEditor()->GetMaterialManager()->OnUpdateProperties(pMaterial, true);
     }
+
+    void PySetPropertyFromBool(const char* pPathAndMaterialName, const char* pPathAndPropertyName, bool value)
+    {
+        SPyWrappedProperty valueWrapper;
+        valueWrapper.type = SPyWrappedProperty::eType_Bool;
+        valueWrapper.property.boolValue = value;
+
+        PyLegacySetProperty(pPathAndMaterialName, pPathAndPropertyName, valueWrapper);
+    }
+
+    void PySetPropertyFromColor(const char* pPathAndMaterialName, const char* pPathAndPropertyName, AZ::Color value)
+    {
+        SPyWrappedProperty valueWrapper;
+        valueWrapper.type = SPyWrappedProperty::eType_Color;
+        valueWrapper.property.colorValue.r = value.GetR();
+        valueWrapper.property.colorValue.g = value.GetG();
+        valueWrapper.property.colorValue.b = value.GetB();
+
+        PyLegacySetProperty(pPathAndMaterialName, pPathAndPropertyName, valueWrapper);
+    }
+
+    void PySetPropertyFromFloat(const char* pPathAndMaterialName, const char* pPathAndPropertyName, float value)
+    {
+        SPyWrappedProperty valueWrapper;
+        valueWrapper.type = SPyWrappedProperty::eType_Float;
+        valueWrapper.property.floatValue = value;
+
+        PyLegacySetProperty(pPathAndMaterialName, pPathAndPropertyName, valueWrapper);
+    }
+
+    void PySetPropertyFromInt(const char* pPathAndMaterialName, const char* pPathAndPropertyName, int value)
+    {
+        SPyWrappedProperty valueWrapper;
+        valueWrapper.type = SPyWrappedProperty::eType_Int;
+        valueWrapper.property.intValue = value;
+
+        PyLegacySetProperty(pPathAndMaterialName, pPathAndPropertyName, valueWrapper);
+    }
+
+    void PySetPropertyFromString(const char* pPathAndMaterialName, const char* pPathAndPropertyName, AZStd::string value)
+    {
+        SPyWrappedProperty valueWrapper;
+        valueWrapper.type = SPyWrappedProperty::eType_String;
+        valueWrapper.stringValue = value.data();
+
+        PyLegacySetProperty(pPathAndMaterialName, pPathAndPropertyName, valueWrapper);
+    }
+
+    void PySetPropertyFromVector3(const char* pPathAndMaterialName, const char* pPathAndPropertyName, AZ::Vector3 value)
+    {
+        SPyWrappedProperty valueWrapper;
+        valueWrapper.type = SPyWrappedProperty::eType_Vec3;
+        valueWrapper.property.vecValue.x = value.GetX();
+        valueWrapper.property.vecValue.y = value.GetY();
+        valueWrapper.property.vecValue.z = value.GetZ();
+
+        PyLegacySetProperty(pPathAndMaterialName, pPathAndPropertyName, valueWrapper);
+    }
+
+    void PySetPropertyFromVector4(const char* pPathAndMaterialName, const char* pPathAndPropertyName, AZ::Vector4 value)
+    {
+        SPyWrappedProperty valueWrapper;
+        valueWrapper.type = SPyWrappedProperty::eType_Vec4;
+        valueWrapper.property.vecValue.x = value.GetX();
+        valueWrapper.property.vecValue.y = value.GetY();
+        valueWrapper.property.vecValue.z = value.GetZ();
+        valueWrapper.property.vecValue.w = value.GetW();
+
+        PyLegacySetProperty(pPathAndMaterialName, pPathAndPropertyName, valueWrapper);
+    }
+}
+
+namespace AzToolsFramework
+{
+    void MaterialPythonFuncsHandler::Reflect(AZ::ReflectContext* context)
+    {
+        if (auto behaviorContext = azrtti_cast<AZ::BehaviorContext*>(context))
+        {
+            // this will put these methods into the 'azlmbr.legacy.material' module
+            auto addLegacyMaterial = [](AZ::BehaviorContext::GlobalMethodBuilder methodBuilder)
+            {
+                methodBuilder->Attribute(AZ::Script::Attributes::Scope, AZ::Script::Attributes::ScopeFlags::Automation)
+                    ->Attribute(AZ::Script::Attributes::Category, "Legacy/Material")
+                    ->Attribute(AZ::Script::Attributes::Module, "legacy.material");
+            };
+            addLegacyMaterial(behaviorContext->Method("create", PyMaterialCreate, nullptr, "Creates a material."));
+            addLegacyMaterial(behaviorContext->Method("create_multi", PyMaterialCreateMulti, nullptr, "Creates a multi-material."));
+            addLegacyMaterial(behaviorContext->Method("convert_to_multi", PyMaterialConvertToMulti, nullptr, "Converts the selected material to a multi-material."));
+            addLegacyMaterial(behaviorContext->Method("duplicate_current", PyMaterialDuplicateCurrent, nullptr, "Duplicates the current material."));
+            addLegacyMaterial(behaviorContext->Method("merge_selection", PyMaterialMergeSelection, nullptr, "Merges the selected materials."));
+            addLegacyMaterial(behaviorContext->Method("delete_current", PyMaterialDeleteCurrent, nullptr, "Deletes the current material."));
+            addLegacyMaterial(behaviorContext->Method("get_submaterial", PyGetSubMaterial, nullptr, "Gets sub materials of a material."));
+            //addLegacyMaterial(behaviorContext->Method("get_property", PyGetProperty, nullptr, "Gets a property of a material."));
+            addLegacyMaterial(behaviorContext->Method("get_property_as_bool", PyGetPropertyAsBool, nullptr, "Gets a bool property of a material."));
+            addLegacyMaterial(behaviorContext->Method("get_property_as_color", PyGetPropertyAsColor, nullptr, "Gets a color property of a material."));
+            addLegacyMaterial(behaviorContext->Method("get_property_as_float", PyGetPropertyAsFloat, nullptr, "Gets a float property of a material."));
+            addLegacyMaterial(behaviorContext->Method("get_property_as_int", PyGetPropertyAsInt, nullptr, "Gets an int property of a material."));
+            addLegacyMaterial(behaviorContext->Method("get_property_as_string", PyGetPropertyAsString, nullptr, "Gets a string property of a material."));
+            addLegacyMaterial(behaviorContext->Method("get_property_as_vector3", PyGetPropertyAsVector3, nullptr, "Gets a vector3 property of a material."));
+            addLegacyMaterial(behaviorContext->Method("get_property_as_vector4", PyGetPropertyAsVector4, nullptr, "Gets a vector4 property of a material."));
+            //addLegacyMaterial(behaviorContext->Method("set_property", PySetProperty, nullptr, "Sets a property of a material."));
+            addLegacyMaterial(behaviorContext->Method("set_property_from_bool", PySetPropertyFromBool, nullptr, "Sets a bool property of a material."));
+            addLegacyMaterial(behaviorContext->Method("set_property_from_color", PySetPropertyFromColor, nullptr, "Sets a color property of a material."));
+            addLegacyMaterial(behaviorContext->Method("set_property_from_float", PySetPropertyFromFloat, nullptr, "Sets a float property of a material."));
+            addLegacyMaterial(behaviorContext->Method("set_property_from_int", PySetPropertyFromInt, nullptr, "Sets an int property of a material."));
+            addLegacyMaterial(behaviorContext->Method("set_property_from_string", PySetPropertyFromString, nullptr, "Sets a string property of a material."));
+            addLegacyMaterial(behaviorContext->Method("set_property_from_vector3", PySetPropertyFromVector3, nullptr, "Sets a vector3 property of a material."));
+            addLegacyMaterial(behaviorContext->Method("set_property_from_vector4", PySetPropertyFromVector4, nullptr, "Sets a vector4 property of a material."));
+
+        }
+    }
 }
 
 REGISTER_PYTHON_COMMAND_WITH_EXAMPLE(PyMaterialCreate, material, create,
@@ -2416,12 +2642,12 @@ REGISTER_PYTHON_COMMAND_WITH_EXAMPLE(PyMaterialSelectObjectsWithCurrent, materia
 REGISTER_PYTHON_COMMAND_WITH_EXAMPLE(PyMaterialSetCurrentFromObject, material, set_current_from_object,
     "Sets the current material to the material of a selected object.",
     "material.set_current_from_object()");
-REGISTER_PYTHON_COMMAND_WITH_EXAMPLE(PyGetSubMaterial, material, get_submaterial,
+REGISTER_ONLY_PYTHON_COMMAND_WITH_EXAMPLE(PyLegacyGetSubMaterial, material, get_submaterial,
     "Gets sub materials of an material.",
     "material.get_submaterial()");
-REGISTER_ONLY_PYTHON_COMMAND_WITH_EXAMPLE(PyGetProperty, material, get_property,
+REGISTER_ONLY_PYTHON_COMMAND_WITH_EXAMPLE(PyLegacyGetProperty, material, get_property,
     "Gets a property of a material.",
     "material.get_property(str materialPath/materialName, str propertyPath/propertyName)");
-REGISTER_ONLY_PYTHON_COMMAND_WITH_EXAMPLE(PySetProperty, material, set_property,
+REGISTER_ONLY_PYTHON_COMMAND_WITH_EXAMPLE(PyLegacySetProperty, material, set_property,
     "Sets a property of a material.",
     "material.set_property(str materialPath/materialName, str propertyPath/propertyName, [ str | (int, int, int) | (float, float, float) | int | float | bool ] value)");

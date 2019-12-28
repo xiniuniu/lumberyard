@@ -13,6 +13,9 @@
 
 #include <AzCore/RTTI/TypeInfo.h>
 #include <AzFramework/Asset/SimpleAsset.h>
+#include <AzCore/Asset/AssetCommon.h>
+#include <smartptr.h>
+#include <IMaterial.h>
 
 namespace LmbrCentral
 {
@@ -26,6 +29,41 @@ namespace LmbrCentral
         AZ_TYPE_INFO(MaterialAsset, "{F46985B5-F7FF-4FCB-8E8C-DC240D701841}")
         static const char* GetFileFilter() {
             return "*.mtl";
+        }
+    };
+
+    /*!
+     * Alternate material asset configuration.
+     * Can be used to stream materials in the background using the MaterialAssetHandler
+     */
+    class MaterialDataAsset 
+        : public AZ::Data::AssetData
+    {
+    public:
+        using MaterialPtr = _smart_ptr<IMaterial>;
+
+        AZ_RTTI(MaterialDataAsset, "{3336F02F-628C-4FA5-8405-45EA175A88BB}", AZ::Data::AssetData);
+        AZ_CLASS_ALLOCATOR(MaterialDataAsset, AZ::SystemAllocator, 0);
+
+        static const char* GetFileFilter()
+        {
+            return "*.mtl";
+        }
+
+        MaterialPtr m_Material = nullptr;
+
+    };
+
+    /*!
+    * FBX Material asset type configuration.
+    * Reflect as: AzFramework::SimpleAssetReference<FbxMaterialAsset>
+    */
+    class DccMaterialAsset
+    {
+    public:
+        AZ_TYPE_INFO(DccMaterialAsset, "{C88469CF-21E7-41EB-96FD-BF14FBB05EDC}")
+            static const char* GetFileFilter() {
+            return "*.dccmtl";
         }
     };
 
@@ -44,8 +82,10 @@ namespace LmbrCentral
     };
 } // namespace LmbrCentral
 
+
 namespace AZ
 {
     AZ_TYPE_INFO_SPECIALIZE(AzFramework::SimpleAssetReference<LmbrCentral::MaterialAsset>, "{B7B8ECC7-FF89-4A76-A50E-4C6CA2B6E6B4}")
+    AZ_TYPE_INFO_SPECIALIZE(AzFramework::SimpleAssetReference<LmbrCentral::DccMaterialAsset>, "{E865C742-A063-47A3-BCE1-E724A8D4B66D}")
     AZ_TYPE_INFO_SPECIALIZE(AzFramework::SimpleAssetReference<LmbrCentral::TextureAsset>, "{68E92460-5C0C-4031-9620-6F1A08763243}")
 }

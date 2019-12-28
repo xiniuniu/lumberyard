@@ -15,7 +15,6 @@
 
 #include <AzCore/Component/Component.h>
 #include <AzCore/RTTI/RTTI.h>
-#include <AzCore/Component/TickBus.h>
 #include <MicrophoneBus.h>
 
 namespace CloudGemSpeechRecognition 
@@ -40,7 +39,6 @@ namespace CloudGemSpeechRecognition
     class VoiceRecorderSystemComponent 
         : public AZ::Component
         , public VoiceRecorderRequestBus::Handler
-        , public AZ::TickBus::Handler
     {
     public:
         AZ_COMPONENT(VoiceRecorderSystemComponent, "{D684766D-D126-4746-B570-97AEEF575C08}");
@@ -50,14 +48,19 @@ namespace CloudGemSpeechRecognition
         static void GetProvidedServices(AZ::ComponentDescriptor::DependencyArrayType& provided);
         static void GetIncompatibleServices(AZ::ComponentDescriptor::DependencyArrayType& incompatible);
 
+        VoiceRecorderSystemComponent();
+
         void StartRecording();
         void StopRecording();
         bool IsMicrophoneAvailable();
         AZStd::string GetSoundBufferBase64();
 
-        void OnTick(float deltaTime, AZ::ScriptTimePoint time);
-
     protected:
+        VoiceRecorderSystemComponent(const VoiceRecorderSystemComponent&) = delete;
+        VoiceRecorderSystemComponent(VoiceRecorderSystemComponent&&) = delete;
+        VoiceRecorderSystemComponent& operator=(const VoiceRecorderSystemComponent&) = delete;
+        VoiceRecorderSystemComponent& operator=(VoiceRecorderSystemComponent&&) = delete;
+
         void Init() override;
         void Activate() override;
         void Deactivate() override;
@@ -65,13 +68,32 @@ namespace CloudGemSpeechRecognition
         void SetWAVHeader(AZ::u8* buffer, AZ::u32 bufferSize);
         void ReadBuffer();
 
-        // Reserved for future use when we can tell if mic initialized
-        bool m_isMicrophoneInitialized{ true };
+    public:
+        class Implementation
+        {
+        public:
+            static AZStd::unique_ptr<Implementation> Create();
 
-        AZ::u8* m_fillBuffer;
-        AZ::u8* m_curFillBufferPos;
-        Audio::SAudioInputConfig m_bufferConfig;
-        char* m_currentB64Buffer;
+            AZ_CLASS_ALLOCATOR(Implementation, AZ::SystemAllocator, 0);
+            virtual ~Implementation();
+
+            virtual void Init() = 0;
+            virtual void Activate() = 0;
+            virtual void Deactivate() = 0;
+            virtual void ReadBuffer() = 0;
+            virtual void StartRecording() = 0;
+            virtual void StopRecording() = 0;
+            virtual bool IsMicrophoneAvailable() = 0;
+
+        protected:
+            AZStd::unique_ptr<AZ::s8> m_currentB64Buffer;
+            int m_currentB64BufferSize{ 0 };
+
+            friend VoiceRecorderSystemComponent;
+        };
+
+    private:
+        AZStd::unique_ptr<Implementation> m_impl;
     };
 }
 

@@ -286,12 +286,12 @@ int RGBE_ReadHeader(CCryFile* fp, uint32* width, uint32* height, rgbe_header_inf
         {
             break; /* format found so break out of loop */
         }
-        else if (info && (sscanf(buf, "GAMMA=%g", &tempf) == 1))
+        else if (info && (azsscanf(buf, "GAMMA=%g", &tempf) == 1))
         {
             info->gamma = tempf;
             info->valid |= RGBE_VALID_GAMMA;
         }
-        else if (info && (sscanf(buf, "EXPOSURE=%g", &tempf) == 1))
+        else if (info && (azsscanf(buf, "EXPOSURE=%g", &tempf) == 1))
         {
             info->exposure = tempf;
             info->valid |= RGBE_VALID_EXPOSURE;
@@ -326,7 +326,7 @@ int RGBE_ReadHeader(CCryFile* fp, uint32* width, uint32* height, rgbe_header_inf
     {
         return rgbe_error(rgbe_read_error, NULL);
     }
-    if (sscanf(buf, "-Y %d +X %d", height, width) < 2)
+    if (azsscanf(buf, "-Y %d +X %d", height, width) < 2)
     {
         return rgbe_error(rgbe_format_error, "missing image size specifier");
     }
@@ -467,9 +467,9 @@ int RGBE_ReadPixels_RLE(CCryFile* fp, char* data, uint32 scanline_width,
 bool CImageHDR::Load(const QString& fileName, CImageEx& outImage)
 {
     CCryFile file;
-    if (!file.Open(fileName.toLatin1().data(), "rb"))
+    if (!file.Open(fileName.toUtf8().data(), "rb"))
     {
-        CLogFile::FormatLine("File not found %s", fileName.toLatin1().data());
+        CLogFile::FormatLine("File not found %s", fileName.toUtf8().data());
         return false;
     }
 

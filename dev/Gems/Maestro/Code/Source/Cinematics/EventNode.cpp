@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "StdAfx.h"
+#include "Maestro_precompiled.h"
 #include <AzCore/Serialization/SerializeContext.h>
 #include "EventNode.h"
 #include "AnimTrack.h"
@@ -98,7 +98,7 @@ void CAnimEventNode::Animate(SAnimContext& ec)
                 bool bKeyAfterStartTime = key.time >= ec.startTime;
                 if (bKeyAfterStartTime)
                 {
-                    ec.pSequence->TriggerTrackEvent(key.event.c_str(), key.eventValue.c_str());
+                    ec.sequence->TriggerTrackEvent(key.event.c_str(), key.eventValue.c_str());
                 }
             }
             m_lastEventKey = nEventKey;

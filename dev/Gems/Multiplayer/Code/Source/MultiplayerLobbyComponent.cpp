@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "Multiplayer_precompiled.h"
 
 #include <AzCore/Serialization/EditContext.h>
 #include <AzCore/Serialization/SerializeContext.h>
@@ -34,8 +34,15 @@
 
 #include "Multiplayer/IMultiplayerGem.h"
 #include "Multiplayer/MultiplayerLobbyServiceWrapper/MultiplayerLobbyLANServiceWrapper.h"
-#include "Multiplayer/MultiplayerUtils.h"
 
+#include <Multiplayer_Traits_Platform.h>
+
+namespace Platform
+{
+    bool ListServers(const AZStd::string& actionName, const AZ::EntityId& entityId, Multiplayer::MultiplayerLobbyServiceWrapper*& multiplayerLobbyServiceWrapper);
+}
+
+#include "Multiplayer/MultiplayerUtils.h"
 
 namespace Multiplayer
 {
@@ -135,8 +142,8 @@ namespace Multiplayer
     // Lobby Selection
     static const char* k_lobbySelectionLANButton = "LANButton";
     static const char* k_lobbySelectionGameliftButton = "GameliftButton";
-    static const char* k_lobbySelectionXboxButton = "XboxLiveButton"; // ACCEPTED_USE
-    static const char* k_lobbySelectionPSNButton = "PSNButton"; // ACCEPTED_USE
+    static const char* k_lobbySelectionXeniaButton = "XeniaLiveButton";
+    static const char* k_lobbySelectionProvoButton = "ProvoButton";
     static const char* k_lobbySelectionErrorWindow = "ErrorWindow";
     static const char* k_lobbySelectionErrorMessage = "ErrorMessage";
     static const char* k_lobbySelectionBusyScreen = "BusyScreen";
@@ -271,9 +278,8 @@ namespace Multiplayer
         SetElementInputEnabled(m_selectionLobbyID, k_lobbySelectionGameliftButton, false);
 #endif
 
-		SetElementInputEnabled(m_selectionLobbyID, k_lobbySelectionXboxButton, false); // ACCEPTED_USE
-
-		SetElementInputEnabled(m_selectionLobbyID, k_lobbySelectionPSNButton, false); // ACCEPTED_USE
+        SetElementInputEnabled(m_selectionLobbyID, k_lobbySelectionXeniaButton, AZ_TRAIT_MULTIPLAYER_LOBBY_SERVICE_ENABLE_XENIA_BUTTON);
+        SetElementInputEnabled(m_selectionLobbyID, k_lobbySelectionProvoButton, AZ_TRAIT_MULTIPLAYER_LOBBY_SERVICE_ENABLE_PROVO_BUTTON);
 
         ShowSelectionLobby();
 
@@ -288,6 +294,7 @@ namespace Multiplayer
                 GridMate::SessionEventBus::Handler::BusConnect(gridMate);
             }
         }
+        AZ_TRAIT_MULTIPLAYER_LOBBY_SERVICE_ASSIGN_DEFAULT_PORT(AZ_TRAIT_MULTIPLAYER_LOBBY_SERVICE_ASSIGN_DEFAULT_PORT_VALUE);
     }
 
     void MultiplayerLobbyComponent::Deactivate()
@@ -398,14 +405,6 @@ namespace Multiplayer
             RegisterServiceWrapper<MultiplayerLobbyLANServiceWrapper>();
             ShowLobby(LobbyMode::ServiceWrapperLobby);
         }
-        else if (actionName == "OnListXboxServers") // ACCEPTED_USE
-        {
-            AZ_Assert(false,"Trying to use XBox Session Services without compiling for Durango."); // ACCEPTED_USE
-        }
-        else if (actionName == "OnListPSNServers") // ACCEPTED_USE
-        {
-            AZ_Assert(false,"Trying to use PSN Session services without compiling for Orbis"); // ACCEPTED_USE
-        }
         else if (actionName == "OnDismissErrorMessage")
         {
 
@@ -413,6 +412,18 @@ namespace Multiplayer
         else if (actionName == "OnReturn")
         {
             ShowSelectionLobby();
+        }
+        else
+        {
+            MultiplayerLobbyServiceWrapper* multiplayerLobbyServiceWrapperPointer = nullptr;
+            if(Platform::ListServers(actionName, GetEntityId(), multiplayerLobbyServiceWrapperPointer))
+            {
+                if (m_multiplayerLobbyServiceWrapper)
+                {
+                    delete m_multiplayerLobbyServiceWrapper;
+                }
+                m_multiplayerLobbyServiceWrapper = multiplayerLobbyServiceWrapperPointer;
+            }
         }
     }
 
@@ -1426,17 +1437,9 @@ namespace Multiplayer
             m_gameliftCreationSearch = nullptr;
         }
 
-        // Request a new Gamelift Game
         GridMate::GameLiftSessionRequestParams reqParams;
+        ConfigureSessionParams(reqParams);
         reqParams.m_instanceName = GetServerName().c_str();
-        reqParams.m_numPublicSlots = m_maxPlayers;
-        reqParams.m_numParams = 0;
-        reqParams.m_params[reqParams.m_numParams].m_id = "sv_name";
-        reqParams.m_params[reqParams.m_numParams].m_value = GetServerName().c_str();
-        reqParams.m_numParams++;
-        reqParams.m_params[reqParams.m_numParams].m_id = "sv_map";
-        reqParams.m_params[reqParams.m_numParams].m_value = GetMapName().c_str();
-        reqParams.m_numParams++;
 
         ShowBusyScreen();
 

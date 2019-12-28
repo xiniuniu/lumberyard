@@ -19,60 +19,43 @@ from time import sleep
 
 from botocore.exceptions import ClientError
 
-import resource_manager.constant
+import resource_manager_common.constant as  c
 
 import lmbr_aws_test_support
 import mock_specification
+from resource_manager.test import base_stack_test
+import test_constant
 
-class IntegrationTest_CloudGemFramework_ResouceManager_ResourceHandlerPlugins(lmbr_aws_test_support.lmbr_aws_TestCase):
-
+class IntegrationTest_CloudGemFramework_ResouceManager_ResourceHandlerPlugins(base_stack_test.BaseStackTestCase):
 
     def setUp(self):        
-        self.prepare_test_envionment(type(self).__name__)
-        
+        self.set_deployment_name(lmbr_aws_test_support.unique_name())
+        self.set_resource_group_name(lmbr_aws_test_support.unique_name('rhp'))
+        self.prepare_test_environment(type(self).__name__)
+        self.register_for_shared_resources()
 
     def test_ressource_handler_plugins_end_to_end(self):
         self.run_all_tests()
 
-
-    def __120_create_project_stack(self):
-        self.lmbr_aws(
-            'project', 'create', 
-            '--stack-name', self.TEST_PROJECT_STACK_NAME, 
-            '--confirm-aws-usage',
-            '--confirm-security-change', 
-            '--region', lmbr_aws_test_support.REGION
-        )
-
-
-    def __180_create_test_gem(self):     
+    def __120_create_project_stack(self):        
         self.lmbr_aws(
             'cloud-gem', 'create',
             '--gem', self.TEST_RESOURCE_GROUP_NAME,
             '--initial-content', 'no-resources',
-            '--enable')
-
+            '--enable', '--no-sln-change', ignore_failure=True)
+        self.enable_shared_gem(self.TEST_RESOURCE_GROUP_NAME, 'v1', path=os.path.join(self.context[test_constant.ATTR_ROOT_DIR], os.path.join(test_constant.DIR_GEMS,  self.TEST_RESOURCE_GROUP_NAME)))
+        self.base_create_project_stack()
 
     def __440_add_custom_resource_handler_in_resource_group(self):
-        self.add_custom_resource_to_resource_group()
-        self.add_custom_resource_handler_to_resource_group()
+        self.add_custom_resource_to_gem()
+        self.add_custom_resource_handler_to_gem()
 
 
     def __450_update_project_to_add_custom_resource_handler(self):
-        self.lmbr_aws(
-            'project', 'upload-resources', 
-            '--confirm-aws-usage', 
-            '--confirm-security-change'
-        )
+        self.base_update_project_stack()
 
-
-    def __455_create_deployment_stack(self):
-        self.lmbr_aws(
-            'deployment', 'create', 
-            '--deployment', self.TEST_DEPLOYMENT_NAME, 
-            '--confirm-aws-usage', 
-            '--confirm-security-change'
-        )            
+    def __455_create_deployment_stack(self):        
+        self.lmbr_aws('deployment', 'create', '--deployment', self.TEST_DEPLOYMENT_NAME, '--confirm-aws-usage', '--confirm-security-change', '--parallel', '--only-cloud-gems', self.TEST_RESOURCE_GROUP_NAME)
 
 
     def __460_verify_custom_resource_handler_in_resource_group(self):
@@ -87,99 +70,111 @@ class IntegrationTest_CloudGemFramework_ResouceManager_ResourceHandlerPlugins(lm
             })
 
 
-    def __520_remove_custom_resource_handler_group(self):
-        self.remove_custom_resource_handler_from_resource_group()
-
-
-    def __530_update_project_to_remove_custom_resource_handler(self):
-        self.lmbr_aws(
-            'project', 'upload-resources', 
-            '--confirm-aws-usage', 
-            '--confirm-security-change'
-        )
-
-
-    def __540_update_resource_group_after_removing_handler(self):
-        self.lmbr_aws(
-            'resource-group', 'upload-resources', 
-            '--deployment', self.TEST_DEPLOYMENT_NAME, 
-            '--resource-group', self.TEST_RESOURCE_GROUP_NAME, 
-            '--confirm-aws-usage', 
-            '--confirm-resource-deletion',
-            expect_failure = True
-        )
-
-
-    def __550_readd_custom_resource_handler_group(self):
-        self.add_custom_resource_handler_to_resource_group()
-
-
-    def __560_update_project_to_readd_custom_resource_handler(self):
-        self.lmbr_aws(
-            'project', 'upload-resources', 
-            '--confirm-aws-usage', 
-            '--confirm-security-change'
-        )
-
-
     def __920_delete_deployment_stack(self):
-        self.lmbr_aws(
-            'deployment', 'delete',
-            '--deployment', self.TEST_DEPLOYMENT_NAME, 
-            '--confirm-resource-deletion'
-        )
+        self.unregister_for_shared_resources()
+        self.base_delete_deployment_stack()
 
 
     def __950_delete_project_stack(self):
-        self.lmbr_aws(
-            'project', 'delete', 
-            '--confirm-resource-deletion'
-        )
+        self.teardown_base_stack()
 
 
     CUSTOM_RESOURCE_HANDLER = '''
-import custom_resource_response
+from cgf_utils import custom_resource_response
 
 def handler(event, context):
     data = { 'TestProperty': 'TestValue' }
     physical_resource_id = 'TestPyhsicalResourceId'
-    custom_resource_response.succeed(event, context, data, physical_resource_id)
+    return custom_resource_response.success_response(data, physical_resource_id)
 '''
 
     CUSTOM_RESOURCE_NAME = 'Test'
 
+    LAMBDA_IMPORTS = '''CloudGemFramework.LambdaService
+    CloudGemFramework.ResourceManagerCommon
+    CloudGemFramework.Utils'''
 
-    def add_custom_resource_handler_to_resource_group(self):
 
-        resource_group_project_code_path = self.get_resource_group_project_code_path()
-        resource_group_custom_resource_file_path = os.path.join(resource_group_project_code_path, self.CUSTOM_RESOURCE_NAME + 'ResourceHandler.py')
+    def add_custom_resource_handler_to_gem(self):
 
-        os.mkdir(resource_group_project_code_path)
+        resource_group_custom_resource_file_path = os.path.join(
+            self.resource_group_resource_types_code_path, "Custom_" + self.CUSTOM_RESOURCE_NAME + ".py")
+
+        os.makedirs(self.resource_group_resource_types_code_path)
 
         with open(resource_group_custom_resource_file_path, 'w') as f:
             f.write(self.CUSTOM_RESOURCE_HANDLER)
 
+        with open(os.path.join(self.resource_group_resource_types_code_path, "__init__.py"), "w") as f:
+            pass
 
-    def remove_custom_resource_handler_from_resource_group(self):
-        resource_group_project_code_path = self.get_resource_group_project_code_path()
-        shutil.rmtree(resource_group_project_code_path)
+        with open(os.path.join(self.resource_group_resource_types_code_path, "..", ".import"), "w") as f:
+            f.write(self.LAMBDA_IMPORTS)
 
 
-    def add_custom_resource_to_resource_group(self):
+    def add_custom_resource_to_gem(self):
+        project_template_path = self.get_gem_aws_path(
+            self.TEST_RESOURCE_GROUP_NAME, c.PROJECT_TEMPLATE_FILENAME)
+        if not os.path.exists(project_template_path):
+            with open(project_template_path, 'w') as f:
+                f.write('{}')
 
-        with self.edit_gem_aws_json(self.TEST_RESOURCE_GROUP_NAME, 'resource-template.json') as resource_group_template:
+        with self.edit_gem_aws_json(self.TEST_RESOURCE_GROUP_NAME,  c.PROJECT_TEMPLATE_FILENAME) as gem_project_template:
 
-            resource_group_resources = resource_group_template['Resources'] = {}
-
-            resource_group_resources['Custom'] = {
-                "Type": "Custom::" + self.CUSTOM_RESOURCE_NAME,
+            project_extension_resources = gem_project_template['Resources'] = {}
+            project_extension_resources['testCustomResourceConfiguration'] = {
                 "Properties": {
-                    "ServiceToken": { "Ref": "ProjectResourceHandler" },
-                    "ConfigurationKey": { "Ref": "ConfigurationKey" }
+                    "ConfigurationBucket": {
+                        "Ref": "Configuration"
+                    },
+                    "ConfigurationKey": {
+                        "Ref": "ConfigurationKey"
+                    },
+                    "FunctionName": "testCustomResource",
+                    "Runtime": "python2.7",
+                    "ServiceToken": {
+                        "Fn::GetAtt": [
+                            "ProjectResourceHandler",
+                            "Arn"
+                        ]
+                    },
+                    "Settings": {}
+                },
+                "Type": "Custom::LambdaConfiguration"
+            }
+
+            project_extension_resources['CustomType'] = {
+                "Type": "Custom::ResourceTypes",
+                "Properties": {
+                    "ServiceToken": {
+                        "Fn::GetAtt": [
+                            "ProjectResourceHandler",
+                            "Arn"
+                        ]
+                    },
+                    "LambdaConfiguration": { "Fn::GetAtt": [ "testCustomResourceConfiguration", "ComposedLambdaConfiguration" ] },
+                    "Definitions": {
+                        "Custom::" + self.CUSTOM_RESOURCE_NAME: {
+                            "ArnFormat": "*",
+                            "HandlerFunction": {
+                                "Function": "Custom_" + self.CUSTOM_RESOURCE_NAME + ".handler"
+                            }
+                        }
+                    }
                 }
             }
 
+        with self.edit_gem_aws_json(self.TEST_RESOURCE_GROUP_NAME, 'resource-template.json') as resource_template:
+                resource_template_resources = resource_template['Resources'] = {}
+                resource_template_resources['Custom'] = {
+                    "Type": "Custom::" + self.CUSTOM_RESOURCE_NAME,
+                    "Properties": {
+                        "ServiceToken": {"Ref": "ProjectResourceHandler"},
+                        "ConfigurationKey": {"Ref": "ConfigurationKey"} 
+                    }
+                }
 
-    def get_resource_group_project_code_path(self):
-        return self.get_gem_aws_path(self.TEST_RESOURCE_GROUP_NAME, 'project-code')
+    @property
+    def resource_group_resource_types_code_path(self):
+        return self.get_gem_aws_path(self.TEST_RESOURCE_GROUP_NAME, 'project-code', 'lambda-code', 'testCustomResource', 'resource_types')
 

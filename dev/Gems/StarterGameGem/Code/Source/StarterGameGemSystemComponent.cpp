@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "StarterGameGem_precompiled.h"
 
 #include <AzCore/RTTI/BehaviorContext.h>
 #include <AzCore/Serialization/SerializeContext.h>
@@ -34,7 +34,7 @@ namespace StarterGameGem
         {
             serialize->Class<StarterGameGemSystemComponent, AZ::Component>()
                 ->Version(0)
-                ->SerializerForEmptyClass();
+                ;
 
             if (AZ::EditContext* ec = serialize->GetEditContext())
             {

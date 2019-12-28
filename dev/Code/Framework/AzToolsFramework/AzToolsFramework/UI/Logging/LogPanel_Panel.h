@@ -19,13 +19,20 @@
 #include <AzCore/std/containers/ring_buffer.h>
 #include <AzCore/std/containers/unordered_map.h>
 #include <AzCore/Memory/SystemAllocator.h>
+#include <AzCore/UserSettings/UserSettings.h>
+#include <AzCore/Serialization/SerializeContext.h>
+#include <AzCore/std/containers/vector.h>
 #include <AzCore/RTTI/RTTI.h>
 #include <AzToolsFramework/UI/Logging/LogLine.h>
 
 #include <QSortFilterProxyModel>
+AZ_PUSH_DISABLE_WARNING(4251, "-Wunknown-warning-option") // 4251: 'QPainter::d_ptr': class 'QScopedPointer<QPainterPrivate,QScopedPointerDeleter<T>>' needs to have dll-interface to be used by clients of class 'QPainter'
 #include <QLayout>
+AZ_POP_DISABLE_WARNING
 #include <QStyledItemDelegate>
 #include <QAbstractTableModel>
+
+#include <memory>
 
 class QTabWidget;
 class QTableView;
@@ -121,7 +128,7 @@ namespace AzToolsFramework
         class BaseLogPanel
             : public QWidget
         {
-            Q_OBJECT;
+            Q_OBJECT
         public:
             // class allocator intentionally removed so that QT can make us in their auto-gen code (from .ui files)
             //AZ_CLASS_ALLOCATOR(Panel, AZ::SystemAllocator, 0);
@@ -144,9 +151,12 @@ namespace AzToolsFramework
             //! by calling SetStorageID next time, to the same number, and then calling LoadState().
             void SetStorageID(AZ::u32 id);
 
+            int GetTabWidgetCount();
+            QWidget* GetTabWidgetAtIndex(int index);
+
             static void Reflect(AZ::ReflectContext* reflection);
 
-Q_SIGNALS:
+        Q_SIGNALS:
             void TabsReset(); // all tabs have been deleted because user clicked Reset
             void onLinkActivated(const QString& link);
 
@@ -155,9 +165,8 @@ Q_SIGNALS:
             virtual QWidget* CreateTab(const TabSettings& settings) = 0;
 
         private:
-            QTabWidget* pTabWidget;
-            AZ::u32 m_storageID;
-            AZStd::unordered_map<QObject*, TabSettings> m_settingsForTabs;
+            struct Impl;
+            std::unique_ptr<Impl> m_impl;
 
         private Q_SLOTS:
             void onTabClosed(int whichTab);
@@ -174,7 +183,7 @@ Q_SIGNALS:
         class RingBufferLogDataModel
             : public QAbstractTableModel
         {
-            Q_OBJECT;
+            Q_OBJECT
         public:
             enum class DataRoles
             {
@@ -199,6 +208,8 @@ Q_SIGNALS:
             void CommitAdd();
             void Clear();
 
+            const Logging::LogLine& GetLineFromIndex(const QModelIndex& index);
+
         private:
             AZStd::ring_buffer<Logging::LogLine> m_lines;
             int m_startLineAdd;
@@ -212,7 +223,7 @@ Q_SIGNALS:
         class ListLogDataModel
             : public QAbstractTableModel
         {
-            Q_OBJECT;
+            Q_OBJECT
         public:
             ListLogDataModel(QObject* pParent = nullptr);
             virtual ~ListLogDataModel();
@@ -259,7 +270,7 @@ Q_SIGNALS:
         class LogPanelLayout
             : public QLayout
         {
-            Q_OBJECT;
+            Q_OBJECT
         public:
             AZ_CLASS_ALLOCATOR(LogPanelLayout, AZ::SystemAllocator, 0);
             LogPanelLayout(QWidget* pParent);
@@ -283,7 +294,7 @@ Q_SIGNALS:
         class LogPanelItemDelegate
             : public QStyledItemDelegate
         {
-            Q_OBJECT;
+            Q_OBJECT
         public:
             AZ_CLASS_ALLOCATOR(LogPanelItemDelegate, AZ::SystemAllocator, 0);
             LogPanelItemDelegate(QWidget* pParent, int messageColumn);
@@ -308,6 +319,35 @@ Q_SIGNALS:
 
         private:
             int m_messageColumn; // which column contains the message data ?
+        };
+
+        class SavedState
+            : public AZ::UserSettings
+        {
+        public:
+            AZ_RTTI(SavedState, "{38930360-DB02-445A-9CA0-3D1FB07B8236}", AZ::UserSettings);
+            AZ_CLASS_ALLOCATOR(SavedState, AZ::SystemAllocator, 0);
+            AZStd::vector<LogPanel::TabSettings> m_tabSettings;
+
+            SavedState() {}
+
+            static void Reflect(AZ::ReflectContext* context)
+            {
+                AZ::SerializeContext* serialize = azrtti_cast<AZ::SerializeContext*>(context);
+                if (serialize)
+                {
+                    serialize->Class<SavedState>()
+                        ->Version(1)
+                        ->Field("m_tabSettings", &SavedState::m_tabSettings);
+
+                    serialize->Class<TabSettings>()
+                        ->Version(1)
+                        ->Field("window", &TabSettings::m_window)
+                        ->Field("tabName", &TabSettings::m_tabName)
+                        ->Field("textFilter", &TabSettings::m_textFilter)
+                        ->Field("filterFlags", &TabSettings::m_filterFlags);
+                }
+            }
         };
     } // namespace LogPanel
 } // namespace AzToolsFramework

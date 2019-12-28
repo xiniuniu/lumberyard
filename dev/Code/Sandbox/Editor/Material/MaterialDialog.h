@@ -84,6 +84,7 @@ protected slots:
     void OnMaterialPreview();
     void OnSelectAssignedObjects();
     void OnChangedBrowserListType(int);
+    void OnResetMaterialViewport();
 
     void UpdateActions();
 
@@ -158,6 +159,7 @@ protected:
     QScopedPointer<QMaterialImageListModel> m_pMaterialImageListModel;
 
     QToolBar* m_toolbar;
+    QComboBox* m_filterTypeSelection;
     QAction* m_addAction;
     QAction* m_assignToSelectionAction;
     QAction* m_copyAction;
@@ -168,5 +170,6 @@ protected:
     QAction* m_removeAction;
     QAction* m_resetAction;
     QAction* m_saveAction;
+    QAction* m_resetViewporAction;
 };
 

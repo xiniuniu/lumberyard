@@ -17,8 +17,6 @@
 #include <AzCore/std/string/string_view.h>
 #include <AzCore/std/smart_ptr/unique_ptr.h>
 #include <AzCore/std/tuple.h>
-
-
 #include "UserTypes.h"
 
 namespace UnitTest
@@ -116,7 +114,7 @@ namespace UnitTest
 
         TEST_F(TupleTest, ConvertingConstruct)
         {
-            AZStd::tuple<AZStd::string, AZStd::array<AZStd::string_view, 2U>> testTuple("Test", { "Arg1", "Arg2" });
+            AZStd::tuple<AZStd::string, AZStd::array<AZStd::string_view, 2U>> testTuple("Test", { { "Arg1", "Arg2" } });
             EXPECT_EQ("Test", AZStd::get<0>(testTuple));
             EXPECT_EQ(2, AZStd::get<1>(testTuple).size());
             EXPECT_EQ("Arg1", AZStd::get<1>(testTuple)[0]);
@@ -473,27 +471,6 @@ namespace UnitTest
                 EXPECT_EQ(y2, AZStd::get<1>(t));
                 EXPECT_EQ(&y, &AZStd::get<1>(t));
             }
-#if !defined(AZ_COMPILER_MSVC)
-            // VS2015 is improperly parsing is_copy_assignable
-            {
-                // test that the implicitly generated copy assignment operator
-                // is properly deleted
-                using T = AZStd::tuple<AZStd::unique_ptr<AZ::s32>>;
-                AZ_TEST_STATIC_ASSERT(!AZStd::is_copy_assignable<T>::value);
-            }
-            {
-                using T = AZStd::tuple<AZ::s32, NonAssignable>;
-                AZ_TEST_STATIC_ASSERT(!AZStd::is_copy_assignable<T>::value);
-            }
-            {
-                using T = AZStd::tuple<AZ::s32, CopyAssignable>;
-                AZ_TEST_STATIC_ASSERT(AZStd::is_copy_assignable<T>::value);
-            }
-            {
-                using T = AZStd::tuple<AZ::s32, MoveAssignable>;
-                AZ_TEST_STATIC_ASSERT(!AZStd::is_copy_assignable<T>::value);
-            }
-#endif
         }
 
         struct CountAssign
@@ -598,35 +575,6 @@ namespace UnitTest
                 EXPECT_EQ(y2, AZStd::get<1>(t));
                 EXPECT_EQ(&y, &AZStd::get<1>(t));
             }
-#if !defined(AZ_COMPILER_MSVC)
-            {
-                // test that the implicitly generated move assignment operator
-                // is properly deleted
-                using T = AZStd::tuple<AZStd::unique_ptr<int>>;
-                AZ_TEST_STATIC_ASSERT(AZStd::is_move_assignable<T>::value);
-                AZ_TEST_STATIC_ASSERT(!AZStd::is_copy_assignable<T>::value);
-
-            }
-            {
-                using T = AZStd::tuple<int, NonAssignable>;
-                AZ_TEST_STATIC_ASSERT(!AZStd::is_move_assignable<T>::value);
-            }
-            {
-                using T = AZStd::tuple<int, MoveAssignable>;
-                AZ_TEST_STATIC_ASSERT(AZStd::is_move_assignable<T>::value);
-            }
-            {
-                // The move should decay to a copy.
-                CountAssign::reset();
-                using T = AZStd::tuple<CountAssign, CopyAssignable>;
-                AZ_TEST_STATIC_ASSERT(AZStd::is_move_assignable<T>::value);
-                T t1;
-                T t2;
-                t1 = AZStd::move(t2);
-                EXPECT_EQ(1, CountAssign::copied);
-                EXPECT_EQ(0, CountAssign::moved);
-            }
-#endif
         }
     }
 
@@ -723,7 +671,6 @@ namespace UnitTest
             AZ::s32 m_num;
         };
 
-#if !defined(AZ_COMPILER_MSVC) || AZ_COMPILER_MSVC > 1900
         struct ImplicitConstexpr
         {
             constexpr ImplicitConstexpr(int i) : m_num(i) {}
@@ -739,7 +686,6 @@ namespace UnitTest
 
             int m_num;
         };
-#endif
 
         TEST_F(TupleTest, Default_ConstructTest)
         {
@@ -769,13 +715,11 @@ namespace UnitTest
                 EXPECT_EQ("", AZStd::get<2>(t));
                 EXPECT_EQ(DefaultOnly(), AZStd::get<3>(t));
             }
-#if !defined(AZ_COMPILER_MSVC) || AZ_COMPILER_MSVC > 1900
             {
                 AZ_TEST_STATIC_ASSERT((!std::is_default_constructible<AZStd::tuple<NoDefault>>::value));
                 AZ_TEST_STATIC_ASSERT((!std::is_default_constructible<AZStd::tuple<DefaultOnly, NoDefault>>::value));
                 AZ_TEST_STATIC_ASSERT((!std::is_default_constructible<AZStd::tuple<NoDefault, DefaultOnly, NoDefault>>::value));
             }
-#endif
             {
                 const AZStd::tuple<> t;
                 (void)t;
@@ -888,14 +832,11 @@ namespace UnitTest
                 EXPECT_EQ(AZ::s32('a'), AZStd::get<1>(t1));
                 EXPECT_EQ(3, AZStd::get<2>(t1).m_num);
             }
-            // VS2013 is not properly forwarding arguments from a source tuple to a new tuple when copy constructing
-#if !defined(AZ_COMPILER_MSVC) || AZ_COMPILER_MSVC > 1900
             {
                 const AZStd::tuple<int> t1(42);
                 AZStd::tuple<Explicit> t2(t1);
                 EXPECT_EQ(42, AZStd::get<0>(t2).m_value);
             }
-#endif
             {
                 const AZStd::tuple<int> t1(42);
                 AZStd::tuple<Implicit> t2 = t1;
@@ -949,14 +890,11 @@ namespace UnitTest
                 EXPECT_EQ(AZ::s32('a'), AZStd::get<1>(t1));
                 EXPECT_EQ(3, AZStd::get<2>(t1)->m_num);
             }
-            // VS2013 is not properly forwarding arguments from a source tuple to a new tuple when move constructing
-#if !defined(AZ_COMPILER_MSVC) || AZ_COMPILER_MSVC > 1900
             {
                 AZStd::tuple<int> t1(42);
                 AZStd::tuple<Explicit> t2(AZStd::move(t1));
                 EXPECT_EQ(42, AZStd::get<0>(t2).m_value);
             }
-#endif
             {
                 AZStd::tuple<int> t1(42);
                 AZStd::tuple<Implicit> t2 = AZStd::move(t1);
@@ -1108,7 +1046,6 @@ namespace UnitTest
                 EXPECT_EQ(142, AZStd::apply(sum_obj, t));
             }
             {
-                // TODO: Add std::tuple_size and std::get specialization for AZStd::array in order to use that test that class
                 using Tup = AZStd::array<AZ::s32, 3>;
                 using Fn = AZ::s32(&)(AZ::s32, AZ::s32, AZ::s32);
                 const Tup t = { { 42, 101, -1 } };
@@ -1281,7 +1218,7 @@ namespace UnitTest
             // member function w/ref
             {
                 T a;
-                Tuple t{ a };
+                Tuple t{ { a } };
                 EXPECT_EQ(1, AZStd::apply(mem1, t));
                 EXPECT_EQ(1, ExtendedTupleTest::m_count);
             }
@@ -1289,7 +1226,7 @@ namespace UnitTest
             // member function w/pointer
             {
                 T a;
-                TuplePtr t{ &a };
+                TuplePtr t{ { &a } };
                 EXPECT_EQ(1, AZStd::apply(mem1, t));
                 EXPECT_EQ(1, ExtendedTupleTest::m_count);
             }
@@ -1297,7 +1234,7 @@ namespace UnitTest
             // member function w/base
             {
                 Base a;
-                TupleBase t{ a };
+                TupleBase t{ { a } };
                 EXPECT_EQ(1, AZStd::apply(mem1, t));
                 EXPECT_EQ(1, ExtendedTupleTest::m_count);
             }
@@ -1305,73 +1242,64 @@ namespace UnitTest
             // member function w/wrap
             {
                 Wrap a;
-                TupleWrap t{ a };
+                TupleWrap t{ { a } };
                 EXPECT_EQ(1, AZStd::apply(mem1, t));
                 EXPECT_EQ(1, ExtendedTupleTest::m_count);
             }
-            // VS2013 cannot generated an implicit constructor to generateda const T element for AZStd::array
-#if !defined(AZ_COMPILER_MSVC) || AZ_COMPILER_MSVC > 1900
             ExtendedTupleTest::m_count = 0;
             // const member function w/ref
             {
                 T const a;
-                ConstTuple t{ a };
+                ConstTuple t{ { a } };
                 EXPECT_EQ(1, AZStd::apply(mem2, t));
                 EXPECT_EQ(1, ExtendedTupleTest::m_count);
             }
-#endif
             ExtendedTupleTest::m_count = 0;
             // const member function w/pointer
             {
                 T const a;
-                ConstTuplePtr t{ &a };
+                ConstTuplePtr t{ { &a } };
                 EXPECT_EQ(1, AZStd::apply(mem2, t));
                 EXPECT_EQ(1, ExtendedTupleTest::m_count);
             }
-            // VS2013 cannot generated an implicit constructor to generateda const T element for AZStd::array
-#if !defined(AZ_COMPILER_MSVC) || AZ_COMPILER_MSVC > 1900
             ExtendedTupleTest::m_count = 0;
             // const member function w/base
             {
                 Base const a;
-                ConstTupleBase t{ a };
+                ConstTupleBase t{ { a } };
                 EXPECT_EQ(1, AZStd::apply(mem2, t));
                 EXPECT_EQ(1, ExtendedTupleTest::m_count);
             }
-#endif
-            // VS2013 cannot generated an implicit constructor to generateda const T element for AZStd::array
-#if !defined(AZ_COMPILER_MSVC) || AZ_COMPILER_MSVC > 1900
             ExtendedTupleTest::m_count = 0;
             // const member function w/wrapper
             {
                 Wrap const a;
-                ConstTupleWrap t{ a };
+                ConstTupleWrap t{ { a } };
                 EXPECT_EQ(1, AZStd::apply(mem2, t));
                 EXPECT_EQ(1, ExtendedTupleTest::m_count);
             }
-#endif
             // member object w/ref
             {
                 T a{ 42 };
-                Tuple t{ a };
+                Tuple t{ { a } };
                 EXPECT_EQ(42, AZStd::apply(obj1, t));
             }
             // member object w/pointer
             {
                 T a{ 42 };
-                TuplePtr t{ &a };
+                TuplePtr t{ { &a } };
                 EXPECT_EQ(42, AZStd::apply(obj1, t));
             }
             // member object w/base
             {
                 Base a{ 42 };
-                TupleBase t{ a };
+                TupleBase t{ { a } };
                 EXPECT_EQ(42, AZStd::apply(obj1, t));
             }
             // member object w/wrapper
             {
                 Wrap a{ 42 };
-                TupleWrap t{ a };
+                TupleWrap t{ { a } };
                 EXPECT_EQ(42, AZStd::apply(obj1, t));
             }
         }

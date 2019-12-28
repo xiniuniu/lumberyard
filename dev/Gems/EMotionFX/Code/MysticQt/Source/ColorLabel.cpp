@@ -12,7 +12,6 @@
 
 // include the required headers
 #include "ColorLabel.h"
-#include <MCore/Source/UnicodeString.h>
 
 
 namespace MysticQt
@@ -33,7 +32,7 @@ namespace MysticQt
         mColor = QColor(startColor.r * 255, startColor.g * 255, startColor.b * 255, startColor.a * 255);
 
         mColorDialog = new QColorDialog(mColor, this);
-        connect(mColorDialog, SIGNAL(colorSelected(QColor)), this, SLOT(ColorChanged(QColor)));
+        connect(mColorDialog, &QColorDialog::colorSelected, this, &MysticQt::ColorLabel::ColorChanged);
 
         // update color
         ColorChanged(mColor);
@@ -66,7 +65,7 @@ namespace MysticQt
     {
         int r, g, b;
         qColor.getRgb(&r, &g, &b);
-        setStyleSheet(MCore::String().Format("#ColorLabel{ color: rgb(%i, %i, %i); background-color: rgb(%i, %i, %i); border: 1px solid rgb(0,0,0); }", r, g, b, r, g, b).AsChar());
+        setStyleSheet(AZStd::string::format("#ColorLabel{ color: rgb(%i, %i, %i); background-color: rgb(%i, %i, %i); border: 1px solid rgb(0,0,0); }", r, g, b, r, g, b).c_str());
         mColor = qColor;
 
         emit ColorChangeEvent();

@@ -189,7 +189,7 @@ namespace AZ
                     QStandardItem* treeItem = BuildTreeItem(currentItem, iterator->first, isCheckable, hierarchy->IsEndPoint());
                     if (isCheckable)
                     {
-                        if (IsSelected(iterator->first))
+                        if (IsSelected(iterator->first, false))
                         {
                             treeItem->setCheckState(Qt::CheckState::Checked);
                             m_selectedCount++;
@@ -302,7 +302,7 @@ namespace AZ
                         QVariant itemData = item->data();
                         if (itemData.isValid())
                         {
-                            AZStd::string fullName = itemData.toString().toLatin1().data();
+                            AZStd::string fullName = itemData.toString().toUtf8().data();
                             if (state == Qt::CheckState::Unchecked)
                             {
                                 m_targetList->RemoveSelectedNode(fullName);
@@ -403,7 +403,7 @@ namespace AZ
                     return;
                 }
 
-                AZStd::string fullName = itemData.toString().toLatin1().data();
+                AZStd::string fullName = itemData.toString().toUtf8().data();
                 AZ_TraceContext("Selected item", fullName);
                 Containers::SceneGraph::NodeIndex nodeIndex = m_scene.GetGraph().Find(fullName);
                 AZ_Assert(nodeIndex.IsValid(), "Invalid node added to tree.");
@@ -430,22 +430,38 @@ namespace AZ
                 }
             }
 
-            bool SceneGraphWidget::IsSelected(const Containers::SceneGraph::Name& name) const
+            bool SceneGraphWidget::IsSelected(const Containers::SceneGraph::Name& name, bool updateNodeSelection) const
             {
                 if (!m_targetList)
                 {
                     return false;
                 }
 
-                size_t count = m_targetList->GetSelectedNodeCount();
-                for (size_t i = 0; i < count; ++i)
+                if (updateNodeSelection)
                 {
-                    if (m_targetList->GetSelectedNode(i) == name.GetPath())
+                    // Use a temp list to get a valid state of the UI here based on selected/unselected nodes
+                    // We use the temp list so that the real list actually keeps track of the user's selection
+                    // Since UpdateNodeSelection will modify selected/unselected node lists for us.
+                    AZStd::unique_ptr<DataTypes::ISceneNodeSelectionList> tempList(m_targetList->Copy());
+                    Utilities::SceneGraphSelector::UpdateNodeSelection(m_scene.GetGraph(), *tempList);
+                    return IsSelectedInSelectionList(name, *tempList);
+                }
+                else
+                {
+                    return IsSelectedInSelectionList(name, *m_targetList);
+                }
+            }
+
+            bool SceneGraphWidget::IsSelectedInSelectionList(const Containers::SceneGraph::Name& name, const DataTypes::ISceneNodeSelectionList& targetList) const
+            {
+                size_t count = targetList.GetSelectedNodeCount();
+                for (size_t selectedNodeIndex = 0; selectedNodeIndex < count; ++selectedNodeIndex)
+                {
+                    if (targetList.GetSelectedNode(selectedNodeIndex) == name.GetPath())
                     {
                         return true;
                     }
                 }
-
                 return false;
             }
 
@@ -462,7 +478,7 @@ namespace AZ
                     return false;
                 }
 
-                AZStd::string fullName = itemData.toString().toLatin1().data();
+                AZStd::string fullName = itemData.toString().toUtf8().data();
                 AZ_TraceContext("Item for addition", fullName);
                 Containers::SceneGraph::NodeIndex nodeIndex = m_scene.GetGraph().Find(fullName);
                 AZ_Assert(nodeIndex.IsValid(), "Invalid node added to tree.");
@@ -490,7 +506,7 @@ namespace AZ
                     return false;
                 }
 
-                AZStd::string fullName = itemData.toString().toLatin1().data();
+                AZStd::string fullName = itemData.toString().toUtf8().data();
                 AZ_TraceContext("Item for removal", fullName);
                 Containers::SceneGraph::NodeIndex nodeIndex = m_scene.GetGraph().Find(fullName);
                 AZ_Assert(nodeIndex.IsValid(), "Invalid node removed from tree.");
@@ -504,6 +520,17 @@ namespace AZ
                 m_selectedCount--;
                 return true;
             }
+
+            QCheckBox* SceneGraphWidget::GetQCheckBox()
+            {
+                return ui->m_selectAllCheckBox;
+            }
+
+            QTreeView* SceneGraphWidget::GetQTreeView()
+            {
+                return ui->m_selectionTree;
+            }
+
         } // namespace UI
     } // namespace SceneAPI
 } // namespace AZ

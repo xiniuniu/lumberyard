@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 #include "RigidPhysicsComponent.h"
 #include <AzCore/RTTI/BehaviorContext.h>
 #include <AzCore/Serialization/SerializeContext.h>
@@ -37,6 +37,7 @@ namespace AzFramework
                 ->Field("BuoyancyDamping", &AzFramework::RigidPhysicsConfig::m_buoyancyDamping)
                 ->Field("BuoyancyDensity", &AzFramework::RigidPhysicsConfig::m_buoyancyDensity)
                 ->Field("BuoyancyResistance", &AzFramework::RigidPhysicsConfig::m_buoyancyResistance)
+                ->Field("Report state updates", &AzFramework::RigidPhysicsConfig::m_reportStateUpdates)
                 ;
         }
 
@@ -229,6 +230,12 @@ namespace LmbrCentral
         pe_params_flags flagParameters;
         flagParameters.flagsOR  = pef_log_poststep // enable event when entity is moved by physics system
             | pef_log_collisions;                     // enable collision event
+
+        if (m_configuration.m_reportStateUpdates)
+        {
+            flagParameters.flagsOR |= pef_log_state_changes | pef_monitor_state_changes;
+        }
+
         m_physicalEntity->SetParams(&flagParameters);
     }
 

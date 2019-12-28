@@ -44,7 +44,7 @@ namespace Driller
         SDM_OFFSET,
         SDM_TOTAL
     };
-    static char* SDM_STRING[] = {
+    static const char* SDM_STRING[] = {
         "Name",
         "Debug Name",
         "Event Type",
@@ -142,7 +142,7 @@ namespace Driller
             AZ::SerializeContext* serialize = azrtti_cast<AZ::SerializeContext*>(context);
             if (serialize)
             {
-                serialize->Class<StreamerDrillerDialogLocal, AZ::UserSettings>()
+                serialize->Class<StreamerDrillerDialogLocal>()
                     ->Field("m_tableColumnStorage", &StreamerDrillerDialogLocal::m_tableColumnStorage)
                     ->Version(1);
             }
@@ -186,7 +186,7 @@ namespace Driller
             AZ::SerializeContext* serialize = azrtti_cast<AZ::SerializeContext*>(context);
             if (serialize)
             {
-                serialize->Class<StreamerDrillerDialogSavedState, AZ::UserSettings>()
+                serialize->Class<StreamerDrillerDialogSavedState>()
                     ->Field("m_viewType", &StreamerDrillerDialogSavedState::m_viewType)
                     ->Field("m_autoZoom", &StreamerDrillerDialogSavedState::m_autoZoom)
                     ->Field("m_manualZoomMin", &StreamerDrillerDialogSavedState::m_manualZoomMin)
@@ -1472,7 +1472,7 @@ namespace Driller
 
                     if (dummyCompressedFlag)
                     {
-                        if (socEvent->m_type == StreamerDataAggregator::TRANSFER_EVENT_COMPRESSOR_READ || socEvent->m_type == StreamerDataAggregator::TRANSFER_EVENT_COMPRESSOR_WRITE)
+                        if (static_cast<StreamerDataAggregator::TransferEventType>(socEvent->m_type) == StreamerDataAggregator::TRANSFER_EVENT_COMPRESSOR_READ || static_cast<StreamerDataAggregator::TransferEventType>(socEvent->m_type) == StreamerDataAggregator::TRANSFER_EVENT_COMPRESSOR_WRITE)
                         {
                             return QVariant(QString("%1").arg(socEvent->m_bytesTransferred));
                         }

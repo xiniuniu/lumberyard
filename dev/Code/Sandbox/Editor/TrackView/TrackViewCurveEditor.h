@@ -19,7 +19,7 @@
 #include "TrackViewDopeSheetBase.h"
 #include "TrackViewSplineCtrl.h"
 #include "Controls/TimelineCtrl.h"
-#include "TrackViewTimeLine.h"
+#include "TrackViewTimeline.h"
 
 #include <QWidget>
 
@@ -67,9 +67,6 @@ private:
     void OnSplineCmdUpdateUI();
     void OnTimelineChange();
     void OnSplineTimeMarkerChange();
-    void OnHorizonSliderChange();
-    void OnVerticalSliderChange();
-    void OnSplineScrollZoom();
 
     // IEditorNotifyListener
     virtual void OnEditorNotifyEvent(EEditorNotifyEvent event) override;
@@ -87,8 +84,6 @@ private:
     void UpdateTimeRange(CTrackViewSequence* pSequence);
 
     void AddSpline(CTrackViewTrack* pTrack);
-
-    void ResetSliderRange();
 
     TrackView::CTrackViewTimelineWidget m_timelineCtrl;
 

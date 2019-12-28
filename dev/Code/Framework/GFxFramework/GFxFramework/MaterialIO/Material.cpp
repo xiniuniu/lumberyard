@@ -61,6 +61,8 @@ namespace AZ
              const char* g_stringPhysicsNoDraw = "PhysicsNoDraw";
 
              const char* g_mtlExtension = ".mtl";
+             const char* g_dccMaterialExtension = ".dccmtl";
+             const char* g_dccMaterialHashString = "DccMaterialHash";
 
              const char* g_whiteTexture = "EngineAssets/Textures/white.dds";
 
@@ -93,16 +95,43 @@ namespace AZ
                  }
                  return false;
              }
+
+             bool ParseUintAttribute(rapidxml::xml_attribute<char>* attribute, AZ::u32& uintValue)
+             {
+                 if (attribute)
+                 {
+                     const char* value = attribute->value();
+                     if (azsscanf(value, "%u", &uintValue) == 1)
+                     {
+                         return true;
+                     }
+                 }
+                 return false;
+             }
+
+             bool ParseIntAttribute(rapidxml::xml_attribute<char>* attribute, AZ::s32& intValue)
+             {
+                 if (attribute)
+                 {
+                     const char* value = attribute->value();
+                     if (azsscanf(value, "%d", &intValue) == 1)
+                     {
+                         return true;
+                     }
+                 }
+                 return false;
+             }
         }
 
         Material::Material() 
             : m_useVertexColor(false)
-            , m_physicsMaterial(false)
+            , m_flags(0)
             , m_diffuseColor(AZ::Vector3::CreateOne())
             , m_specularColor(AZ::Vector3::CreateZero())
             , m_emissiveColor(AZ::Vector3::CreateZero())
             , m_opacity(1.f)
             , m_shininess(0.f)
+            , m_dccMaterialHash(0)
         {
         }
 
@@ -111,8 +140,7 @@ namespace AZ
             if (materialNode)
             {
                 rapidxml::xml_attribute<char>* name = materialNode->first_attribute(MaterialExport::g_nameString);
-                //rapidxml::xml_attribute<char>* mtlFlags = materialNode->first_attribute(MaterialExport::g_mtlFlagString);
-                rapidxml::xml_attribute<char>* shader = materialNode->first_attribute(MaterialExport::g_shaderString);
+                rapidxml::xml_attribute<char>* mtlFlags = materialNode->first_attribute(MaterialExport::g_mtlFlagString);
                 rapidxml::xml_attribute<char>* stringGenMask = materialNode->first_attribute(MaterialExport::g_stringGenMask);
 
                 rapidxml::xml_node<char>* textureNode = materialNode->first_node(MaterialExport::g_texturesString);
@@ -122,6 +150,7 @@ namespace AZ
                 rapidxml::xml_attribute<char>* emissiveColor = materialNode->first_attribute(MaterialExport::g_emissiveMapName);
                 rapidxml::xml_attribute<char>* opacity = materialNode->first_attribute(MaterialExport::g_opacityString);
                 rapidxml::xml_attribute<char>* shininess = materialNode->first_attribute(MaterialExport::g_shininessString);
+                rapidxml::xml_attribute<char>* hash = materialNode->first_attribute(MaterialExport::g_dccMaterialHashString);
 
                 if (name)
                 {
@@ -133,18 +162,11 @@ namespace AZ
                 MaterialExport::ParseVectorAttribute(emissiveColor, m_emissiveColor);
                 MaterialExport::ParseFloatAttribute(opacity, m_opacity);
                 MaterialExport::ParseFloatAttribute(shininess, m_shininess);
+                MaterialExport::ParseUintAttribute(hash, m_dccMaterialHash);
 
-                if (shader)
+                if (mtlFlags)
                 {
-                    if (azstrnicmp(shader->value(), MaterialExport::g_noDrawShaderName,
-                        AZStd::GetMin(strlen(shader->value()), strlen(MaterialExport::g_noDrawShaderName))) == 0)
-                    {
-                        m_physicsMaterial = true;
-                    }
-                    else
-                    {
-                        m_physicsMaterial = false;
-                    }
+                    MaterialExport::ParseIntAttribute(mtlFlags, m_flags);
                 }
 
                 if (stringGenMask)
@@ -170,6 +192,8 @@ namespace AZ
 
                         if (!mapType || !fileName)
                         {
+                            AZ_TracePrintf("Warning", "Detected malformed texture data in MTL file.");
+                            texture = texture->next_sibling(MaterialExport::g_texturesString);
                             continue;
                         }
 
@@ -191,7 +215,7 @@ namespace AZ
                             m_normalMap = AZStd::string(fileName->value());
                         }
 
-                        texture = texture->next_sibling();
+                        texture = texture->next_sibling(MaterialExport::g_textureString);
                     }
                 }
             }
@@ -249,14 +273,14 @@ namespace AZ
             m_useVertexColor = useVertexColor;
         }
         
-        bool Material::IsPhysicalMaterial() const
+        int Material::GetMaterialFlags() const
         {
-            return m_physicsMaterial;
+            return m_flags;
         }
 
-        void Material::EnablePhysicalMaterial(bool physical)
+        void Material::SetMaterialFlags(int flags)
         {
-            m_physicsMaterial = physical;
+            m_flags = flags;
         }
 
         const AZ::Vector3& Material::GetDiffuseColor() const
@@ -309,6 +333,16 @@ namespace AZ
             m_shininess = shininess;
         }
 
+        AZ::u32 Material::GetDccMaterialHash() const
+        {
+            return m_dccMaterialHash;
+        }
+
+        void Material::SetDccMaterialHash(AZ::u32 hash)
+        {
+            m_dccMaterialHash = hash;
+        }
+
         MaterialGroup::MaterialGroup() 
             : m_readFromMtl(false)
         {
@@ -319,7 +353,7 @@ namespace AZ
             size_t index = 0;
             for (const auto& mat : m_materials)
             {
-                if (mat->GetName().compare(name) == 0)
+                if (mat && mat->GetName().compare(name) == 0)
                 {
                     return index;
                 }
@@ -362,7 +396,7 @@ namespace AZ
             //Don't add two materials with the same name. 
             for (const auto& mat : m_materials)
             {
-                if (mat->GetName().compare(material->GetName()) == 0)
+                if (mat && mat->GetName().compare(material->GetName()) == 0)
                 {
                     return;
                 }
@@ -413,7 +447,7 @@ namespace AZ
             m_mtlDoc.parse<rapidxml::parse_no_data_nodes>(m_mtlBuffer.data());
 
             //Parse MTL file for materials and/or submaterials. 
-            rapidxml::xml_node<char>* materialNode = m_mtlDoc.first_node("Material");
+            rapidxml::xml_node<char>* materialNode = m_mtlDoc.first_node(MaterialExport::g_materialString);
             if (!materialNode)
             {
                 AZ_Error("MaterialIO", false, "Invalid material file %s. File does not contain a 'Material' node. Try removing the file or replacing it with a valid material file.", fileName);
@@ -472,9 +506,7 @@ namespace AZ
 
             //Write out MTL data from rapidXML then write mtl file to disk. 
             AZStd::vector<char> buffer;
-            IO::ByteContainerStream<AZStd::vector<char>> stream(&buffer);
-            IO::RapidXMLStreamWriter streamWriter(&stream);
-            rapidxml::print(streamWriter, m_mtlDoc);
+            rapidxml::print(AZStd::back_inserter(buffer), m_mtlDoc);
 
             mtlFile.Write(buffer.data(), buffer.size());
             mtlFile.Close();
@@ -492,38 +524,80 @@ namespace AZ
             m_materialGroupName = name;
         }
 
+        AZ::u32 MaterialGroup::CalculateDccMaterialHash()
+        {
+            // Compound material group hash from sub material hashes.
+            AZ::Crc32 hash(0u);
+            for (const auto& mat : m_materials)
+            {
+                if (mat)
+                {
+                    AZ::u32 subMaterialHash = mat->GetDccMaterialHash();
+                    hash.Add(&subMaterialHash, sizeof(AZ::u32));
+                }
+            }
+            return hash;
+        }
+
         void MaterialGroup::CreateMtlFile()
         {
             rapidxml::xml_node<char>* rootNode = m_mtlDoc.allocate_node(rapidxml::node_element, MaterialExport::g_materialString);
+            
+            // MtlFlags
             rapidxml::xml_attribute<char>* attr = m_mtlDoc.allocate_attribute(MaterialExport::g_mtlFlagString,
                 m_mtlDoc.allocate_string(AZStd::to_string(EMaterialFlags::MTL_64BIT_SHADERGENMASK | EMaterialFlags::MTL_FLAG_MULTI_SUBMTL).c_str()));
             rootNode->append_attribute(attr);
+
+            // DccMaterialHash
+            const AZStd::string hashString = AZStd::string::format("%u", CalculateDccMaterialHash());
+            attr = m_mtlDoc.allocate_attribute(MaterialExport::g_dccMaterialHashString, m_mtlDoc.allocate_string(hashString.c_str()));
+            rootNode->append_attribute(attr);
+
+            // SubMaterials
             rapidxml::xml_node<char>* subMaterialNode = m_mtlDoc.allocate_node(rapidxml::node_element, MaterialExport::g_subMaterialString);
             rootNode->append_node(subMaterialNode);
 
             m_mtlDoc.append_node(rootNode);
             for (const auto& mat : m_materials)
             {
-                subMaterialNode->append_node(CreateMaterialMtlNode(*(mat.get())));
+                if (mat)
+                {
+                    subMaterialNode->append_node(CreateMaterialMtlNode(*(mat.get())));
+                }
             }
         }
 
         void MaterialGroup::UpdateMtlFile()
         {
-            //update or add materials
-            for (auto& mat : m_materials)
+            // Update DCC material hash
+            rapidxml::xml_node<char>* rootNode = m_mtlDoc.first_node(MaterialExport::g_materialString);
+            if (rootNode)
             {
-                bool updated = UpdateMaterialNode(*(mat.get()));
-                if (!updated)
+                rapidxml::xml_attribute<char>* dccMaterialHashAttribute = rootNode->first_attribute(MaterialExport::g_dccMaterialHashString);
+                if (dccMaterialHashAttribute)
                 {
-                    AddMaterialNode(*(mat.get()));
+                    const AZStd::string hashString = AZStd::string::format("%u", CalculateDccMaterialHash());
+                    dccMaterialHashAttribute->value(m_mtlDoc.allocate_string(hashString.c_str()));
+                }
+
+                //update or add materials
+                for (auto& mat : m_materials)
+                {
+                    if (mat)
+                    {
+                        bool updated = UpdateMaterialNode(*(mat.get()));
+                        if (!updated)
+                        {
+                            AddMaterialNode(*(mat.get()));
+                        }
+                    }
                 }
             }
         }
 
         bool MaterialGroup::AddMaterialNode(const IMaterial& mat)
         {
-            rapidxml::xml_node<char>* materialNode = m_mtlDoc.first_node("Material");
+            rapidxml::xml_node<char>* materialNode = m_mtlDoc.first_node(MaterialExport::g_materialString);
 
             rapidxml::xml_node<char>* submaterialNode = nullptr;
 
@@ -569,15 +643,17 @@ namespace AZ
                 if (flagAttribute)
                 {
                     int flag = atoi(flagAttribute->value());
-                    if (mat.IsPhysicalMaterial())
-                    {
-                        flag = flag | EMaterialFlags::MTL_FLAG_NODRAW;
-                    }
-                    else
-                    {
-                        flag = ((flag & (~EMaterialFlags::MTL_FLAG_NODRAW)) | EMaterialFlags::MTL_64BIT_SHADERGENMASK);
-                    }
                     flagAttribute->value(m_mtlDoc.allocate_string(AZStd::to_string(flag).c_str()));
+                }
+            }
+
+            // Update DCC material hash
+            {
+                rapidxml::xml_attribute<char>* dccMaterialHashAttribute = node->first_attribute(MaterialExport::g_dccMaterialHashString);
+                if (dccMaterialHashAttribute)
+                {
+                    const AZStd::string hashString = AZStd::string::format("%u", mat.GetDccMaterialHash());
+                    dccMaterialHashAttribute->value(m_mtlDoc.allocate_string(hashString.c_str()));
                 }
             }
 
@@ -658,6 +734,7 @@ namespace AZ
                         if (!mapType || !fileName)
                         {
                             AZ_TracePrintf("Warning", "Detected malformed texture data in MTL file.");
+                            textureNode = textureNode->next_sibling(MaterialExport::g_texturesString);
                             continue;
                         }
                         if (azstrnicmp(mapType->value(), currentTexture.exportName.c_str(),
@@ -675,7 +752,7 @@ namespace AZ
                             }
                             break;
                         }
-                        textureNode = textureNode->next_sibling();
+                        textureNode = textureNode->next_sibling(MaterialExport::g_texturesString);
                     }
 
                     //texture not found in list add it. 
@@ -718,7 +795,7 @@ namespace AZ
 
         rapidxml::xml_node<char>* MaterialGroup::FindMaterialNode(const IMaterial& mat) const
         {
-            rapidxml::xml_node<char>* materialNode = m_mtlDoc.first_node("Material");
+            rapidxml::xml_node<char>* materialNode = m_mtlDoc.first_node(MaterialExport::g_materialString);
             if (materialNode == nullptr)
             {
                 return nullptr;
@@ -733,7 +810,7 @@ namespace AZ
                 while (materialNode)
                 {
                     rapidxml::xml_attribute<char>* name = materialNode->first_attribute(MaterialExport::g_nameString);
-                    if (azstrnicmp(name->value(), mat.GetName().c_str(), mat.GetName().size()) == 0)
+                    if (name && azstrnicmp(name->value(), mat.GetName().c_str(), mat.GetName().size()) == 0)
                     {
                         break;
                     }
@@ -743,7 +820,7 @@ namespace AZ
             else
             {
                 rapidxml::xml_attribute<char>* name = materialNode->first_attribute(MaterialExport::g_nameString);
-                if (azstrnicmp(name->value(), mat.GetName().c_str(), mat.GetName().size()) != 0)
+                if (name && azstrnicmp(name->value(), mat.GetName().c_str(), mat.GetName().size()) != 0)
                 {
                     return nullptr;
                 }
@@ -758,10 +835,13 @@ namespace AZ
             rapidxml::xml_attribute<char>* attr = m_mtlDoc.allocate_attribute(MaterialExport::g_nameString, m_mtlDoc.allocate_string(material.GetName().c_str()));
             materialNode->append_attribute(attr);
 
-            if (material.IsPhysicalMaterial())
+            int materialFlags = material.GetMaterialFlags();
+
+            if (materialFlags & (EMaterialFlags::MTL_FLAG_NODRAW | EMaterialFlags::MTL_FLAG_NODRAW_TOUCHBENDING))
             {
+                materialFlags |= EMaterialFlags::MTL_FLAG_PURE_CHILD;
                 attr = m_mtlDoc.allocate_attribute(MaterialExport::g_mtlFlagString,
-                    m_mtlDoc.allocate_string(AZStd::to_string(EMaterialFlags::MTL_FLAG_NODRAW | EMaterialFlags::MTL_FLAG_PURE_CHILD).c_str()));
+                    m_mtlDoc.allocate_string(AZStd::to_string(materialFlags).c_str()));
                 materialNode->append_attribute(attr);
                 attr = m_mtlDoc.allocate_attribute(MaterialExport::g_shaderString, MaterialExport::g_noDrawShaderName);
                 materialNode->append_attribute(attr);
@@ -770,8 +850,9 @@ namespace AZ
             }
             else
             {
+                materialFlags |= (EMaterialFlags::MTL_64BIT_SHADERGENMASK | EMaterialFlags::MTL_FLAG_PURE_CHILD);
                 attr = m_mtlDoc.allocate_attribute(MaterialExport::g_mtlFlagString,
-                    m_mtlDoc.allocate_string(AZStd::to_string(EMaterialFlags::MTL_64BIT_SHADERGENMASK | EMaterialFlags::MTL_FLAG_PURE_CHILD).c_str()));
+                    m_mtlDoc.allocate_string(AZStd::to_string(materialFlags).c_str()));
                 materialNode->append_attribute(attr);
                 attr = m_mtlDoc.allocate_attribute(MaterialExport::g_shaderString, MaterialExport::g_illumShaderName);
                 materialNode->append_attribute(attr);
@@ -787,6 +868,8 @@ namespace AZ
             const AZStd::string emissiveColorString = AZStd::string::format("%f,%f,%f", (float)emissiveColor.GetX(), (float)emissiveColor.GetY(), (float)emissiveColor.GetZ());
             const AZStd::string opacityString = AZStd::string::format("%f", material.GetOpacity());
             const AZStd::string shininessString = AZStd::string::format("%f", material.GetShininess());
+            const AZStd::string hashString = AZStd::string::format("%u", material.GetDccMaterialHash());
+
             attr = m_mtlDoc.allocate_attribute(MaterialExport::g_diffuseMapName, m_mtlDoc.allocate_string(diffuseColorString.c_str()));
             materialNode->append_attribute(attr);
             attr = m_mtlDoc.allocate_attribute(MaterialExport::g_specularMapName, m_mtlDoc.allocate_string(specularColorString.c_str()));
@@ -796,6 +879,8 @@ namespace AZ
             attr = m_mtlDoc.allocate_attribute(MaterialExport::g_opacityString, m_mtlDoc.allocate_string(opacityString.c_str()));
             materialNode->append_attribute(attr);
             attr = m_mtlDoc.allocate_attribute(MaterialExport::g_shininessString, m_mtlDoc.allocate_string(shininessString.c_str()));
+            materialNode->append_attribute(attr);
+            attr = m_mtlDoc.allocate_attribute(MaterialExport::g_dccMaterialHashString, m_mtlDoc.allocate_string(hashString.c_str()));
             materialNode->append_attribute(attr);
 
             AZStd::string genMask;

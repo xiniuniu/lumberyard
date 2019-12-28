@@ -24,14 +24,15 @@
 #include <AzCore/Outcome/Outcome.h>
 #include <AzCore/IO/SystemFile.h>
 #include <AzCore/Serialization/SerializeContext.h>
-#include <AzCore/RTTI/BehaviorContext.h>
+#include <AzCore/RTTI/ReflectionManager.h>
 #include <AzCore/std/smart_ptr/unique_ptr.h>
 #include <AzCore/std/string/osstring.h>
 #include <AzCore/std/string/conversions.h>
+#define BIN_FOLDER_NAME_MAX_SIZE    128
 
 namespace AZ
 {
-    class SerializeContext;
+    class BehaviorContext;
     class Module;
     class ModuleManager;
 
@@ -39,6 +40,27 @@ namespace AZ
     {
         class DrillerManager;
     }
+
+    class ReflectionEnvironment
+    {
+    public:
+
+        ReflectionEnvironment()
+        {
+            m_reflectionManager = AZStd::make_unique<ReflectionManager>();
+        }
+
+        static void Init();
+        static void Reset();
+        static ReflectionManager* GetReflectionManager();
+
+        ReflectionManager* Get() { return m_reflectionManager.get(); }
+
+    private:
+
+        AZStd::unique_ptr<ReflectionManager> m_reflectionManager;
+
+    };
 
     /**
      * A main class that can be used directly or as a base to start a
@@ -73,6 +95,19 @@ namespace AZ
             AZ_TYPE_INFO(ComponentApplication::Descriptor, "{70277A3E-2AF5-4309-9BBF-6161AFBDE792}");
             AZ_CLASS_ALLOCATOR(ComponentApplication::Descriptor, SystemAllocator, 0);
 
+            struct AllocatorRemapping
+            {
+                AZ_TYPE_INFO(ComponentApplication::Descriptor::AllocatorRemapping, "{4C865590-4506-4B76-BF14-6CCB1B83019A}");
+                AZ_CLASS_ALLOCATOR(ComponentApplication::Descriptor::AllocatorRemapping, OSAllocator, 0);
+
+                static void Reflect(ReflectContext* context, ComponentApplication* app);
+
+                OSString m_from;
+                OSString m_to;
+            };
+
+            typedef AZStd::vector<AllocatorRemapping, OSStdAllocator> AllocatorRemappings;
+
             ///////////////////////////////////////////////
             // SerializeContext::IObjectFactory
             void* Create(const char* name) override;
@@ -106,19 +141,13 @@ namespace AZ
             Debug::AllocationRecords::Mode m_recordingMode; ///< When to record stack traces (default: AZ::Debug::AllocationRecords::RECORD_STACK_IF_NO_FILE_LINE)
             AZ::u64         m_stackRecordLevels;        ///< If stack recording is enabled, how many stack levels to record. (default: 5)
             bool            m_enableDrilling;           ///< True to enabled drilling support for the application. RegisterDrillers will be called. Ignored in release. (default: true)
+            bool            m_useOverrunDetection;      ///< True to use the overrun detection memory management scheme. Only available on some platforms; greatly increases memory consumption.
+            bool            m_useMalloc;                ///< True to use malloc instead of the internal memory manager. Intended for debugging purposes only.
+
+            AllocatorRemappings m_allocatorRemappings;  ///< List of remappings of allocators to perform, so that they can alias each other.
 
             ModuleDescriptorList m_modules;             ///< Dynamic modules used by the application.
                                                         ///< These will be loaded on startup.
-
-            ///////////////////////////////////////////////
-            /// PLATFORM
-            /**
-             * Used only on X360 to indicate is we want to allocate physical memory. The page size is determined by m_pageSize // ACCEPTED_USE
-             * so if m_pageSize >= 64 KB we will use MEM_LARGE_PAGES otherwise small 4 KB pages.
-             * default: false
-             */
-            bool            m_x360IsPhysicalMemory; // ACCEPTED_USE
-            ///////////////////////////////////////////////
         };
 
         /// Application settings.
@@ -142,8 +171,8 @@ namespace AZ
             /// Whether or not to load dynamic modules described by \ref Descriptor::m_modules
             bool m_loadDynamicModules = true;
 
-            /// Specifies which system components to create & activate. If no tags specified, all system components are used.
-            AZStd::vector<AZ::Crc32, OSStdAllocator> m_systemComponentTags;
+            /// Specifies which system components to create & activate. If no tags specified, all system components are used. Specify as comma separated list.
+            const char* m_systemComponentTags = nullptr;
         };
 
         ComponentApplication();
@@ -166,8 +195,8 @@ namespace AZ
 
         //////////////////////////////////////////////////////////////////////////
         // ComponentApplicationRequests
-        void RegisterComponentDescriptor(const ComponentDescriptor* descriptor) override;
-        void UnregisterComponentDescriptor(const ComponentDescriptor* descriptor) override;
+        void RegisterComponentDescriptor(const ComponentDescriptor* descriptor) override final;
+        void UnregisterComponentDescriptor(const ComponentDescriptor* descriptor) override final;
         bool AddEntity(Entity* entity) override;
         bool RemoveEntity(Entity* entity) override;
         bool DeleteEntity(const EntityId& id) override;
@@ -176,14 +205,20 @@ namespace AZ
         void EnumerateEntities(const ComponentApplicationRequests::EntityCallback& callback) override;
         ComponentApplication* GetApplication() override { return this; }
         /// Returns the serialize context that has been registered with the app, if there is one.
-        SerializeContext* GetSerializeContext() override { return m_serializeContext; }
+        SerializeContext* GetSerializeContext() override;
         /// Returns the behavior context that has been registered with the app, if there is one.
-        BehaviorContext* GetBehaviorContext() override { return m_behaviorContext; }
+        BehaviorContext* GetBehaviorContext() override;
+        /// Returns the json registration context that has been registered with the app, if there is one.
+        JsonRegistrationContext* GetJsonRegistrationContext() override;
         /// Returns the working root folder that has been registered with the app, if there is one.
         /// It's expected that derived applications will implement an application root.
-        const char*  GetAppRoot() override { return ""; }
+        const char* GetAppRoot() override { return ""; }
         /// Returns the path to the folder the executable is in.
-        const char* GetExecutableFolder() override { return m_exeDirectory; }
+        const char* GetExecutableFolder() const override { return m_exeDirectory; }
+        /// Returns the bin folder name where the application is running from. The folder is relative to the engine root.
+        const char* GetBinFolder() const override { return m_binFolder; }
+
+
         /// Returns pointer to the driller manager if it's enabled, otherwise NULL.
         Debug::DrillerManager* GetDrillerManager() override { return m_drillerManager; }
         //////////////////////////////////////////////////////////////////////////
@@ -203,7 +238,7 @@ namespace AZ
 
         /**
         * Ticks all using the \ref AZ::SystemTickBus at all times. Should always tick even if the application is not active.
-        */        
+        */
         virtual void TickSystem();
 
         /**
@@ -230,14 +265,13 @@ namespace AZ
         void ResolveModulePath(AZ::OSString& modulePath) override;
 
     protected:
-        virtual void CreateSerializeContext();
-        virtual void DestroySerializeContext();
-
-        virtual void CreateBehaviorContext();
-        virtual void DestroyBehaviorContext();
+        virtual void CreateReflectionManager();
+        void DestroyReflectionManager();
 
         /// Perform any additional initialization needed before loading modules
         virtual void PreModuleLoad() {};
+
+        virtual void CreateStaticModules(AZStd::vector<AZ::Module*>& outModules);
 
         /// Common logic shared between the multiple Create(...) functions.
         void        CreateCommon();
@@ -284,8 +318,20 @@ namespace AZ
         /// Calculates the directory the application executable comes from.
         void CalculateExecutablePath();
 
+        /// Platform specific calculation of the Bin folder name where the application is running from (off of the engine root folder)
+        void PlatformCalculateBinFolder();
+
         /// Adjusts an input descriptor path to the app's root path.
         AZ::OSString GetFullPathForDescriptor(const char* descriptorPath);
+
+        /**
+         * Check/verify a given path for the engine marker (file) so that we can identify that
+         * a given path is the engine root. This is only valid for target platforms that are built
+         * for the host platform and not deployable (ie windows, mac). 
+         * @param fullPath The full path to look for the engine marker
+         * @return true if the input path contains the engine marker file, false if not
+         */
+        virtual bool CheckPathForEngineMarker(const char* fullPath) const;
 
         template<typename Iterator>
         static void NormalizePath(Iterator begin, Iterator end, bool doLowercase = true)
@@ -299,23 +345,20 @@ namespace AZ
 
         AZStd::chrono::system_clock::time_point     m_currentTime;
         float                                       m_deltaTime;
-        SerializeContext*                           m_serializeContext;
-        BehaviorContext*                            m_behaviorContext;
         AZStd::unique_ptr<ModuleManager>            m_moduleManager;
         Descriptor                                  m_descriptor;
         bool                                        m_isStarted;
         bool                                        m_isSystemAllocatorOwner;
         bool                                        m_isOSAllocatorOwner;
-        void*                                       m_memoryBlock;                  ///< Pointer to the memory block allocator, so we can free it OnDestroy.
+        void*                                       m_fixedMemoryBlock;                  ///< Pointer to the memory block allocator, so we can free it OnDestroy.
         IAllocatorAllocate*                         m_osAllocator;
         EntitySetType                               m_entities;
         char                                        m_exeDirectory[AZ_MAX_PATH_LEN];
+        char                                        m_binFolder[BIN_FOLDER_NAME_MAX_SIZE];
+
         Debug::DrillerManager*                      m_drillerManager;
 
         StartupParameters                           m_startupParameters;
-
-private:
-        AZ::Debug::ProfileModuleInitializer m_moduleProfilerInit;
     };
 }
 

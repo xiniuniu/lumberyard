@@ -182,7 +182,7 @@ void CVariableTypeInfo::Set(const char* value)
 
 void CVariableTypeInfo::Set(const QString& value)
 {
-    Set(value.toLatin1().data());
+    Set(value.toUtf8().data());
 }
 
 void CVariableTypeInfo::Set(float value)
@@ -340,6 +340,12 @@ ISplineInterpolator* CVariableTypeInfoSpline::GetSpline()
         SetFlags(flags);
     }
     return m_pSpline;
+}
+
+void CVariableTypeInfoSpline::OnSetValue(bool bRecursive)
+{
+    m_pTypeInfo->ToValue(m_pData, m_pSpline);
+    CVariableTypeInfo::OnSetValue(bRecursive);
 }
 
 CVariableTypeInfoStruct::CVariableTypeInfoStruct(CTypeInfo::CVarInfo const& VarInfo,

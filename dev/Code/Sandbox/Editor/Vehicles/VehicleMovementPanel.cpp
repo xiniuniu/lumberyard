@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "VehicleMovementPanel.h"
 
 #include "VehicleData.h"
@@ -77,8 +77,8 @@ void CVehicleMovementPanel::DoOnMovementTypeChange(IVariable* pVar)
     {
         QString type;
         pVar->Get(type);
-        Log("looking up defaults for movement type %s", type.toLatin1().data());
-        if (IVariable* pType = GetChildVar(pParams, type.toLatin1().data()))
+        Log("looking up defaults for movement type %s", type.toUtf8().data());
+        if (IVariable* pType = GetChildVar(pParams, type.toUtf8().data()))
         {
             IVariable* pNewType = pType->Clone(true);
 

@@ -9,7 +9,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *
 */
-#include <StdAfx.h>
+#include <LmbrCentral_precompiled.h>
 #include "MaterialOwnerRequestBusHandlerImpl.h"
 #include <IEntityRenderState.h>
 #include <I3DEngine.h>
@@ -71,6 +71,7 @@ namespace LmbrCentral
         AZ_Assert(!m_readyEventSent, "OnMaterialOwnerReady already sent");
         if (!m_readyEventSent)
         {
+            m_readyEventSent = true;
             MaterialOwnerNotificationBus::Event(m_notificationBus, &MaterialOwnerNotifications::OnMaterialOwnerReady);
         }
     }
@@ -122,9 +123,9 @@ namespace LmbrCentral
         return material;
     }
 
-    void MaterialOwnerRequestBusHandlerImpl::SetMaterialHandle(MaterialHandle m)
+    void MaterialOwnerRequestBusHandlerImpl::SetMaterialHandle(const MaterialHandle& materialHandle)
     {
-        SetMaterial(m.m_material);
+        SetMaterial(materialHandle.m_material);
     }
 
     MaterialHandle MaterialOwnerRequestBusHandlerImpl::GetMaterialHandle()

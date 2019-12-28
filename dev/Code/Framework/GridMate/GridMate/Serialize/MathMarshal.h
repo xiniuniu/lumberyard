@@ -13,6 +13,7 @@
 #define GM_UTILS_MATH_MARSHAL
 
 #include <GridMate/Serialize/DataMarshal.h>
+#include <AzCore/Math/Color.h>
 #include <AzCore/Math/Vector2.h>
 #include <AzCore/Math/Vector3.h>
 #include <AzCore/Math/Quaternion.h>
@@ -29,6 +30,8 @@ namespace GridMate
 	class Marshaler<AZ::Vector2>
 	{
 	public:
+        AZ_TYPE_INFO_LEGACY( Marshaler, "{CF906A15-B46E-4468-9C7C-EC5F5A544F78}", AZ::Vector2 );
+
 		typedef AZ::Vector2 DataType;
 
 		static const AZStd::size_t MarshalSize = sizeof(float) * 2;
@@ -56,6 +59,8 @@ namespace GridMate
     class Marshaler<AZ::Vector3>
     {
     public:
+        AZ_TYPE_INFO_LEGACY( Marshaler, "{E271F6BE-ACE0-4CAA-BE81-B4FE932A5EE8}", AZ::Vector3 );
+
         typedef AZ::Vector3 DataType;
 
         static const AZStd::size_t MarshalSize = sizeof(float) * 3;
@@ -79,12 +84,47 @@ namespace GridMate
     };
 
     /**
+    * Color Marshaler uses 16 bytes.
+    */
+    template<>
+    class Marshaler<AZ::Color>
+    {
+    public:
+        AZ_TYPE_INFO_LEGACY( Marshaler, "{4F436B7E-B770-476B-8BA5-14BC3CA17FC0}", AZ::Color );
+
+        typedef AZ::Color DataType;
+
+        static const AZStd::size_t MarshalSize = sizeof(float) * 4;
+
+        void Marshal(WriteBuffer& wb, const AZ::Color& color) const
+        {
+            Marshaler<float> marshaler;
+            marshaler.Marshal(wb, color.GetR());
+            marshaler.Marshal(wb, color.GetG());
+            marshaler.Marshal(wb, color.GetB());
+            marshaler.Marshal(wb, color.GetA());
+        }
+        void Unmarshal(AZ::Color& color, ReadBuffer& rb) const
+        {
+            float r, g, b, a;
+            Marshaler<float> marshaler;
+            marshaler.Unmarshal(r, rb);
+            marshaler.Unmarshal(g, rb);
+            marshaler.Unmarshal(b, rb);
+            marshaler.Unmarshal(a, rb);
+            color.Set(r, g, b, a);
+        }
+    };
+
+    /**
     * Quaternion Marshaler uses 16 bytes
     */
     template<>
     class Marshaler<AZ::Quaternion>
     {
     public:
+        AZ_TYPE_INFO_LEGACY( Marshaler, "{C4D41B7B-3486-49A6-89CC-73351DF11B50}", AZ::Quaternion );
+
         typedef AZ::Quaternion DataType;
 
         static const AZStd::size_t MarshalSize = sizeof(float) * 4;
@@ -116,6 +156,8 @@ namespace GridMate
     class Marshaler<AZ::Transform>
     {
     public:
+        AZ_TYPE_INFO_LEGACY( Marshaler, "{6F81A4D3-8816-4080-A9BE-C86DA3884E9A}", AZ::Transform );
+
         typedef AZ::Transform DataType;
 
         static const AZStd::size_t MarshalSize = Marshaler<AZ::Vector3>::MarshalSize * 4;
@@ -147,6 +189,8 @@ namespace GridMate
     class Marshaler<AZ::Matrix3x3>
     {
     public:
+        AZ_TYPE_INFO_LEGACY( Marshaler, "{F4F8CABA-F32F-49DE-8C86-B12BA55944A2}", AZ::Matrix3x3 );
+
         typedef AZ::Matrix3x3 DataType;
 
         static const AZStd::size_t MarshalSize = Marshaler<AZ::Vector3>::MarshalSize * 3;

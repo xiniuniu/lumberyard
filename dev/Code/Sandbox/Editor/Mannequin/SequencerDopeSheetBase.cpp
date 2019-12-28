@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "stdafx.h"
+#include "StdAfx.h"
 #include "SequencerDopeSheetBase.h"
 
 #include "AnimationContext.h"
@@ -328,8 +328,7 @@ void CSequencerDopeSheetBase::DrawTimeLineInFrames(QPainter* painter, const QRec
         {
             painter->setPen(black);
             painter->drawLine(x, rc.bottom() - 2, x, rc.bottom() - 14);
-            const QStaticText str = QString::number(fFrame, 'g');
-            painter->drawStaticText(x + 2, rc.top(), str);
+            painter->drawText(x + 2, rc.top(), QString::number(fFrame, 'g'));
             painter->setPen(ltgray);
         }
         else
@@ -375,8 +374,7 @@ void CSequencerDopeSheetBase::DrawTimeLineInSeconds(QPainter* painter, const QRe
         {
             painter->setPen(black);
             painter->drawLine(x, rc.bottom() - 2, x, rc.bottom() - 14);
-            const QStaticText str = QString::number(st, 'g');
-            painter->drawStaticText(x + 2, rc.top(), str);
+            painter->drawText(x + 2, rc.top(), QString::number(st, 'g'));
             painter->setPen(ltgray);
         }
         else
@@ -1446,7 +1444,7 @@ bool CSequencerDopeSheetBase::IsPointValidForAnimationInLayerDrop(const QPoint& 
 
     CClipTrack* pClipTrack = static_cast<CClipTrack*> (pTrack);
 
-    int nAnimID = pClipTrack->GetContext()->animSet->GetAnimIDByName(animationName.toLatin1().data());
+    int nAnimID = pClipTrack->GetContext()->animSet->GetAnimIDByName(animationName.toUtf8().data());
     if (-1 == nAnimID)
     {
         return false;
@@ -1744,7 +1742,7 @@ void CSequencerDopeSheetBase::OnRButtonDown(const QPoint& point, Qt::KeyboardMod
                 }
                 else if (cmd == EXPLORE_KEY)
                 {
-                    CFileUtil::ShowInExplorer((relativePath + fileName + editableExtension).toLatin1().data());
+                    CFileUtil::ShowInExplorer((relativePath + fileName + editableExtension).toUtf8().data());
                 }
 
                 // Update flags, file will now be on HDD
@@ -1759,7 +1757,7 @@ void CSequencerDopeSheetBase::OnRButtonDown(const QPoint& point, Qt::KeyboardMod
                 }
                 else if (cmd == EXPLORE_KEY)
                 {
-                    CFileUtil::ShowInExplorer((relativePath + fileName + editableExtension).toLatin1().data());
+                    CFileUtil::ShowInExplorer((relativePath + fileName + editableExtension).toUtf8().data());
                 }
             }
             else
@@ -1809,9 +1807,9 @@ void CSequencerDopeSheetBase::OnRButtonDown(const QPoint& point, Qt::KeyboardMod
                         const uint32 attr = CFileUtil::GetAttributes(gamePath);
                         if (attr & SCC_FILE_ATTRIBUTE_MANAGED)
                         {
-                            if (GetIEditor()->GetSourceControl()->GetLatestVersion(gamePath))
+                            if (CFileUtil::GetLatestFromSourceControl(gamePath, this))
                             {
-                                vcs_success = GetIEditor()->GetSourceControl()->CheckOut(gamePath);
+                                vcs_success = CFileUtil::CheckoutFile(gamePath, this);
                             }
                         }
                     }
@@ -1860,7 +1858,7 @@ void CSequencerDopeSheetBase::TryOpenFile(const QString& relativePath, const QSt
     }
     else
     {
-        CFileUtil::ShowInExplorer(filePath.toLatin1().data());
+        CFileUtil::ShowInExplorer(filePath.toUtf8().data());
     }
 }
 
@@ -1921,7 +1919,7 @@ CSequencerDopeSheetBase::EDSSourceControlResponse CSequencerDopeSheetBase::TryGe
         for (QStringList::const_iterator iter = paths.begin(), itEnd = paths.end(); iter != itEnd; ++iter)
         {
             const QString workspacePath = Path::GamePathToFullPath((*iter).toUtf8().constData());
-            if (!pSourceControl->GetLatestVersion(workspacePath.toUtf8().constData()))
+            if (!CFileUtil::GetLatestFromSourceControl(workspacePath.toUtf8().constData(), this))
             {
                 vFailures.push_back(*iter);
             }

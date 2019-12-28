@@ -11,7 +11,7 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#include "StdAfx.h"
+#include "LyShine_precompiled.h"
 #include "BoolTrack.h"
 #include <AzCore/Serialization/SerializeContext.h>
 #include "UiAnimSerialize.h"
@@ -90,5 +90,5 @@ void UiBoolTrack::Reflect(AZ::SerializeContext* serializeContext)
 
     serializeContext->Class<UiBoolTrack, TUiAnimTrack<IBoolKey> >()
         ->Version(1)
-        ->SerializerForEmptyClass();
+        ;
 }

@@ -23,10 +23,16 @@
 #include "Objects/AIWave.h"
 #include "Geometry/EdMesh.h"
 #include "Mission.h"
+
+#ifdef LY_TERRAIN_EDITOR
 #include "Terrain/SurfaceType.h"
 #include "Terrain/Heightmap.h"
 #include "Terrain/TerrainGrid.h"
+#endif //#ifdef LY_TERRAIN_EDITOR
+
+// This is the "Sun Trajectory Tool", so it's not directly related to the rest of the Terrain Editor code above.
 #include "TerrainLighting.h"
+
 #include "ViewManager.h"
 #include "StartupLogoDialog.h"
 #include "AI/AIManager.h"
@@ -78,6 +84,7 @@
 
 #include <AzCore/base.h>
 #include <AzCore/Component/ComponentApplication.h>
+#include <AzCore/IO/Streamer.h>
 #include <AzCore/std/string/conversions.h>
 #include <AzFramework/Asset/AssetCatalogBus.h>
 #include <AzFramework/Input/Buses/Requests/InputChannelRequestBus.h>
@@ -92,6 +99,8 @@
 
 #include <QMessageBox>
 #include <QThread>
+
+#include "ActionManager.h"
 
 static const char defaultFileExtension[] = ".ly";
 static const char oldFileExtension[] = ".cry";
@@ -474,12 +483,12 @@ static void CmdGotoEditor(IConsoleCmdArgs* pArgs)
     float x, y, z, wx, wy, wz;
 
     if (iArgCount == 7
-        && sscanf(pArgs->GetArg(1), "%f", &x) == 1
-        && sscanf(pArgs->GetArg(2), "%f", &y) == 1
-        && sscanf(pArgs->GetArg(3), "%f", &z) == 1
-        && sscanf(pArgs->GetArg(4), "%f", &wx) == 1
-        && sscanf(pArgs->GetArg(5), "%f", &wy) == 1
-        && sscanf(pArgs->GetArg(6), "%f", &wz) == 1)
+        && azsscanf(pArgs->GetArg(1), "%f", &x) == 1
+        && azsscanf(pArgs->GetArg(2), "%f", &y) == 1
+        && azsscanf(pArgs->GetArg(3), "%f", &z) == 1
+        && azsscanf(pArgs->GetArg(4), "%f", &wx) == 1
+        && azsscanf(pArgs->GetArg(5), "%f", &wy) == 1
+        && azsscanf(pArgs->GetArg(6), "%f", &wz) == 1)
     {
         Matrix34 tm = pRenderViewport->GetViewTM();
 
@@ -537,7 +546,14 @@ AZ::Outcome<void, AZStd::string> CGameEngine::Init(
 
     sip.pSharedEnvironment = AZ::Environment::GetInstance();
 
+#ifdef AZ_PLATFORM_MAC
+    // Create a hidden QWidget. Would show a black window on macOS otherwise.
+    auto window = new QWidget();
+    QObject::connect(qApp, &QApplication::lastWindowClosed, window, &QWidget::deleteLater);
+    sip.hWnd = (HWND)window->winId();
+#else
     sip.hWnd = hwndForInputSystem;
+#endif
     sip.hWndForInputSystem = hwndForInputSystem;
 
     sip.pLogCallback = &m_logFile;
@@ -557,7 +573,7 @@ AZ::Outcome<void, AZStd::string> CGameEngine::Init(
     if (sInCmdLine)
     {
         azstrncpy(sip.szSystemCmdLine, AZ_COMMAND_LINE_LEN, sInCmdLine, AZ_COMMAND_LINE_LEN);
-        if (strstr(sInCmdLine, "-export"))
+        if (strstr(sInCmdLine, "-export") || strstr(sInCmdLine, "/export"))
         {
             sip.bUnattendedMode = true;
         }
@@ -657,6 +673,10 @@ AZ::Outcome<void, AZStd::string> CGameEngine::Init(
     REGISTER_COMMAND("ed_killmemory", KillMemory, VF_NULL, "");
     REGISTER_COMMAND("ed_goto", CmdGotoEditor, VF_CHEAT, "Internal command, used by the 'GOTO' console command\n");
 
+    // The editor needs to handle the quit command differently
+    gEnv->pConsole->RemoveCommand("quit");
+    REGISTER_COMMAND("quit", CGameEngine::HandleQuitRequest, VF_RESTRICTEDMODE, "Quit/Shutdown the engine");
+
     EBUS_EVENT(CrySystemEventBus, OnCryEditorInitialized);
     
     return AZ::Success();
@@ -709,80 +729,79 @@ bool CGameEngine::InitGame(const char* sGameDLL)
         }
     }
 
-
-
-
-
-    if (!m_pEditorGame->Init(m_pISystem, m_pGameToEditorInterface))
+    if (m_pEditorGame && !m_pEditorGame->Init(m_pISystem, m_pGameToEditorInterface))
     {
-        Error("IEditorGame::Init(%d) failed!", m_pISystem);
-
-        return false;
+        // Failed to initialize the legacy editor game, so set it to null
+        m_pEditorGame = nullptr;
     }
 
-    // Execute Editor.lua override file.
-    IScriptSystem* pScriptSystem = m_pISystem->GetIScriptSystem();
-
-    pScriptSystem->ExecuteFile("Editor.Lua", false);
-    CStartupLogoDialog::SetText("Loading Entity Scripts...");
-    CEntityScriptRegistry::Instance()->LoadScripts();
-    CStartupLogoDialog::SetText("Loading Flowgraphs...");
-    IEditor* pEditor = GetIEditor();
-
-    if (pEditor->GetFlowGraphManager())
+    if (m_pEditorGame)
     {
-        pEditor->GetFlowGraphManager()->Init();
-    }
-
-    CStartupLogoDialog::SetText("Loading Material Effects Flowgraphs...");
-    if (GetIEditor()->GetMatFxGraphManager())
-    {
-        GetIEditor()->GetMatFxGraphManager()->Init();
-    }
-
-    CStartupLogoDialog::SetText("Initializing Flowgraph Debugger...");
-    if (GetIEditor()->GetFlowGraphDebuggerEditor())
-    {
-        GetIEditor()->GetFlowGraphDebuggerEditor()->Init();
-    }
-
-    CStartupLogoDialog::SetText("Initializing Flowgraph Module Manager...");
-    if (GetIEditor()->GetFlowGraphModuleManager())
-    {
-        GetIEditor()->GetFlowGraphModuleManager()->Init();
-    }
-
-    // Initialize prefab events after flowgraphmanager to avoid handling creation of flow node prototypes
-    CPrefabManager* pPrefabManager = pEditor->GetPrefabManager();
-    if (pPrefabManager)
-    {
-        CStartupLogoDialog::SetText("Initializing Prefab Events...");
-        CPrefabEvents* pPrefabEvents = pPrefabManager->GetPrefabEvents();
-        CRY_ASSERT(pPrefabEvents != NULL);
-        const bool bResult = pPrefabEvents->Init();
-        if (!bResult)
+        // Execute Editor.lua override file.
+        if (IScriptSystem* pScriptSystem = m_pISystem->GetIScriptSystem())
         {
-            CryWarning(VALIDATOR_MODULE_EDITOR, VALIDATOR_WARNING, "CGameEngine::InitGame: Failed to init prefab events");
+            pScriptSystem->ExecuteFile("Editor.Lua", false);
         }
+        CStartupLogoDialog::SetText("Loading Entity Scripts...");
+        CEntityScriptRegistry::Instance()->LoadScripts();
+        CStartupLogoDialog::SetText("Loading Flowgraphs...");
+        IEditor* pEditor = GetIEditor();
+
+        if (pEditor->GetFlowGraphManager())
+        {
+            pEditor->GetFlowGraphManager()->Init();
+        }
+
+        CStartupLogoDialog::SetText("Loading Material Effects Flowgraphs...");
+        if (GetIEditor()->GetMatFxGraphManager())
+        {
+            GetIEditor()->GetMatFxGraphManager()->Init();
+        }
+
+        CStartupLogoDialog::SetText("Initializing Flowgraph Debugger...");
+        if (GetIEditor()->GetFlowGraphDebuggerEditor())
+        {
+            GetIEditor()->GetFlowGraphDebuggerEditor()->Init();
+        }
+
+        CStartupLogoDialog::SetText("Initializing Flowgraph Module Manager...");
+        if (GetIEditor()->GetFlowGraphModuleManager())
+        {
+            GetIEditor()->GetFlowGraphModuleManager()->Init();
+        }
+
+        // Initialize prefab events after flowgraphmanager to avoid handling creation of flow node prototypes
+        CPrefabManager* pPrefabManager = pEditor->GetPrefabManager();
+        if (pPrefabManager)
+        {
+            CStartupLogoDialog::SetText("Initializing Prefab Events...");
+            CPrefabEvents* pPrefabEvents = pPrefabManager->GetPrefabEvents();
+            CRY_ASSERT(pPrefabEvents != NULL);
+            const bool bResult = pPrefabEvents->Init();
+            if (!bResult)
+            {
+                CryWarning(VALIDATOR_MODULE_EDITOR, VALIDATOR_WARNING, "CGameEngine::InitGame: Failed to init prefab events");
+            }
+        }
+
+        if (pEditor->GetAI())
+        {
+            pEditor->GetAI()->Init(m_pISystem);
+        }
+
+        CCustomActionsEditorManager* pCustomActionsManager = pEditor->GetCustomActionManager();
+
+        if (pCustomActionsManager)
+        {
+            pCustomActionsManager->Init(m_pISystem);
+        }
+
+
+        CStartupLogoDialog::SetText("Loading Equipment Packs...");
+        // Load Equipment packs from disk and export to Game
+        pEditor->GetEquipPackLib()->Reset();
+        pEditor->GetEquipPackLib()->LoadLibs(true);
     }
-
-    if (pEditor->GetAI())
-    {
-        pEditor->GetAI()->Init(m_pISystem);
-    }
-
-    CCustomActionsEditorManager* pCustomActionsManager = pEditor->GetCustomActionManager();
-
-    if (pCustomActionsManager)
-    {
-        pCustomActionsManager->Init(m_pISystem);
-    }
-
-
-    CStartupLogoDialog::SetText("Loading Equipment Packs...");
-    // Load Equipment packs from disk and export to Game
-    pEditor->GetEquipPackLib()->Reset();
-    pEditor->GetEquipPackLib()->LoadLibs(true);
 
     // in editor we do it later, bExecuteCommandLine was set to false
     m_pISystem->ExecuteCommandLine();
@@ -792,8 +811,9 @@ bool CGameEngine::InitGame(const char* sGameDLL)
 
 void CGameEngine::SetLevelPath(const QString& path)
 {
-    QByteArray levelPath = Path::ToUnixPath(Path::RemoveBackslash(path)).toUtf8().data();
-    AZ::IO::FileIOBase::GetInstance()->ConvertToAlias(levelPath.data(), levelPath.capacity());
+    QByteArray levelPath;
+    levelPath.reserve(AZ_MAX_PATH_LEN);
+    levelPath = Path::ToUnixPath(Path::RemoveBackslash(path)).toUtf8();
     m_levelPath = levelPath;
 
     m_levelName = m_levelPath.mid(m_levelPath.lastIndexOf('/') + 1);
@@ -808,15 +828,14 @@ void CGameEngine::SetLevelPath(const QString& path)
         m_levelExtension = defaultFileExtension;
     }
 
-    QString relativeLevelPath = Path::GetRelativePath(path);
     if (gEnv->p3DEngine)
     {
-        gEnv->p3DEngine->SetLevelPath(relativeLevelPath.toUtf8().data());
+        gEnv->p3DEngine->SetLevelPath(m_levelPath.toUtf8().data());
     }
 
     if (gEnv->pAISystem)
     {
-        gEnv->pAISystem->SetLevelPath(relativeLevelPath.toUtf8().data());
+        gEnv->pAISystem->SetLevelPath(m_levelPath.toUtf8().data());
     }
 }
 
@@ -850,32 +869,42 @@ bool CGameEngine::LoadLevel(
     // Initialize physics grid.
     if (bReleaseResources)
     {
+#ifdef LY_TERRAIN_EDITOR
         SSectorInfo si;
-
         GetIEditor()->GetHeightmap()->GetSectorsInfo(si);
-        float terrainSize = si.sectorSize * si.numSectors;
+        int physicsEntityGridSize = si.sectorSize * si.numSectors;
+#else
+        int physicsEntityGridSize = GetIEditor()->Get3DEngine()->GetTerrainSize();
+#endif //#ifdef LY_TERRAIN_EDITOR
+
+        //CryPhysics under performs if physicsEntityGridSize < nTerrainSize.
+        if (physicsEntityGridSize <= 0)
+        {
+            ICVar* pCvar = m_pISystem->GetIConsole()->GetCVar("e_PhysEntityGridSizeDefault");
+            AZ_Assert(pCvar, "The CVAR e_PhysEntityGridSizeDefault is not defined");
+            physicsEntityGridSize = pCvar->GetIVal();
+        }
 
         if (m_pISystem->GetIPhysicalWorld())
         {
-            float fCellSize = terrainSize > 2048 ? terrainSize * (1.0f / 1024) : 2.0f;
+            int nCellSize = physicsEntityGridSize > 2048 ? physicsEntityGridSize >> 10 : 2;
 
             if (ICVar* pCvar = m_pISystem->GetIConsole()->GetCVar("e_PhysMinCellSize"))
             {
-                fCellSize = max(fCellSize, (float)pCvar->GetIVal());
+                nCellSize = max(nCellSize, pCvar->GetIVal());
             }
 
             int log2PODGridSize = 0;
-
-            if (fCellSize == 2.0f)
+            if (nCellSize == 2)
             {
                 log2PODGridSize = 2;
             }
-            else if (fCellSize == 4.0f)
+            else if (nCellSize == 4)
             {
                 log2PODGridSize = 1;
             }
 
-            m_pISystem->GetIPhysicalWorld()->SetupEntityGrid(2, Vec3(0, 0, 0), terrainSize / fCellSize, terrainSize / fCellSize, fCellSize, fCellSize, log2PODGridSize);
+            m_pISystem->GetIPhysicalWorld()->SetupEntityGrid(2, Vec3(0, 0, 0), physicsEntityGridSize / nCellSize, physicsEntityGridSize / nCellSize, (float)nCellSize, (float)nCellSize, log2PODGridSize);
         }
 
         // Resize proximity grid in entity system.
@@ -883,7 +912,7 @@ bool CGameEngine::LoadLevel(
         {
             if (gEnv->pEntitySystem)
             {
-                gEnv->pEntitySystem->ResizeProximityGrid(terrainSize, terrainSize);
+                gEnv->pEntitySystem->ResizeProximityGrid(physicsEntityGridSize, physicsEntityGridSize);
             }
         }
     }
@@ -942,10 +971,10 @@ bool CGameEngine::LoadAI(const QString& levelName, const QString& missionName)
     }
 
     float fStartTime = m_pISystem->GetITimer()->GetAsyncCurTime();
-    CLogFile::FormatLine("Loading AI data %s, %s", levelName.toLatin1().data(), missionName.toLatin1().data());
+    CLogFile::FormatLine("Loading AI data %s, %s", levelName.toUtf8().data(), missionName.toUtf8().data());
     gEnv->pAISystem->FlushSystemNavigation();
     GetIEditor()->GetObjectManager()->SendEvent(EVENT_CLEAR_AIGRAPH);
-    gEnv->pAISystem->LoadLevelData(levelName.toLatin1().data(), missionName.toLatin1().data());
+    gEnv->pAISystem->LoadLevelData(levelName.toUtf8().data(), missionName.toUtf8().data());
     CLogFile::FormatLine("Finished Loading AI data in %6.3f secs", m_pISystem->GetITimer()->GetAsyncCurTime() - fStartTime);
 
     return true;
@@ -961,7 +990,7 @@ bool CGameEngine::LoadMission(const QString& mission)
     if (mission != m_missionName)
     {
         m_missionName = mission;
-        gEnv->p3DEngine->LoadMissionDataFromXMLNode(m_missionName.toLatin1().data());
+        gEnv->p3DEngine->LoadMissionDataFromXMLNode(m_missionName.toUtf8().data());
     }
 
     return true;
@@ -989,6 +1018,7 @@ bool CGameEngine::ReloadEnvironment()
 
     // Notify mission that environment may be changed.
     GetIEditor()->GetDocument()->GetCurrentMission()->OnEnvironmentChange();
+
     //! Add lighting node to environment settings.
     GetIEditor()->GetDocument()->GetCurrentMission()->GetLighting()->Serialize(env, false);
 
@@ -1008,6 +1038,8 @@ void CGameEngine::SwitchToInGame()
         gEnv->p3DEngine->ResetPostEffects();
     }
 
+    AZ::IO::Streamer::Instance().FlushCaches();
+    
     GetIEditor()->Notify(eNotify_OnBeginGameMode);
 
     m_pISystem->SetThreadState(ESubsys_Physics, false);
@@ -1039,7 +1071,10 @@ void CGameEngine::SwitchToInGame()
     m_pISystem->GetIMovieSystem()->EnablePhysicsEvents(true);
     m_bInGameMode = true;
 
-    m_pEditorGame->SetGameMode(true);
+    if (m_pEditorGame)
+    {
+        m_pEditorGame->SetGameMode(true);
+    }
 
     CRuler* pRuler = GetIEditor()->GetRuler();
     if (pRuler)
@@ -1057,10 +1092,13 @@ void CGameEngine::SwitchToInGame()
 
     gEnv->p3DEngine->GetTimeOfDay()->EndEditMode();
     HideLocalPlayer(false);
-    m_pEditorGame->SetPlayerPosAng(m_playerViewTM.GetTranslation(), m_playerViewTM.TransformVector(FORWARD_DIRECTION));
+    if (m_pEditorGame)
+    {
+        m_pEditorGame->SetPlayerPosAng(m_playerViewTM.GetTranslation(), m_playerViewTM.TransformVector(FORWARD_DIRECTION));
+    }
     gEnv->pSystem->GetViewCamera().SetMatrix(m_playerViewTM);
 
-    IEntity* myPlayer = m_pEditorGame->GetPlayer();
+    IEntity* myPlayer = m_pEditorGame ? m_pEditorGame->GetPlayer() : nullptr;
 
     if (myPlayer)
     {
@@ -1098,20 +1136,23 @@ void CGameEngine::SwitchToInGame()
 
     // When the player starts the game inside an area trigger, it will get
     // triggered.
-    gEnv->pEntitySystem->ResetAreas();
+    if (gEnv->pEntitySystem)
+    {
+        gEnv->pEntitySystem->ResetAreas();
 
-    // Register in game entitysystem listener.
-    s_InGameEntityListener = new SInGameEntitySystemListener;
-    gEnv->pEntitySystem->AddSink(s_InGameEntityListener, IEntitySystem::OnSpawn | IEntitySystem::OnRemove, 0);
+        // Register in game entitysystem listener.
+        s_InGameEntityListener = new SInGameEntitySystemListener;
+        gEnv->pEntitySystem->AddSink(s_InGameEntityListener, IEntitySystem::OnSpawn | IEntitySystem::OnRemove, 0);
 
-    SEntityEvent event;
-    event.event = ENTITY_EVENT_RESET;
-    event.nParam[0] = 1;
-    gEnv->pEntitySystem->SendEventToAll(event);
-    event.event = ENTITY_EVENT_LEVEL_LOADED;
-    gEnv->pEntitySystem->SendEventToAll(event);
-    event.event = ENTITY_EVENT_START_GAME;
-    gEnv->pEntitySystem->SendEventToAll(event);
+        SEntityEvent event;
+        event.event = ENTITY_EVENT_RESET;
+        event.nParam[0] = 1;
+        gEnv->pEntitySystem->SendEventToAll(event);
+        event.event = ENTITY_EVENT_LEVEL_LOADED;
+        gEnv->pEntitySystem->SendEventToAll(event);
+        event.event = ENTITY_EVENT_START_GAME;
+        gEnv->pEntitySystem->SendEventToAll(event);
+    }
     m_pISystem->GetIMovieSystem()->Reset(true, false);
 
     // Transition to runtime entity context.
@@ -1127,7 +1168,7 @@ void CGameEngine::SwitchToInEditor()
 {
     // Transition to editor entity context.
     EBUS_EVENT(AzToolsFramework::EditorEntityContextRequestBus, StopPlayInEditor);
-    
+
     // Reset movie system
     for (int i = m_pISystem->GetIMovieSystem()->GetNumPlayingSequences(); --i >= 0;)
     {
@@ -1206,7 +1247,10 @@ void CGameEngine::SwitchToInEditor()
     {
         event.nParam[0] = 0;
     }
-    gEnv->pEntitySystem->SendEventToAll(event);
+    if (gEnv->pEntitySystem)
+    {
+        gEnv->pEntitySystem->SendEventToAll(event);
+    }
 
     // [Anton] - order changed, see comments for CGameEngine::SetSimulationMode
     //! Send event to switch out of game.
@@ -1215,11 +1259,21 @@ void CGameEngine::SwitchToInEditor()
     // Hide all drawing of character.
     HideLocalPlayer(true);
     m_bInGameMode = false;
-    m_pEditorGame->SetGameMode(false);
+    if (m_pEditorGame)
+    {
+        m_pEditorGame->SetGameMode(false);
+    }
 
-    IEntity* myPlayer = m_pEditorGame->GetPlayer();
+    IEntity* myPlayer = m_pEditorGame ? m_pEditorGame->GetPlayer() : nullptr;
     if (myPlayer)
     {
+        // save the current gameView matrix for editor
+        if (pGameViewport)
+        {
+            Matrix34 gameView = gEnv->pSystem->GetViewCamera().GetMatrix();
+            pGameViewport->SetGameTM(gameView);
+        }
+
         // Move the camera to the entity position so it doesn't shift backward each time you drop in.
         CCamera& cam = gEnv->pSystem->GetViewCamera();
         Vec3 pos = myPlayer->GetPos();
@@ -1245,6 +1299,18 @@ void CGameEngine::SwitchToInEditor()
                                                     AzFramework::SystemCursorState::UnconstrainedAndVisible);
 }
 
+void CGameEngine::HandleQuitRequest(IConsoleCmdArgs* /*args*/)
+{
+    if (GetIEditor()->GetGameEngine()->IsInGameMode())
+    {
+        GetIEditor()->GetGameEngine()->RequestSetGameMode(false);
+        gEnv->pConsole->ShowConsole(false);
+    }
+    else
+    {
+        MainWindow::instance()->GetActionManager()->GetAction(ID_APP_EXIT)->trigger();
+    }
+}
 
 void CGameEngine::RequestSetGameMode(bool inGame)
 {
@@ -1263,11 +1329,6 @@ void CGameEngine::RequestSetGameMode(bool inGame)
 void CGameEngine::SetGameMode(bool bInGame)
 {
     if (m_bInGameMode == bInGame)
-    {
-        return;
-    }
-
-    if (!m_pEditorGame)
     {
         return;
     }
@@ -1302,7 +1363,7 @@ void CGameEngine::SetGameMode(bool bInGame)
     GetIEditor()->GetObjectManager()->SendEvent(EVENT_PHYSICS_APPLYSTATE);
 
     // Enables engine to know about that.
-    if (MainWindow::instance()) // KDAB_TODO: We need to know if we want to support console-only mode, in which we don't have the mainwindow
+    if (MainWindow::instance())
     {
         AzFramework::InputChannelRequestBus::Broadcast(&AzFramework::InputChannelRequests::ResetState);
         MainWindow::instance()->setFocus();
@@ -1400,8 +1461,11 @@ void CGameEngine::SetSimulationMode(bool enabled, bool bOnlyPhysics)
         }
 
         // Register in game entitysystem listener.
-        s_InGameEntityListener = new SInGameEntitySystemListener;
-        gEnv->pEntitySystem->AddSink(s_InGameEntityListener, IEntitySystem::OnSpawn | IEntitySystem::OnRemove, 0);
+        if (gEnv->pEntitySystem)
+        {
+            s_InGameEntityListener = new SInGameEntitySystemListener;
+            gEnv->pEntitySystem->AddSink(s_InGameEntityListener, IEntitySystem::OnSpawn | IEntitySystem::OnRemove, 0);
+        }
     }
     else
     {
@@ -1428,12 +1492,15 @@ void CGameEngine::SetSimulationMode(bool enabled, bool bOnlyPhysics)
 
 
         // Unregister ingame entitysystem listener, and kill all remaining entities.
-        gEnv->pEntitySystem->RemoveSink(s_InGameEntityListener);
-        delete s_InGameEntityListener;
-        s_InGameEntityListener = 0;
+        if (gEnv->pEntitySystem)
+        {
+            gEnv->pEntitySystem->RemoveSink(s_InGameEntityListener);
+            delete s_InGameEntityListener;
+            s_InGameEntityListener = 0;
+        }
     }
 
-    if (!bOnlyPhysics)
+    if (!bOnlyPhysics && gEnv->pEntitySystem)
     {
         SEntityEvent event;
         event.event = ENTITY_EVENT_RESET;
@@ -1453,18 +1520,21 @@ void CGameEngine::SetSimulationMode(bool enabled, bool bOnlyPhysics)
 
     if (m_bSimulationMode && !bOnlyPhysics)
     {
-        SEntityEvent event;
-        event.event = ENTITY_EVENT_LEVEL_LOADED;
-        gEnv->pEntitySystem->SendEventToAll(event);
+        if (gEnv->pEntitySystem)
+        {
+            SEntityEvent event;
+            event.event = ENTITY_EVENT_LEVEL_LOADED;
+            gEnv->pEntitySystem->SendEventToAll(event);
 
-        event.event = ENTITY_EVENT_START_GAME;
-        gEnv->pEntitySystem->SendEventToAll(event);
+            event.event = ENTITY_EVENT_START_GAME;
+            gEnv->pEntitySystem->SendEventToAll(event);
+        }
 
         // Transition to runtime entity context.
         AzToolsFramework::EditorEntityContextRequestBus::Broadcast(&AzToolsFramework::EditorEntityContextRequestBus::Events::StartPlayInEditor);
     }
 
-    if (m_pISystem->GetIGame())
+    if (m_pISystem->GetIGame() && m_pISystem->GetIGame()->GetIGameFramework())
     {
         m_pISystem->GetIGame()->GetIGameFramework()->OnEditorSetGameMode(enabled + 2);
     }
@@ -1493,9 +1563,9 @@ void CGameEngine::LoadAINavigationData()
 
     // Inform AiPoints that their GraphNodes are invalid (so release references to them)
     GetIEditor()->GetObjectManager()->SendEvent(EVENT_CLEAR_AIGRAPH);
-    CLogFile::FormatLine("Loading AI navigation data for Level:%s Mission:%s", m_levelPath.toLatin1().data(), m_missionName.toLatin1().data());
+    CLogFile::FormatLine("Loading AI navigation data for Level:%s Mission:%s", m_levelPath.toUtf8().data(), m_missionName.toUtf8().data());
     gEnv->pAISystem->FlushSystemNavigation();
-    gEnv->pAISystem->LoadNavigationData(m_levelPath.toLatin1().data(), m_missionName.toLatin1().data());
+    gEnv->pAISystem->LoadNavigationData(m_levelPath.toUtf8().data(), m_missionName.toUtf8().data());
     // Inform AiPoints that they need to recreate GraphNodes for navigation NEEDED??
     GetIEditor()->GetObjectManager()->SendEvent(EVENT_ATTACH_AIPOINTS);
 }
@@ -1541,7 +1611,7 @@ void CGameEngine::GenerateAiAll()
 
     QString fileNameAreas;
     fileNameAreas = QStringLiteral("%1/areas%2.bai").arg(m_levelPath, m_missionName);
-    m_pNavigation->WriteAreasIntoFile(fileNameAreas.toLatin1().data());
+    m_pNavigation->WriteAreasIntoFile(fileNameAreas.toUtf8().data());
 
     wait.Step(65);
     GetIEditor()->GetGameEngine()->GenerateAICoverSurfaces();
@@ -1549,7 +1619,7 @@ void CGameEngine::GenerateAiAll()
     wait.Step(75);
     GenerateAINavigationMesh();
     wait.Step(85);
-    gEnv->pAISystem->LoadNavigationData(m_levelPath.toLatin1().data(), m_missionName.toLatin1().data(), false, true);
+    gEnv->pAISystem->LoadNavigationData(m_levelPath.toUtf8().data(), m_missionName.toUtf8().data(), false, true);
     wait.Step(95);
     CLogFile::FormatLine("Validating SmartObjects");
 
@@ -1577,7 +1647,7 @@ void CGameEngine::GenerateAiAll()
 
                         error = QStringLiteral("SmartObject '%1' at (%2, %3, %4) is invalid!").arg(pSOEntity->GetName())
                             .arg(pos.x, 0, 'f', 2).arg(pos.y, 0, 'f', 2).arg(pos.z, 0, 'f', 2);
-                        CErrorRecord err(pSOEntity, CErrorRecord::ESEVERITY_WARNING, error.toLatin1().data());
+                        CErrorRecord err(pSOEntity, CErrorRecord::ESEVERITY_WARNING, error.toUtf8().data());
                         errorReport->ReportError(err);
                     }
                 }
@@ -1601,25 +1671,25 @@ void CGameEngine::GenerateAiTriangulation()
     GetIEditor()->GetObjectManager()->SendEvent(EVENT_CLEAR_AIGRAPH);
     m_pNavigation->FlushSystemNavigation();
 
-    CLogFile::FormatLine("Generating Triangulation for Level:%s Mission:%s", m_levelPath.toLatin1().data(), m_missionName.toLatin1().data());
-    m_pNavigation->GenerateTriangulation(m_levelPath.toLatin1().data(), m_missionName.toLatin1().data());
+    CLogFile::FormatLine("Generating Triangulation for Level:%s Mission:%s", m_levelPath.toUtf8().data(), m_missionName.toUtf8().data());
+    m_pNavigation->GenerateTriangulation(m_levelPath.toUtf8().data(), m_missionName.toUtf8().data());
 
     // Inform AiPoints that they need to recreate GraphNodes ready for graph export
     GetIEditor()->GetObjectManager()->SendEvent(EVENT_ATTACH_AIPOINTS);
 
-    CLogFile::FormatLine("Generating Waypoints for Level:%s Mission:%s", m_levelPath.toLatin1().data(), m_missionName.toLatin1().data());
+    CLogFile::FormatLine("Generating Waypoints for Level:%s Mission:%s", m_levelPath.toUtf8().data(), m_missionName.toUtf8().data());
     m_pNavigation->ReconnectAllWaypointNodes();
 
     char fileName[1024];
-    azsnprintf(fileName, 1024, "%s/net%s.bai", m_levelPath.toLatin1().data(), m_missionName.toLatin1().data());
+    azsnprintf(fileName, 1024, "%s/net%s.bai", m_levelPath.toUtf8().data(), m_missionName.toUtf8().data());
     AILogProgress(" Now writing to %s.", fileName);
     m_pNavigation->GetGraph()->WriteToFile(fileName);
 
     QString fileNameAreas;
     fileNameAreas = QStringLiteral("%1/areas%2.bai").arg(m_levelPath, m_missionName);
-    m_pNavigation->WriteAreasIntoFile(fileNameAreas.toLatin1().data());
+    m_pNavigation->WriteAreasIntoFile(fileNameAreas.toUtf8().data());
 
-    gEnv->pAISystem->LoadNavigationData(m_levelPath.toLatin1().data(), m_missionName.toLatin1().data());
+    gEnv->pAISystem->LoadNavigationData(m_levelPath.toUtf8().data(), m_missionName.toUtf8().data());
 }
 
 void CGameEngine::GenerateAiWaypoint()
@@ -1634,19 +1704,19 @@ void CGameEngine::GenerateAiWaypoint()
     // Inform AiPoints that they need to create GraphNodes (if they haven't already) ready for graph export
     GetIEditor()->GetObjectManager()->SendEvent(EVENT_ATTACH_AIPOINTS);
 
-    CLogFile::FormatLine("Generating Waypoints for Level:%s Mission:%s", m_levelPath.toLatin1().data(), m_missionName.toLatin1().data());
+    CLogFile::FormatLine("Generating Waypoints for Level:%s Mission:%s", m_levelPath.toUtf8().data(), m_missionName.toUtf8().data());
     m_pNavigation->ReconnectAllWaypointNodes();
 
     char fileName[1024];
-    azsnprintf(fileName, 1024, "%s/net%s.bai", m_levelPath.toLatin1().data(), m_missionName.toLatin1().data());
+    azsnprintf(fileName, 1024, "%s/net%s.bai", m_levelPath.toUtf8().data(), m_missionName.toUtf8().data());
     AILogProgress(" Now writing to %s.", fileName);
     m_pNavigation->GetGraph()->WriteToFile(fileName);
 
     QString fileNameAreas;
     fileNameAreas = QStringLiteral("%1/areas%2.bai").arg(m_levelPath, m_missionName);
-    m_pNavigation->WriteAreasIntoFile(fileNameAreas.toLatin1().data());
+    m_pNavigation->WriteAreasIntoFile(fileNameAreas.toUtf8().data());
 
-    gEnv->pAISystem->LoadNavigationData(m_levelPath.toLatin1().data(), m_missionName.toLatin1().data());
+    gEnv->pAISystem->LoadNavigationData(m_levelPath.toUtf8().data(), m_missionName.toUtf8().data());
 }
 
 void CGameEngine::GenerateAiFlightNavigation()
@@ -1660,19 +1730,19 @@ void CGameEngine::GenerateAiFlightNavigation()
 
     m_pNavigation->GetFlightNavRegion()->Clear();
 
-    CLogFile::FormatLine("Generating Flight navigation for Level:%s Mission:%s", m_levelPath.toLatin1().data(), m_missionName.toLatin1().data());
-    m_pNavigation->GenerateFlightNavigation(m_levelPath.toLatin1().data(), m_missionName.toLatin1().data());
+    CLogFile::FormatLine("Generating Flight navigation for Level:%s Mission:%s", m_levelPath.toUtf8().data(), m_missionName.toUtf8().data());
+    m_pNavigation->GenerateFlightNavigation(m_levelPath.toUtf8().data(), m_missionName.toUtf8().data());
 
     char fileName[1024];
-    azsnprintf(fileName, 1024, "%s/net%s.bai", m_levelPath.toLatin1().data(), m_missionName.toLatin1().data());
+    azsnprintf(fileName, 1024, "%s/net%s.bai", m_levelPath.toUtf8().data(), m_missionName.toUtf8().data());
     AILogProgress(" Now writing to %s.", fileName);
     m_pNavigation->GetGraph()->WriteToFile(fileName);
 
     QString fileNameAreas;
     fileNameAreas = QStringLiteral("%1/areas%2.bai").arg(m_levelPath, m_missionName);
-    m_pNavigation->WriteAreasIntoFile(fileNameAreas.toLatin1().data());
+    m_pNavigation->WriteAreasIntoFile(fileNameAreas.toUtf8().data());
 
-    gEnv->pAISystem->LoadNavigationData(m_levelPath.toLatin1().data(), m_missionName.toLatin1().data());
+    gEnv->pAISystem->LoadNavigationData(m_levelPath.toUtf8().data(), m_missionName.toUtf8().data());
 }
 
 void CGameEngine::GenerateAiNavVolumes()
@@ -1686,19 +1756,19 @@ void CGameEngine::GenerateAiNavVolumes()
 
     m_pNavigation->FlushSystemNavigation();
 
-    CLogFile::FormatLine("Generating 3D navigation volumes for Level:%s Mission:%s", m_levelPath.toLatin1().data(), m_missionName.toLatin1().data());
-    m_pNavigation->Generate3DVolumes(m_levelPath.toLatin1().data(), m_missionName.toLatin1().data());
+    CLogFile::FormatLine("Generating 3D navigation volumes for Level:%s Mission:%s", m_levelPath.toUtf8().data(), m_missionName.toUtf8().data());
+    m_pNavigation->Generate3DVolumes(m_levelPath.toUtf8().data(), m_missionName.toUtf8().data());
 
     char fileName[1024];
-    azsnprintf(fileName, 1024, "%s/net%s.bai", m_levelPath.toLatin1().data(), m_missionName.toLatin1().data());
+    azsnprintf(fileName, 1024, "%s/net%s.bai", m_levelPath.toUtf8().data(), m_missionName.toUtf8().data());
     AILogProgress(" Now writing to %s.", fileName);
     m_pNavigation->GetGraph()->WriteToFile(fileName);
 
     QString fileNameAreas;
     fileNameAreas = QStringLiteral("%1/areas%2.bai").arg(m_levelPath, m_missionName);
-    m_pNavigation->WriteAreasIntoFile(fileNameAreas.toLatin1().data());
+    m_pNavigation->WriteAreasIntoFile(fileNameAreas.toUtf8().data());
 
-    gEnv->pAISystem->LoadNavigationData(m_levelPath.toLatin1().data(), m_missionName.toLatin1().data());
+    gEnv->pAISystem->LoadNavigationData(m_levelPath.toUtf8().data(), m_missionName.toUtf8().data());
 }
 
 void CGameEngine::GenerateAINavigationMesh()
@@ -1714,7 +1784,7 @@ void CGameEngine::GenerateAINavigationMesh()
     gEnv->pAISystem->GetNavigationSystem()->ProcessQueuedMeshUpdates();
 
     mnmFilename = QStringLiteral("%1/mnmnav%2.bai").arg(m_levelPath, m_missionName);
-    gEnv->pAISystem->GetNavigationSystem()->SaveToFile(mnmFilename.toLatin1().data());
+    gEnv->pAISystem->GetNavigationSystem()->SaveToFile(mnmFilename.toUtf8().data());
 }
 
 void CGameEngine::ValidateAINavigation()
@@ -1764,11 +1834,11 @@ void CGameEngine::ClearAllAINavigation()
 
     // Ensure file data is all cleared (prevents confusion if the old data were to be reloaded implicitly)
     char fileName[1024];
-    azsnprintf(fileName, 1024, "%s/net%s.bai", m_levelPath.toLatin1().data(), m_missionName.toLatin1().data());
+    azsnprintf(fileName, 1024, "%s/net%s.bai", m_levelPath.toUtf8().data(), m_missionName.toUtf8().data());
     AILogProgress(" Now writing empty data to %s.", fileName);
     m_pNavigation->GetGraph()->WriteToFile(fileName);
     wait.Step(60);
-    gEnv->pAISystem->LoadNavigationData(m_levelPath.toLatin1().data(), m_missionName.toLatin1().data());
+    gEnv->pAISystem->LoadNavigationData(m_levelPath.toUtf8().data(), m_missionName.toUtf8().data());
     wait.Step(100);
 }
 
@@ -1780,10 +1850,10 @@ void CGameEngine::Generate3DDebugVoxels()
     CLogFile::FormatLine("Use ai_debugdrawvolumevoxels to view more/fewer voxels");
 
     char fileName[1024];
-    azsnprintf(fileName, 1024, "%s/net%s.bai", m_levelPath.toLatin1().data(), m_missionName.toLatin1().data());
+    azsnprintf(fileName, 1024, "%s/net%s.bai", m_levelPath.toUtf8().data(), m_missionName.toUtf8().data());
     AILogProgress(" Now writing to %s.", fileName);
     m_pNavigation->GetGraph()->WriteToFile(fileName);
-    gEnv->pAISystem->LoadNavigationData(m_levelPath.toLatin1().data(), m_missionName.toLatin1().data());
+    gEnv->pAISystem->LoadNavigationData(m_levelPath.toUtf8().data(), m_missionName.toUtf8().data());
 }
 
 void CGameEngine::GenerateAICoverSurfaces()
@@ -1843,7 +1913,7 @@ void CGameEngine::GenerateAICoverSurfaces()
     }
 
     char fileName[1024];
-    azsnprintf(fileName, 1024, "%s\\cover%s.bai", m_levelPath.toLatin1().data(), m_missionName.toLatin1().data());
+    azsnprintf(fileName, 1024, "%s\\cover%s.bai", m_levelPath.toUtf8().data(), m_missionName.toUtf8().data());
     AILogProgress("Now writing to %s.", fileName);
     GetIEditor()->GetAI()->GetCoverSurfaceManager()->WriteToFile(fileName);
 }
@@ -1979,7 +2049,7 @@ void CGameEngine::Update()
     AZ::ComponentApplication* componentApplication = nullptr;
     EBUS_EVENT_RESULT(componentApplication, AZ::ComponentApplicationBus, GetApplication);
 
-    if (m_pEditorGame && m_bInGameMode)
+    if (m_bInGameMode)
     {
         CViewport* pRenderViewport = GetIEditor()->GetViewManager()->GetGameViewport();
 
@@ -1989,13 +2059,44 @@ void CGameEngine::Update()
             int width = 640;
             int height = 480;
             pRenderViewport->GetDimensions(&width, &height);
+
+            // Check for custom width and height cvars in use by Track View.
+            // The backbuffer size maybe have been changed, so we need to make sure the viewport
+            // is setup with the correct aspect ratio here so the captured output will look correct.
+            ICVar* cVar = gEnv->pConsole->GetCVar("TrackViewRenderOutputCapturing");
+            if (cVar && cVar->GetIVal() != 0)
+            {
+                const int customWidth = gEnv->pConsole->GetCVar("r_CustomResWidth")->GetIVal();
+                const int customHeight = gEnv->pConsole->GetCVar("r_CustomResHeight")->GetIVal();
+                if (customWidth != 0 && customHeight != 0)
+                {
+                    IEditor* editor = GetIEditor();
+                    AZ_Assert(editor, "Expected valid Editor");
+                    IRenderer* renderer = editor->GetRenderer();
+                    AZ_Assert(renderer, "Expected valid Renderer");
+
+                    int maxRes = renderer->GetMaxSquareRasterDimension();
+                    width = clamp_tpl(customWidth, 32, maxRes);
+                    height = clamp_tpl(customHeight, 32, maxRes);
+                }
+            }
+
             CCamera& cam = gEnv->pSystem->GetViewCamera();
             cam.SetFrustum(width, height, pRenderViewport->GetFOV(), cam.GetNearPlane(), cam.GetFarPlane(), cam.GetPixelAspectRatio());
         }
 
-        gEnv->pGame->GetIGameFramework()->PreUpdate(true, 0);
-        componentApplication->Tick(gEnv->pTimer->GetFrameTime(ITimer::ETIMER_GAME));
-        gEnv->pGame->GetIGameFramework()->PostUpdate(true, 0);
+        if (gEnv->pGame && gEnv->pGame->GetIGameFramework())
+        {
+            gEnv->pGame->GetIGameFramework()->PreUpdate(true, 0);
+            componentApplication->Tick(gEnv->pTimer->GetFrameTime(ITimer::ETIMER_GAME));
+            gEnv->pGame->GetIGameFramework()->PostUpdate(true, 0);
+        }
+        else if (gEnv->pSystem)
+        {
+            gEnv->pSystem->UpdatePreTickBus();
+            componentApplication->Tick(gEnv->pTimer->GetFrameTime(ITimer::ETIMER_GAME));
+            gEnv->pSystem->UpdatePostTickBus();
+        }
 
         // TODO: still necessary after AVI recording removal?
         if (pRenderViewport)
@@ -2006,8 +2107,6 @@ void CGameEngine::Update()
     }
     else
     {
-        gEnv->GetJobManager()->SetFrameStartTime(gEnv->pTimer->GetAsyncTime());
-
         // [marco] check current sound and vis areas for music etc.
         // but if in game mode, 'cos is already done in the above call to game->update()
         unsigned int updateFlags = ESYSUPDATE_EDITOR;
@@ -2047,7 +2146,7 @@ void CGameEngine::Update()
                 pFlowSystem->Update();
             }
 
-            IDialogSystem* pDialogSystem = gEnv->pGame ? gEnv->pGame->GetIGameFramework()->GetIDialogSystem() : NULL;
+            IDialogSystem* pDialogSystem = gEnv->pGame ? (gEnv->pGame->GetIGameFramework() ? gEnv->pGame->GetIGameFramework()->GetIDialogSystem() : NULL) : NULL;
 
             if (pDialogSystem)
             {
@@ -2061,8 +2160,6 @@ void CGameEngine::Update()
 
         GetIEditor()->GetAI()->NavigationDebugDisplay();
     }
-
-    EBUS_EVENT(AzToolsFramework::AssetSystemRequestBus, UpdateQueuedEvents);
 
     m_pNavigation->Update();
 }
@@ -2095,14 +2192,14 @@ void CGameEngine::OnEditorNotifyEvent(EEditorNotifyEvent event)
         if (m_pEditorGame)
         {
             // This method must be called so we will have a player to start game mode later.
-            m_pEditorGame->OnAfterLevelLoad(m_levelName.toLatin1().data(), m_levelPath.toLatin1().data());
+            m_pEditorGame->OnAfterLevelLoad(m_levelName.toUtf8().data(), m_levelPath.toUtf8().data());
         }
     }
     case eNotify_OnEndNewScene: // intentional fall-through?
     {
         if (m_pEditorGame)
         {
-            m_pEditorGame->OnAfterLevelInit(m_levelName.toLatin1().data(), m_levelPath.toLatin1().data());
+            m_pEditorGame->OnAfterLevelInit(m_levelName.toUtf8().data(), m_levelPath.toUtf8().data());
             HideLocalPlayer(true);
             SetPlayerViewMatrix(m_playerViewTM);     // Sync initial player position
         }
@@ -2184,12 +2281,15 @@ void CGameEngine::UnlockResources()
 
 bool CGameEngine::SupportsMultiplayerGameRules()
 {
-    return m_pEditorGame->SupportsMultiplayerGameRules();
+    return m_pEditorGame ? m_pEditorGame->SupportsMultiplayerGameRules() : false;
 }
 
 void CGameEngine::ToggleMultiplayerGameRules()
 {
-    m_pEditorGame->ToggleMultiplayerGameRules();
+    if (m_pEditorGame)
+    {
+        m_pEditorGame->ToggleMultiplayerGameRules();
+    }
 }
 
 bool CGameEngine::BuildEntitySerializationList(XmlNodeRef output)
@@ -2199,7 +2299,7 @@ bool CGameEngine::BuildEntitySerializationList(XmlNodeRef output)
 
 void CGameEngine::OnTerrainModified(const Vec2& modPosition, float modAreaRadius, bool fullTerrain)
 {
-    INavigationSystem* pNavigationSystem = gEnv->pAISystem->GetNavigationSystem();
+    INavigationSystem* pNavigationSystem = gEnv->pAISystem ? gEnv->pAISystem->GetNavigationSystem() : nullptr;
 
     if (pNavigationSystem)
     {
@@ -2223,7 +2323,7 @@ void CGameEngine::OnTerrainModified(const Vec2& modPosition, float modAreaRadius
 
 void CGameEngine::OnAreaModified(const AABB& modifiedArea)
 {
-    INavigationSystem* pNavigationSystem = gEnv->pAISystem->GetNavigationSystem();
+    INavigationSystem* pNavigationSystem = gEnv->pAISystem ? gEnv->pAISystem->GetNavigationSystem() : nullptr;
     if (pNavigationSystem)
     {
         pNavigationSystem->WorldChanged(modifiedArea);

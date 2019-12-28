@@ -14,6 +14,7 @@
 #include "DoubleSpinbox.h"
 #include "MysticQtManager.h"
 #include <MCore/Source/LogManager.h>
+#include <MCore/Source/StringConversions.h>
 #include <QtGui/QMouseEvent>
 #include <QtWidgets/QHBoxLayout>
 #include <QtWidgets/QVBoxLayout>
@@ -371,10 +372,10 @@ namespace MysticQt
     void DoubleSpinboxLineEdit::focusOutEvent(QFocusEvent* event)
     {
         FromQtString(text(), &mTemp);
-        mTemp.Trim();
-        mTemp.Replace(MCore::UnicodeCharacter::comma, MCore::UnicodeCharacter::dot);
+        AzFramework::StringFunc::TrimWhiteSpace(mTemp, true, true);
+        AzFramework::StringFunc::Replace(mTemp, MCore::CharacterConstants::comma, MCore::CharacterConstants::dot);
 
-        if (mTemp.GetIsEmpty())
+        if (mTemp.empty())
         {
             mSpinbox->Update();
         }
@@ -414,9 +415,9 @@ namespace MysticQt
         mLineEdit->setValidator(new QRegExpValidator(QRegExp("-?[0-9]*[.,]?[0-9]{,}"), this));
         mLineEdit->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
 
-        connect(mLineEdit, SIGNAL(editingFinished()), this, SLOT(OnEditingFinished()));
-        connect(mLineEdit, SIGNAL(returnPressed()), this, SLOT(OnEditingFinished()));
-        connect(mLineEdit, SIGNAL(textEdited(const QString&)), this, SLOT(OnTextEdited(const QString&)));
+        connect(mLineEdit, &QLineEdit::editingFinished, this, &MysticQt::DoubleSpinBox::OnEditingFinished);
+        connect(mLineEdit, &QLineEdit::returnPressed, this, &MysticQt::DoubleSpinBox::OnEditingFinished);
+        connect(mLineEdit, &QLineEdit::textEdited, this, &MysticQt::DoubleSpinBox::OnTextEdited);
 
         // create the up and down spin buttons
         mUpButton   = new DoubleSpinboxButton(this, this, false);
@@ -506,29 +507,48 @@ namespace MysticQt
     {
         // get the value string from the line edit
         FromQtString(newText, &mTemp);
-        mTemp.Trim();
-        mTemp.Replace(MCore::UnicodeCharacter::comma, MCore::UnicodeCharacter::dot);
+        AzFramework::StringFunc::TrimWhiteSpace(mTemp, true, true);
+        AzFramework::StringFunc::Replace(mTemp, MCore::CharacterConstants::comma, MCore::CharacterConstants::dot);
 
         // check if the text is a valid value
-        if (mTemp.CheckIfIsValidFloat())
+        float newValue;
+        int newValueInt;
+        if (AzFramework::StringFunc::LooksLikeFloat(mTemp.c_str(), &newValue))
         {
-            // interpret the text and convert it to a value
-            const double newValue = mTemp.ToFloat();
-
-            // check if the value is in range
-            if (newValue >= mMinimum && newValue <= mMaximum)
-            {
-                mLineEdit->setStyleSheet("");
-            }
-            else
-            {
-                mLineEdit->setStyleSheet("color: red;");
-            }
+            UpdateStyleForRangeCheck(newValue);
+        }
+        else if (AzFramework::StringFunc::LooksLikeInt(mTemp.c_str(), &newValueInt))
+        {
+            newValue = static_cast<float>(newValueInt);
+            UpdateStyleForRangeCheck(newValue);
         }
         else
         {
-            mLineEdit->setStyleSheet("color: red;");
+            SetStyleToError();
         }
+    }
+
+    void DoubleSpinBox::SetStyleToError()
+    {
+        mLineEdit->setStyleSheet("color: red;");
+    }
+
+    void DoubleSpinBox::UpdateStyleForRangeCheck(float newValue)
+    {
+        // check if the value is in range
+        if (newValue >= mMinimum && newValue <= mMaximum)
+        {
+            SetStyleToOk();
+        }
+        else
+        {
+            SetStyleToError();
+        }
+    }
+
+    void DoubleSpinBox::SetStyleToOk()
+    {
+        mLineEdit->setStyleSheet("");
     }
 
 
@@ -537,20 +557,32 @@ namespace MysticQt
     {
         // get the value string from the line edit
         FromQtString(mLineEdit->text(), &mTemp);
-        mTemp.Trim();
-        mTemp.Replace(MCore::UnicodeCharacter::comma, MCore::UnicodeCharacter::dot);
+        AzFramework::StringFunc::TrimWhiteSpace(mTemp, true, true);
+        AzFramework::StringFunc::Replace(mTemp, MCore::CharacterConstants::comma, MCore::CharacterConstants::dot);
 
+        bool inputFormatError = false;
         // check if the text is an invalid value
-        if (mTemp.CheckIfIsValidFloat() == false)
+        float newValue;
+        int newValueInt;
+        if ( !AzFramework::StringFunc::LooksLikeFloat(mTemp.c_str(), &newValue) )
+        {
+            if (!AzFramework::StringFunc::LooksLikeInt(mTemp.c_str(), &newValueInt))
+            {
+                inputFormatError = true;
+            }
+            else
+            {
+                newValue = static_cast<float>(newValueInt);
+            }
+        }
+
+        if (inputFormatError)
         {
             // reset the value to the last valid and used one
             setValue(mValue);
             emit valueChanged(mValue);
             return;
         }
-
-        // interpret the text and convert it to a new value
-        double newValue = mTemp.ToFloat();
 
         // in case the new value is out of range, use the last valid value
         if (newValue > mMaximum || newValue < mMinimum)

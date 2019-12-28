@@ -21,10 +21,10 @@
 #include <AzFramework/Asset/AssetCatalogBus.h>
 #include <AzToolsFramework/Debug/TraceContextMultiStackHandler.h>
 #include <AzQtComponents/Components/StyledDetailsTableModel.h>
-#include <SceneAPI/SceneUI/CommonWidgets/JobWatcher.h>
 #include <SceneAPI/SceneUI/SceneUIConfiguration.h>
 #include <QScopedPointer>
 #include <QWidget>
+#include <SceneAPI/SceneUI/CommonWidgets/OverlayWidget.h>
 
 class QCloseEvent;
 class QLabel;
@@ -48,11 +48,6 @@ namespace AZ
 {
     namespace SceneAPI
     {
-        namespace UI
-        {
-            class OverlayWidget;
-        }
-
         namespace SceneUI
         {
             // The qt-generated ui code (from the .ui)
@@ -78,7 +73,7 @@ namespace AZ
                     Exporting
                 };
 
-                ProcessingOverlayWidget(UI::OverlayWidget* overlay, Layout layout, Uuid traceTag, const AZStd::shared_ptr<ProcessingHandler>& handler);
+                ProcessingOverlayWidget(UI::OverlayWidget* overlay, Layout layout, Uuid traceTag);
                 ~ProcessingOverlayWidget() override;
 
                 bool OnPrintf(const char* window, const char* message) override;
@@ -88,6 +83,7 @@ namespace AZ
 
                 int PushToOverlay();
 
+                void SetAndStartProcessingHandler(const AZStd::shared_ptr<ProcessingHandler>& handler);
                 AZStd::shared_ptr<ProcessingHandler> GetProcessingHandler() const;
 
                 bool GetAutoCloseOnSuccess() const;

@@ -24,7 +24,7 @@ namespace AZ
     {
         namespace GraphData
         {
-            class TransformData
+            class SCENE_DATA_CLASS TransformData
                 : public AZ::SceneAPI::DataTypes::ITransform
             {
             public:
@@ -32,7 +32,6 @@ namespace AZ
 
                 SCENE_DATA_API TransformData() = default;
                 SCENE_DATA_API explicit TransformData(const AZ::Transform& transform);
-                SCENE_DATA_API ~TransformData() override = default;
 
                 SCENE_DATA_API virtual void SetMatrix(const AZ::Transform& transform);
 

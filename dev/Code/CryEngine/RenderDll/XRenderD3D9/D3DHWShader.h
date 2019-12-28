@@ -11,9 +11,17 @@
 */
 // Original file Copyright Crytek GMBH or its affiliates, used under license.
 
-#ifndef __D3DHWSHADER_H__
-#define __D3DHWSHADER_H__
+#pragma once
 
+#if defined(AZ_RESTRICTED_PLATFORM)
+    #if defined(AZ_PLATFORM_XENIA)
+        #include "Xenia/D3DHWShader_h_xenia.inl"
+    #elif defined(AZ_PLATFORM_PROVO)
+        #include "Provo/D3DHWShader_h_provo.inl"
+    #elif defined(AZ_PLATFORM_SALEM)
+        #include "Salem/D3DHWShader_h_salem.inl"
+    #endif
+#endif
 
 #define MERGE_SHADER_PARAMETERS 1
 
@@ -29,6 +37,9 @@
 #define VSTR_BONESPACE    12  // HWSkin stream (VSF_HWSKIN_INFO)
 
 #define INST_PARAM_SIZE sizeof(Vec4)
+
+#define MAX_PF_TEXTURES     (32)
+#define MAX_PF_SAMPLERS     (4)
 
 #if defined(_CPU_SSE)
 typedef __m128 VECTOR_TYPE;
@@ -163,7 +174,7 @@ class CGParamManager
     friend class CHWShader_D3D;
     //friend struct CHWShader_D3D::SHWSInstance;
 
-    static std::vector<uint32, stl::STLGlobalAllocator<uint32> > s_FreeGroups;
+    static AZStd::vector<uint32, AZ::StdLegacyAllocator> s_FreeGroups;
 
 public:
     static void Init();
@@ -173,7 +184,7 @@ public:
     static int GetParametersGroup(SParamsGroup& Gr, int nId);
     static bool FreeParametersGroup(int nID);
 
-    static std::vector<SCGParamsGroup> s_Groups;
+    static AZStd::vector<SCGParamsGroup, AZ::StdLegacyAllocator> s_Groups;
     static DynArray<SCGParamPool> s_Pools;
 };
 
@@ -279,7 +290,7 @@ struct SShaderAsyncInfo
     }
     static void FlushPendingShaders();
 
-#if defined(DURANGO) || defined(OPENGL)
+#if D3DHWSHADER_H_TRAIT_DEFINE_D3D_BLOB || defined(OPENGL)
 #define LPD3DXBUFFER D3DBlob *
 #define ID3DXBuffer D3DBlob
 #define D3D10CreateBlob D3DCreateBlob
@@ -305,7 +316,7 @@ struct SShaderAsyncInfo
     string m_RequestLine;
     string m_shaderList;
     //CShaderThread *m_pThread;
-    std::vector<SCGBind> m_InstBindVars;
+    AZStd::vector<SCGBind, AZ::StdLegacyAllocator> m_InstBindVars;
     byte m_bPending;
     bool m_bPendedFlush;
     bool m_bPendedSamplers;
@@ -450,7 +461,7 @@ class CHWShader_D3D
     SShaderDevCache* m_pDevCache;
 
 #if !defined(_RELEASE)
-    static std::set<uint32_t> s_ErrorsLogged; // CRC32 of message, risk of collision acceptable
+    static AZStd::unordered_set<uint32_t, AZStd::hash<uint32_t>, AZStd::equal_to<uint32_t>, AZ::StdLegacyAllocator> s_ErrorsLogged; // CRC32 of message, risk of collision acceptable
 #endif
 
 #if !defined(CONSOLE)
@@ -503,6 +514,7 @@ class CHWShader_D3D
 
         int m_nDataSize;
         int m_DeviceObjectID;
+        AZ::u32 m_uniqueNameCRC = 0; // CRC generated from the pattern: "Technique@EntryPoint(Permutations)"
 #if defined(FEATURE_PER_SHADER_INPUT_LAYOUT_CACHE)
         enum
         {
@@ -634,10 +646,19 @@ class CHWShader_D3D
 
             return false;
         }
+        
+        // CreateInputLayout in D3D11 generates a unique resource depending on the vertex format and the compiled vertex shader.
+        // If an associated vertex shader does not reference certain vertexFormat inputs, then CreateInputLayout can return
+        // a result that will not work for other vertexFormat + vertex shader combinations that do reference the previously unreferenced input.
+        // On some platforms we must generate a key for SOnDemandD3DVertexDeclarationCache that is based both on the vertex shader binary and the vertex format layout.
+        AZ::u32 GenerateVertexDeclarationCacheKey(const AZ::Vertex::Format& vertexFormat);
     };
 
     typedef std::vector<SHWSInstance*> InstContainer;
     typedef InstContainer::iterator InstContainerIt;
+
+    using SCGTextures = AZStd::fixed_vector<SCGTexture, MAX_PF_TEXTURES>;
+    using SCGSamplers = AZStd::fixed_vector<STexSamplerRT, MAX_PF_SAMPLERS>;
 
     typedef std::multimap<uint64, uint32> THWInstanceLookupMap;
 
@@ -683,13 +704,12 @@ public:
 #endif
         mfConstruct();
     }
-    static void InitialiseContainers();
+    
     static void mfInit();
     void mfConstruct()
     {
         if (s_bInitShaders)
         {
-            InitialiseContainers();
             s_bInitShaders = false;
         }
 
@@ -757,7 +777,7 @@ public:
 
     ED3DShError mfIsValid_Int(SHWSInstance*& pInst, bool bFinalise);
 
-    //ILINE most common outcome (avoid LHS on link register 360)
+    //ILINE most common outcome
     ILINE ED3DShError mfIsValid(SHWSInstance*& pInst, bool bFinalise)
     {
         if (pInst->m_Handle.m_pShader)
@@ -1111,6 +1131,11 @@ public:
 
     static void* GetVSDataForDecl(const D3D11_INPUT_ELEMENT_DESC* pDecl, int nCount, int& nDataSize);
 
+#if AZ_RENDER_TO_TEXTURE_GEM_ENABLED
+    //! Used by render to texture to fix-up all engine texture samplers
+    static void UpdateSamplerEngineTextures();
+#endif // if AZ_RENDER_TO_TEXTURE_GEM_ENABLED
+
     static void ShutDown();
 
     static Vec4 GetVolumetricFogParams();
@@ -1146,8 +1171,8 @@ public:
     static int s_nDevicePSDataSize;
     static int s_nDeviceVSDataSize;
 
-    static std::vector<SCGTexture> s_PF_Textures;       // Per frame textures (shared between all)
-    static std::vector<STexSamplerRT> s_PF_Samplers;    // Per-frame samplers (shared between all)
+    static SCGTextures s_PF_Textures;   // Per frame textures (shared between all)
+    static SCGSamplers s_PF_Samplers;   // Per-frame samplers (shared between all)
 
     friend struct SShaderTechniqueStat;
 };
@@ -1162,6 +1187,4 @@ struct SShaderTechniqueStat
     CHWShader_D3D::SHWSInstance* pPSInst;
 };
 
-extern std::vector<SShaderTechniqueStat> g_SelectedTechs;
-
-#endif  // __D3DHWSHADER_H__
+extern AZStd::vector<SShaderTechniqueStat, AZ::StdLegacyAllocator> g_SelectedTechs;

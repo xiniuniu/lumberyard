@@ -12,7 +12,7 @@
 
 #pragma once
 
-#include <AzFramework/Input/Channels/InputChannelId.h>
+#include <AzFramework/Input/Channels/InputChannel.h>
 #include <AzFramework/Input/Devices/InputDeviceId.h>
 
 #include <AzCore/std/containers/unordered_map.h>
@@ -23,7 +23,6 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 namespace AzFramework
 {
-    class InputChannel;
     class InputDevice;
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -35,17 +34,26 @@ namespace AzFramework
         //! EBus Trait: requests can be addressed to a specific InputDeviceId so that they are only
         //! handled by one input device that has connected to the bus using that unique id, or they
         //! can be broadcast to all input devices that have connected to the bus, regardless of id.
-        static const AZ::EBusAddressPolicy AddressPolicy = AZ::EBusAddressPolicy::ById;
+        //! Connected input devices are ordered by their local player index from lowest to highest.
+        static const AZ::EBusAddressPolicy AddressPolicy = AZ::EBusAddressPolicy::ByIdAndOrdered;
 
         ////////////////////////////////////////////////////////////////////////////////////////////
         //! EBus Trait: requests should be handled by only one input device connected to each id
         static const AZ::EBusHandlerPolicy HandlerPolicy = AZ::EBusHandlerPolicy::Single;
 
-        typedef AZStd::recursive_mutex MutexType;
-
         ////////////////////////////////////////////////////////////////////////////////////////////
         //! EBus Trait: requests can be addressed to a specific InputDeviceId
         using BusIdType = InputDeviceId;
+
+        ////////////////////////////////////////////////////////////////////////////////////////////
+        //! EBus Trait: requests are handled by connected devices in the order of local player index
+        using BusIdOrderCompare = AZStd::less<BusIdType>;
+
+        ////////////////////////////////////////////////////////////////////////////////////////////
+        //! EBus Trait: InputDeviceRequestBus can be accessed from multiple threads, but is safe to use with
+        //! LocklessDispatch because connect/disconnect is handled only on engine startup/shutdown (InputSystemComponent).
+        using MutexType = AZStd::recursive_mutex;
+        static const bool LocklessDispatch = true;
 
         ////////////////////////////////////////////////////////////////////////////////////////////
         ///@{
@@ -61,6 +69,16 @@ namespace AzFramework
         //! \param[in] deviceId Id of the input device to find
         //! \return Pointer to the input device if it was found, nullptr if it was not
         static const InputDevice* FindInputDevice(const InputDeviceId& deviceId);
+
+        ////////////////////////////////////////////////////////////////////////////////////////////
+        //! Request the ids of all input channels (optionally those associated with an input device)
+        //! that return custom data of a specific type (InputChannel::GetCustomData<CustomDataType>).
+        //! \param[out] o_channelIds The set of input channel ids to return
+        //! \param[in] deviceId (optional) Id of a specific input device to query for input channels
+        //! \tparam CustomDataType Only consider input channels that return custom data of this type
+        template<class CustomDataType>
+        static void GetInputChannelIdsWithCustomDataOfType(InputChannelIdSet& o_channelIds,
+                                                           const InputDeviceId* deviceId = nullptr);
 
         ////////////////////////////////////////////////////////////////////////////////////////////
         //! Gets the input device that is uniquely identified by the InputDeviceId used to address
@@ -94,6 +112,19 @@ namespace AzFramework
         virtual void GetInputDevicesById(InputDeviceByIdMap& o_devicesById) const = 0;
 
         ////////////////////////////////////////////////////////////////////////////////////////////
+        //! Request a map of all currently enabled input devices (keyed by their id) that have been
+        //! assigned to the specified local user id.
+        //!
+        //! Can be called using either:
+        //! - EBus<>::Broadcast (all input devices assigned to localUserId added to o_devicesById)
+        //! - EBus<>::Event(id) (add given input device to o_devicesById if assigned to localUserId)
+        //!
+        //! \param[out] o_devicesById The map of input devices (keyed by their id) to return
+        //! \param[in] localUserId The local user id to check whether input devices are assigned to
+        virtual void GetInputDevicesByIdWithAssignedLocalUserId(InputDeviceByIdMap& o_devicesById,
+                                                                LocalUserId localUserId) const = 0;
+
+        ////////////////////////////////////////////////////////////////////////////////////////////
         //! Request the ids of all input channels associated with an input device.
         //!
         //! Can be called using either:
@@ -112,6 +143,19 @@ namespace AzFramework
         //!
         //! \param[out] o_channelsById The map of input channels (keyed by their id) to return
         virtual void GetInputChannelsById(InputChannelByIdMap& o_channelsById) const = 0;
+
+        ////////////////////////////////////////////////////////////////////////////////////////////
+        //! Request the text displayed on the physical key / button associated with an input channel.
+        //! In the case of keyboard keys, this should take into account the current keyboard layout.
+        //!
+        //! Can be called using either:
+        //! - EBus<>::Broadcast (all input devices will search their channels for inputChannelId)
+        //! - EBus<>::Event(id) (the given device will search its channel for inputChannelId)
+        //!
+        //! \param[in] inputChannelId The input channel id whose key or button text to search for
+        //! \param[out] o_keyOrButtonText The text displayed on the physical key or button if found
+        virtual void GetPhysicalKeyOrButtonText(const InputChannelId& /*inputChannelId*/,
+                                                AZStd::string& /*o_keyOrButtonText*/) const {}
 
         ////////////////////////////////////////////////////////////////////////////////////////////
         //! Tick/update input devices.
@@ -133,6 +177,31 @@ namespace AzFramework
         const InputDevice* inputDevice = nullptr;
         InputDeviceRequestBus::EventResult(inputDevice, deviceId, &InputDeviceRequests::GetInputDevice);
         return inputDevice;
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    template<class CustomDataType>
+    inline void InputDeviceRequests::GetInputChannelIdsWithCustomDataOfType(
+        InputChannelIdSet& o_channelIds,
+        const InputDeviceId* deviceId)
+    {
+        InputChannelByIdMap inputChannelsById;
+        if (deviceId)
+        {
+            InputDeviceRequestBus::Event(*deviceId, &InputDeviceRequests::GetInputChannelsById, inputChannelsById);
+        }
+        else
+        {
+            InputDeviceRequestBus::Broadcast(&InputDeviceRequests::GetInputChannelsById, inputChannelsById);
+        }
+
+        for (const auto& inputChannelById : inputChannelsById)
+        {
+            if (inputChannelById.second->GetCustomData<CustomDataType>() != nullptr)
+            {
+                o_channelIds.insert(inputChannelById.first);
+            }
+        }
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////

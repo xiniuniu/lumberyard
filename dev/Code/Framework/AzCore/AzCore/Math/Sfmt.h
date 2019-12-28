@@ -15,8 +15,9 @@
 #include <AzCore/base.h>
 #include <AzCore/std/parallel/atomic.h>
 #include <AzCore/std/parallel/mutex.h>
+#include <AzCore/std/typetraits/static_storage.h>
 
-#if defined(AZ_PLATFORM_WINDOWS) || defined(AZ_PLATFORM_PS4) || defined(AZ_PLATFORM_LINUX)
+#if AZ_TRAIT_HARDWARE_ENABLE_EMM_INTRINSICS
 #   include <emmintrin.h>
 #endif
 
@@ -27,9 +28,9 @@ namespace AZ
     {
         //
         static const int MEXP = 19937;
-        static const int N    = MEXP / (128 + 1);
+        static const int N    = MEXP / 128 + 1;
 
-#if defined(AZ_PLATFORM_WINDOWS) || defined(AZ_PLATFORM_XBONE) || defined(AZ_PLATFORM_PS4) || defined(AZ_PLATFORM_LINUX)
+#if AZ_TRAIT_HARDWARE_HAS_M128I
         union W128_T
         {
             __m128i si;
@@ -43,6 +44,7 @@ namespace AZ
 #endif
         /** 128-bit data type */
         typedef W128_T w128_t;
+        AZ_STATIC_ASSERT(N == MEXP / (sizeof(W128_T) * 8) + 1, "The m_smft member array must fit all iterations of the correct 128-bit size.");
 
         void gen_rand_all(Sfmt& g);
         void gen_rand_array(Sfmt& g, SfmtInternal::w128_t* array, int size);
@@ -105,7 +107,7 @@ namespace AZ
          * Returns the default global instance of the Sfmt, initialized with time(NULL) as seed. We recommend
          * creating your own instances when need a big set of random numbers.
          */
-        static inline Sfmt&     GetInstance() { return s_default; }
+        static Sfmt&     GetInstance();
 
     protected:
 
@@ -117,8 +119,6 @@ namespace AZ
         AZ::u64*                    m_psfmt64;
 
         AZStd::mutex                m_generationMutex;
-
-        static Sfmt                 s_default;  ///< A Global default random number generator, init with time(NULL) seed!
     };
 }
 

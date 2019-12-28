@@ -19,7 +19,7 @@
 #include <QScopedPointer>
 
 namespace Ui {
-    class Dialog;
+    class LevelFileDialog;
 }
 
 class LevelTreeModel;
@@ -36,7 +36,6 @@ public:
     QString GetFileName() const;
 
     static bool CheckLevelFolder(const QString folder, QStringList* levelFiles = nullptr);
-    static bool CheckSubFoldersForLevelsRec(const QString folder, bool bRoot = true);
 
 protected Q_SLOTS:
     void OnOK();
@@ -44,22 +43,26 @@ protected Q_SLOTS:
     void OnTreeSelectionChanged();
     void OnNewFolder();
     void OnFilterChanged();
+    void OnNameChanged();
 protected:
     void ReloadTree();
-    bool ValidateLevelPath(const QString& folder);
+    bool ValidateSaveLevelPath(QString& errorMessage) const;
+    bool ValidateLevelPath(const QString& folder) const;
 
     void SaveLastUsedLevelPath();
     void LoadLastUsedLevelPath();
 
 private:
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
     QString NameForIndex(const QModelIndex& index) const;
 
     bool IsValidLevelSelected();
-    QString GetLevelPath();
-    QString GetEnteredPath();
+    QString GetLevelPath() const;
+    QString GetEnteredPath() const;
     QString GetFileName(QString levelPath);
 
-    QScopedPointer<Ui::Dialog> ui;
+    QScopedPointer<Ui::LevelFileDialog> ui;
     QString m_fileName;
     QString m_filter;
     const bool m_bOpenDialog;

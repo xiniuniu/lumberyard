@@ -12,6 +12,10 @@
 #include <math.h>
 #include <float.h>
 
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wpointer-sign"
+#endif
+
 #ifdef _MSC_VER
 #ifndef isnan
 #define isnan(x) _isnan(x)
@@ -113,6 +117,11 @@ void DeclareConstBufferShaderVariableMETAL(bstring metal, const char* Name, cons
             bformata(metal, "\tfloat%d %s%s[%d", psType->Columns, pointerType ? "*" : "", Name, psType->Rows);
             break;
         }
+        case SVT_FLOAT16:
+        {
+            bformata(metal, "\thalf%d %s%s[%d", psType->Columns, pointerType ? "*" : "", Name, psType->Rows);
+            break;
+        }
         default:
         {
             ASSERT(0);
@@ -134,6 +143,11 @@ void DeclareConstBufferShaderVariableMETAL(bstring metal, const char* Name, cons
         case SVT_FLOAT:
         {
             bformata(metal, "\tfloat%d %s%s", psType->Columns, pointerType ? "*" : "", Name);
+            break;
+        }
+        case SVT_FLOAT16:
+        {
+            bformata(metal, "\thalf%d %s%s", psType->Columns, pointerType ? "*" : "", Name);
             break;
         }
         case SVT_UINT:
@@ -168,6 +182,11 @@ void DeclareConstBufferShaderVariableMETAL(bstring metal, const char* Name, cons
         case SVT_FLOAT:
         {
             bformata(metal, "\tfloat %s%s", pointerType ? "*" : "", Name);
+            break;
+        }
+        case SVT_FLOAT16:
+        {
+            bformata(metal, "\thalf %s%s", pointerType ? "*" : "", Name);
             break;
         }
         case SVT_UINT:
@@ -387,7 +406,7 @@ const char* GetInterpolationStringMETAL(INTERPOLATION_MODE eMode)
 
 static void DeclareInput(
     HLSLCrossCompilerContext* psContext,
-    const Declaration* psDecl, const char* StorageQualifier, int iNumComponents, OPERAND_INDEX_DIMENSION eIndexDim, const char* InputName)
+    const Declaration* psDecl, const char* StorageQualifier, OPERAND_MIN_PRECISION minPrecision, int iNumComponents, OPERAND_INDEX_DIMENSION eIndexDim, const char* InputName)
 {
     ShaderData* psShader = psContext->psShader;
     psContext->currentShaderString = &psContext->parameterDeclarations;
@@ -401,10 +420,15 @@ static void DeclareInput(
 
     if (psShader->aiInputDeclaredSize[psDecl->asOperands[0].ui32RegisterNumber] == 0)
     {
-        const char* type = "float";
+        
         InOutSignature* psSignature = NULL;
         int emptyQualifier = 0;
 
+        const char* type = "float";
+        if (minPrecision == OPERAND_MIN_PRECISION_FLOAT_16)
+        {
+            type = "half";
+        }
         if (GetInputSignatureFromRegister(psDecl->asOperands[0].ui32RegisterNumber, &psShader->sInfo, &psSignature))
         {
             switch (psSignature->eComponentType)
@@ -649,7 +673,22 @@ static void AddBuiltinInputMETAL(HLSLCrossCompilerContext* psContext, const Decl
 int OutputNeedsDeclaringMETAL(HLSLCrossCompilerContext* psContext, const Operand* psOperand, const int count)
 {
     ShaderData* psShader = psContext->psShader;
+    
+    // Depth Output operands are a special case and won't have a ui32RegisterNumber,
+    // so first we have to check if the output operand is depth.
+    if (psShader->eShaderType == PIXEL_SHADER)
+    {
+        if (psOperand->eType == OPERAND_TYPE_OUTPUT_DEPTH_GREATER_EQUAL ||
+            psOperand->eType == OPERAND_TYPE_OUTPUT_DEPTH_LESS_EQUAL ||
+            psOperand->eType == OPERAND_TYPE_OUTPUT_DEPTH)
+        {
+            return 1;
+        }
+    }
+    
     const uint32_t declared = ((psContext->currentPhase + 1) << 3) | psShader->ui32CurrentVertexOutputStream;
+    ASSERT(psOperand->ui32RegisterNumber >= 0);
+    ASSERT(psOperand->ui32RegisterNumber < MAX_SHADER_VEC4_OUTPUT);
     if (psShader->aiOutputDeclared[psOperand->ui32RegisterNumber] != declared)
     {
         int offset;
@@ -659,16 +698,6 @@ int OutputNeedsDeclaringMETAL(HLSLCrossCompilerContext* psContext, const Operand
             psShader->aiOutputDeclared[psOperand->ui32RegisterNumber + offset] = declared;
         }
         return 1;
-    }
-
-    if (psShader->eShaderType == PIXEL_SHADER)
-    {
-        if (psOperand->eType == OPERAND_TYPE_OUTPUT_DEPTH_GREATER_EQUAL ||
-            psOperand->eType == OPERAND_TYPE_OUTPUT_DEPTH_LESS_EQUAL ||
-            psOperand->eType == OPERAND_TYPE_OUTPUT_DEPTH)
-        {
-            return 1;
-        }
     }
 
     return 0;
@@ -734,6 +763,11 @@ void AddUserOutputMETAL(HLSLCrossCompilerContext* psContext, const Declaration* 
             type = "\tint";
             break;
         }
+        case SVT_FLOAT16:
+        {
+            type = "\thalf";
+            break;
+        }
         case SVT_FLOAT:
         {
             break;
@@ -744,7 +778,6 @@ void AddUserOutputMETAL(HLSLCrossCompilerContext* psContext, const Declaration* 
         {
         case PIXEL_SHADER:
         {
-            char* OutputName = GetDeclaredOutputNameMETAL(psContext, PIXEL_SHADER, psOperand);
             switch (psDecl->asOperands[0].eType)
             {
             case OPERAND_TYPE_OUTPUT_COVERAGE_MASK:
@@ -782,7 +815,6 @@ void AddUserOutputMETAL(HLSLCrossCompilerContext* psContext, const Declaration* 
                     bformata(metal, "float%d PixOutColor%d [[ color(%d) ]];\n", psContext->gmemOutputNumElements[psDecl->asOperands[0].ui32RegisterNumber], renderTarget, renderTarget);
                 }
                 bformata(metal, "#define Output%d output.PixOutColor%d\n", psDecl->asOperands[0].ui32RegisterNumber, renderTarget);
-                bcstrfree(OutputName);
 
                 break;
             }
@@ -863,7 +895,7 @@ void DeclareBufferVariableMETAL(HLSLCrossCompilerContext* psContext, const uint3
         int count = 0;
         for (uint32_t index = 0; index < psContext->psShader->sInfo.ui32NumResourceBindings; index++)
         {
-            if (strcmp(psContext->psShader->sInfo.psResourceBindings[index].Name, StructName->data) == 0)
+            if (strcmp(psContext->psShader->sInfo.psResourceBindings[index].Name, (const char*)StructName->data) == 0)
             {
                 count++;
                 //psContext->psShader->sInfo.psResourceBindings[index].ui32BindPoint += UAV_BUFFER_START_SLOT;
@@ -1009,6 +1041,11 @@ void DeclareStructConstantsMETAL(HLSLCrossCompilerContext* psContext, const uint
                 bformata(psContext->earlyMain, "\t%s float%d%s const &%s", addressSpace, psType->Columns, "*", Name, psType->Rows);
                 break;
             }
+            case SVT_FLOAT16:
+            {
+                bformata(psContext->earlyMain, "\t%s half%d%s const &%s", addressSpace, psType->Columns, "*", Name, psType->Rows);
+                break;
+            }
             default:
             {
                 ASSERT(0);
@@ -1025,6 +1062,11 @@ void DeclareStructConstantsMETAL(HLSLCrossCompilerContext* psContext, const uint
             case SVT_DOUBLE:     // double is not supported in metal
             {
                 bformata(psContext->earlyMain, "\t%s float%d%s const &%s", addressSpace, psType->Columns, psType->Elements > 1 ? "*" : "", Name);
+                break;
+            }
+            case SVT_FLOAT16:    
+            {
+                bformata(psContext->earlyMain, "\t%s half%d%s const &%s", addressSpace, psType->Columns, psType->Elements > 1 ? "*" : "", Name);
                 break;
             }
             case SVT_UINT:
@@ -1053,6 +1095,11 @@ void DeclareStructConstantsMETAL(HLSLCrossCompilerContext* psContext, const uint
             case SVT_DOUBLE:         // double is not supported in metal
             {
                 bformata(psContext->earlyMain, "\t%s float%s const &%s", addressSpace, psType->Elements > 1 ? "*" : "", Name);
+                break;
+            }
+            case SVT_FLOAT16:            
+            {
+                bformata(psContext->earlyMain, "\t%s half%s const &%s", addressSpace, psType->Elements > 1 ? "*" : "", Name);
                 break;
             }
             case SVT_UINT:
@@ -1339,7 +1386,7 @@ void TranslateDeclarationMETAL(HLSLCrossCompilerContext* psContext, const Declar
             default:
             {
                 DeclareInput(psContext, psDecl,
-                    "user", 4, INDEX_1D, psDecl->asOperands[0].pszSpecialName);
+                    "user", OPERAND_MIN_PRECISION_DEFAULT, 4, INDEX_1D, psDecl->asOperands[0].pszSpecialName);
             }
             }
         }
@@ -1360,7 +1407,7 @@ void TranslateDeclarationMETAL(HLSLCrossCompilerContext* psContext, const Declar
             default:
             {
                 DeclareInput(psContext, psDecl,
-                    "attribute", 4, INDEX_1D, psDecl->asOperands[0].pszSpecialName);
+                    "attribute", OPERAND_MIN_PRECISION_DEFAULT, 4, INDEX_1D, psDecl->asOperands[0].pszSpecialName);
             }
             }
         }
@@ -1457,7 +1504,7 @@ void TranslateDeclarationMETAL(HLSLCrossCompilerContext* psContext, const Declar
         InputName = GetDeclaredInputNameMETAL(psContext, psShader->eShaderType, psOperand);
 
         DeclareInput(psContext, psDecl,
-            "attribute", iNumComponents, (OPERAND_INDEX_DIMENSION)psOperand->iIndexDims, InputName);
+            "attribute", (OPERAND_MIN_PRECISION)psOperand->eMinPrecision, iNumComponents, (OPERAND_INDEX_DIMENSION)psOperand->iIndexDims, InputName);
 
         break;
     }
@@ -1486,7 +1533,7 @@ void TranslateDeclarationMETAL(HLSLCrossCompilerContext* psContext, const Declar
         const char* Interpolation = "";
 
         DeclareInput(psContext, psDecl,
-            "user", iNumComponents, INDEX_1D, InputName);
+            "user", (OPERAND_MIN_PRECISION)psOperand->eMinPrecision, iNumComponents, INDEX_1D, InputName);
 
         break;
     }
@@ -1501,6 +1548,7 @@ void TranslateDeclarationMETAL(HLSLCrossCompilerContext* psContext, const Declar
 
             bformata(psContext->earlyMain, "\tint4 Temp_int[%d];\n", ui32NumTemps);
             bformata(psContext->earlyMain, "\tuint4 Temp_uint[%d];\n", ui32NumTemps);
+            bformata(psContext->earlyMain, "\thalf4 Temp_half[%d];\n", ui32NumTemps);
         }
 
         break;
@@ -2007,7 +2055,7 @@ void TranslateDeclarationMETAL(HLSLCrossCompilerContext* psContext, const Declar
             int count = 0;
             for (uint32_t index = 0; index < psContext->psShader->sInfo.ui32NumResourceBindings; index++)
             {
-                if (strcmp(psContext->psShader->sInfo.psResourceBindings[index].Name, StructName->data) == 0)
+                if (strcmp(psContext->psShader->sInfo.psResourceBindings[index].Name, (const char*)StructName->data) == 0)
                 {
                     count++;
                     //psContext->psShader->sInfo.psResourceBindings[index].ui32BindPoint += UAV_BUFFER_START_SLOT;
@@ -2106,7 +2154,7 @@ void TranslateDeclarationMETAL(HLSLCrossCompilerContext* psContext, const Declar
             int count = 0;
             for (uint32_t index = 0; index < psContext->psShader->sInfo.ui32NumResourceBindings; index++)
             {
-                if (strcmp(psContext->psShader->sInfo.psResourceBindings[index].Name, StructName->data) == 0)
+                if (strcmp(psContext->psShader->sInfo.psResourceBindings[index].Name, (const char*)StructName->data) == 0)
                 {
                     count++;
                     //psContext->psShader->sInfo.psResourceBindings[index].ui32BindPoint += UAV_BUFFER_START_SLOT;

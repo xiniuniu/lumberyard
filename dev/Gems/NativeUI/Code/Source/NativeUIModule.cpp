@@ -10,8 +10,6 @@
  *
  */
 
-#include "StdAfx.h"
-
 #include "NativeUISystemComponent.h"
 #include <platform_impl.h>
 #include <IGem.h>

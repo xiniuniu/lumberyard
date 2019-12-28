@@ -10,7 +10,7 @@
 *
 */
 
-#include "StdAfx.h"
+#include "LmbrCentral_precompiled.h"
 
 #include <AzCore/IO/GenericStreams.h>
 #include <AzCore/IO/FileIO.h>
@@ -182,7 +182,7 @@ namespace LmbrCentral
 
     const char* ParticleAssetHandler::GetBrowserIcon() const
     {
-        return "Editor/Icons/Components/Particle.png";
+        return "Editor/Icons/Components/Particle.svg";
     }
 
     AZ::Uuid ParticleAssetHandler::GetComponentTypeId() const

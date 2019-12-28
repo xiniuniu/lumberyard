@@ -14,9 +14,10 @@
 import os
 
 from waflib.Build import BuildContext
-from waflib import TaskGen
+from waflib import TaskGen, Options
 from waflib.TaskGen import extension
 from waflib.Task import Task,RUN_ME
+from waflib.Configure import conf, conf_event, ConfigurationContext
 from collections import OrderedDict, defaultdict
 
 UBER_HEADER_COMMENT = '// UBER SOURCE'
@@ -25,7 +26,7 @@ class uber_file_generator(BuildContext):
     ''' Util class to generate Uber Files after configure '''
     cmd = 'generate_uber_files'
     fun = 'build'
-                    
+
 @TaskGen.taskgen_method
 @extension('.xpm')
 @extension('.def')
@@ -37,6 +38,7 @@ class uber_file_generator(BuildContext):
 @extension('.rc2')
 @extension('.lib')
 @extension('.png')
+@extension('.svg')
 @extension('.manifest')
 @extension('.cfi')
 @extension('.cfx')
@@ -74,8 +76,6 @@ class uber_file_generator(BuildContext):
 def header_dummy(tgen,node):
     pass
 
-from waflib.Configure import conf
-
 # Finds all files that are expected to be auto-ubered, sorts them and builds a manifest of uber
 # files based on size, then returns a re-mapped file list for use by the rest of the spec system
 @conf
@@ -101,8 +101,7 @@ def map_uber_files(ctx, original_file_list, token, target_name=None):
     if 'auto' in original_file_list:
         for (filter_name, file_list) in original_file_list['auto'].items():
             for file in file_list:
-                file_lower = file.lower()
-                if ctx.is_cxx_file(file_lower):
+                if ctx.is_cxx_file(file):
                     if os.path.isabs(file):
                         file_node = ctx.root.make_node(file)
                     else:
@@ -230,4 +229,16 @@ class gen_uber_file(Task):
             return -2 # SKIP_ME
             
         return RUN_ME   # Always execute Uber file Generation
-                        
+
+
+@conf_event(after_methods=['update_valid_configurations_file'])
+def inject_generate_uber_command(conf):
+    """
+    Make sure generate_uber_files command is injected into the configure pipeline
+    """
+    if not isinstance(conf, ConfigurationContext):
+        return
+
+    # Insert the generate_uber_files command, it has the highest priority
+    Options.commands.append('generate_uber_files')
+

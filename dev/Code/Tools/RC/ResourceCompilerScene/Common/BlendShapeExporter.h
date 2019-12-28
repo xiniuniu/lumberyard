@@ -12,7 +12,7 @@
 
 #pragma once
 
-#include <SceneAPI/SceneCore/Components/ExportingComponent.h>
+#include <SceneAPI/SceneCore/Components/RCExportingComponent.h>
 
 namespace AZ
 {
@@ -21,10 +21,10 @@ namespace AZ
         struct MeshNodeExportContext;
 
         class BlendShapeExporter
-            : public SceneAPI::SceneCore::ExportingComponent
+            : public SceneAPI::SceneCore::RCExportingComponent
         {
         public:
-            AZ_COMPONENT(BlendShapeExporter, "{1A27BF62-F684-4F9E-B2C6-B15E728659EA}", SceneAPI::SceneCore::ExportingComponent);
+            AZ_COMPONENT(BlendShapeExporter, "{1A27BF62-F684-4F9E-B2C6-B15E728659EA}", SceneAPI::SceneCore::RCExportingComponent);
             
             BlendShapeExporter();
             ~BlendShapeExporter() override = default;
@@ -32,12 +32,6 @@ namespace AZ
             static void Reflect(ReflectContext* context);
 
             SceneAPI::Events::ProcessingResult ProcessBlendShapes(MeshNodeExportContext& context);
-        protected:
-#if defined(AZ_COMPILER_MSVC) && AZ_COMPILER_MSVC <= 1800
-            // Workaround for VS2013 - Delete the copy constructor and make it private
-            // https://connect.microsoft.com/VisualStudio/feedback/details/800328/std-is-copy-constructible-is-broken
-            BlendShapeExporter(const BlendShapeExporter&) = delete;
-#endif
         };
     } // namespace RC
 } // namespace AZ

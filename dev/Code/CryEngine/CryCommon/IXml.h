@@ -17,7 +17,6 @@
 
 #include <platform.h>
 #include <Cry_Math.h>
-#include <boost/iterator/iterator_facade.hpp>
 #include <AzCore/IO/FileIO.h>
 
 class ICrySizer;
@@ -53,12 +52,10 @@ typedef Ang3_tpl<f32>       Ang3;
 #if defined(QT_VERSION)
 #include <QColor>
 #include <QString>
-#include <QUuid>
 #elif defined(_AFX)
 #include "Util/GuidUtil.h"
 #endif
 
-// Guid needs to be included after QUuid to enable QUuid <-> GUID conversions
 #include <AzCore/Math/Guid.h>
 #include <AzCore/Math/Uuid.h>
 
@@ -107,10 +104,6 @@ public:
     XmlString() {};
     XmlString(const char* str)
         : string(str) {};
-#ifdef  _AFX
-    XmlString(const CString& str)
-        : string((const char*)str) {};
-#endif
 
     operator const char*() const {
         return c_str();
@@ -563,9 +556,9 @@ public:
     //   Sets GUID attribute.
     void setAttr(const char* key, const GUID& value)
     {
-        QUuid uuid;
+        AZ::Uuid uuid;
         uuid = value;
-        setAttr(key, uuid.toString().toUtf8().data());
+        setAttr(key, uuid.ToString<AZStd::string>().c_str());
     };
 
     // Summary:
@@ -577,7 +570,7 @@ public:
             return false;
         }
         const char* guidStr = getAttr(key);
-        value = QUuid(guidStr);
+        value = AZ::Uuid(guidStr);
         if (value.Data1 == 0)
         {
             memset(&value, 0, sizeof(value));
@@ -695,7 +688,6 @@ inline XmlNodeRef&  XmlNodeRef::operator=(const XmlNodeRef& newp)
 
 //XmlNodeRef can be treated as a container. Iterating through it, iterates through its children
 class XmlNodeRefIterator
-    : public boost::iterator_facade<XmlNodeRefIterator, XmlNodeRef, boost::random_access_traversal_tag, IXmlNode*>
 {
 public:
     XmlNodeRefIterator()
@@ -708,8 +700,51 @@ public:
     {
         Update();
     }
+
+    XmlNodeRefIterator& operator=(const XmlNodeRefIterator& other) = default;
+
+    XmlNodeRefIterator& operator++() 
+    {
+        ++m_index;
+        Update();
+        return *this;
+    }
+    XmlNodeRefIterator operator++(int)
+    {
+        XmlNodeRefIterator ret = *this;
+        ++m_index;
+        Update();
+        return ret;
+    }
+
+    IXmlNode* operator*() const 
+    {
+        return m_currentChildNode;
+    }
+
+    XmlNodeRefIterator& operator--()
+    {
+        --m_index;
+        Update();
+        return *this;
+    }
+
+    XmlNodeRefIterator operator--(int)
+    {
+        XmlNodeRefIterator ret = *this;
+        --m_index;
+        Update();
+        return ret;
+    }
+
+    bool operator!=(const XmlNodeRefIterator& rhs) {
+        return m_index != rhs.m_index;
+    }
+
 private:
-    friend class boost::iterator_core_access;
+    friend void swap(XmlNodeRefIterator& lhs, XmlNodeRefIterator& rhs);
+    friend bool operator==(const XmlNodeRefIterator& lhs, const XmlNodeRefIterator& rhs);
+    friend bool operator!=(const XmlNodeRefIterator& lhs, const XmlNodeRefIterator& rhs);
 
     void Update()
     {
@@ -718,17 +753,28 @@ private:
             m_currentChildNode = m_parentNode->getChild(static_cast<int>(m_index));
         }
     }
-    void increment() { ++m_index; Update(); }
-    void decrement() { --m_index; Update(); }
-    void advance(std::size_t distance) { m_index += distance; Update(); }
-    difference_type distance_to(const XmlNodeRefIterator& other) const { return other.m_index - m_index; }
-    bool equal(const XmlNodeRefIterator& other) const { return m_index == other.m_index; }
-    reference dereference() const { return m_currentChildNode; }
 
     XmlNodeRef m_parentNode;
     XmlNodeRef m_currentChildNode;
     std::size_t m_index; //default to first child, if no children then this will equal size which is what we use for the end iterator
 };
+
+inline void swap(XmlNodeRefIterator& lhs, XmlNodeRefIterator& rhs)
+{
+    AZStd::swap(lhs.m_parentNode, rhs.m_parentNode);
+    AZStd::swap(lhs.m_currentChildNode, rhs.m_currentChildNode);
+    AZStd::swap(lhs.m_index, rhs.m_index);
+}
+
+inline bool operator==(const XmlNodeRefIterator& lhs, const XmlNodeRefIterator& rhs)
+{
+    return lhs.m_index == rhs.m_index;
+}
+
+inline bool operator!=(const XmlNodeRefIterator& lhs, const XmlNodeRefIterator& rhs)
+{
+    return lhs.m_index != rhs.m_index;
+}
 
 inline XmlNodeRefIterator XmlNodeRef::begin()
 {
@@ -823,6 +869,7 @@ struct IXmlTableReader
     // to know absolute cell index (i.e. column).
     // Returns false if no cells left in the row.
     virtual bool ReadCell(int& columnIndex, const char*& pContent, size_t& contentSize) = 0;
+    virtual float GetCurrentRowHeight() = 0;
     // </interfuscator:shuffle>
 };
 #endif

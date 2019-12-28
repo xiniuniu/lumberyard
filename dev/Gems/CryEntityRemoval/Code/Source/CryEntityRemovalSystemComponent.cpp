@@ -9,7 +9,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 
-#include "StdAfx.h"
+#include "CryEntityRemoval_precompiled.h"
 
 #include <AzCore/Serialization/SerializeContext.h>
 #include <AzCore/Serialization/EditContext.h>
@@ -24,7 +24,7 @@ namespace CryEntityRemoval
         {
             serialize->Class<CryEntityRemovalSystemComponent, AZ::Component>()
                 ->Version(0)
-                ->SerializerForEmptyClass();
+                ;
 
             if (AZ::EditContext* ec = serialize->GetEditContext())
             {
